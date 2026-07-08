@@ -35,8 +35,11 @@ export type DistilledProposal = {
   evidence: string;
 };
 
-const SECTIONS: ProposalSection[] = ['icp', 'angles', 'openers', 'objections', 'avoid', 'voicemail'];
-const KINDS: ProposalKind[] = ['add', 'change', 'remove'];
+// Exported so src/lib/analytics/brainReview.ts can build its own emit_review
+// tool schema and reuse validateProposals below verbatim for the shared
+// {proposals: [...]} shape, instead of a second proposals system.
+export const SECTIONS: ProposalSection[] = ['icp', 'angles', 'openers', 'objections', 'avoid', 'voicemail'];
+export const KINDS: ProposalKind[] = ['add', 'change', 'remove'];
 
 const SYSTEM_PROMPT = `You are a sales enablement analyst for a residential and commercial lighting company, Yule Love Lights. You are given aggregated patterns mined from real sales calls for one line of business (objection frequency, common customer questions, what worked, what failed, price talk) plus that line's current call playbook.
 
@@ -97,9 +100,12 @@ function isValidKind(v: unknown): v is ProposalKind {
   return typeof v === 'string' && (KINDS as string[]).includes(v);
 }
 
-type ProposalsValidationResult = { valid: true; proposals: DistilledProposal[] } | { valid: false; error: string };
+export type ProposalsValidationResult = { valid: true; proposals: DistilledProposal[] } | { valid: false; error: string };
 
-function validateProposals(value: unknown): ProposalsValidationResult {
+// Reads value.proposals and validates/normalizes it — ignores any sibling
+// keys, so brainReview.ts's {narrative, proposals} tool result validates
+// here unchanged.
+export function validateProposals(value: unknown): ProposalsValidationResult {
   if (typeof value !== 'object' || value === null) {
     return { valid: false, error: 'Result must be an object.' };
   }
