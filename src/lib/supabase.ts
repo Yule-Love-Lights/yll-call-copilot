@@ -8,13 +8,23 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 
 // True when a Postgres/PostgREST error means "this table doesn't exist yet"
-// (SQLSTATE 42P01) — migration 0003_knowledge.sql may not be applied in
-// every environment while Phase 1.5 code ships. Routes that touch its tables
-// check this before returning a hard 500, so a missing migration degrades to
-// a friendly "run the migration" response instead (same philosophy as
-// isSupabaseConfigured() degrading gracefully on missing env).
+// — a migration may not be applied in every environment while its phase's
+// code ships. Routes that touch its tables check this before returning a
+// hard 500, so a missing migration degrades to a friendly "run the
+// migration" response instead (same philosophy as isSupabaseConfigured()
+// degrading gracefully on missing env).
+//
+// Two codes, not one: 42P01 is Postgres's own "undefined_table" (raised by a
+// direct DB connection), but @supabase/supabase-js talks to Postgres through
+// PostgREST, which instead answers a missing table with its own PGRST205
+// ("Could not find the table ... in the schema cache") — confirmed live
+// against a not-yet-migrated project (2026-07-08), where every route relying
+// on this check was silently falling through to a hard 500 instead of its
+// intended degrade message. Both are checked so that never happens again,
+// regardless of which layer surfaces the error.
 export function isMissingTableError(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && (error as { code?: string }).code === '42P01';
+  const code = typeof error === 'object' && error !== null ? (error as { code?: string }).code : undefined;
+  return code === '42P01' || code === 'PGRST205';
 }
 
 export function isSupabaseConfigured(): boolean {
