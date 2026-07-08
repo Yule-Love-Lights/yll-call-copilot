@@ -1,11 +1,11 @@
-// Shape of a generated/edited cold-call playbook. Defined once here and
+// Shape of a generated/edited call playbook. Defined once here and
 // reused by generation (generate.ts), the hand-rolled validator
 // (validate.ts), the API routes, and the UI — never redefined.
 
 export type Playbook = {
   icp: string; // ideal customer profile, plain English
   angles: string[]; // call angles / reasons-to-call
-  openers: { label: string; script: string }[]; // e.g. "Past customer", "Neighbor install", "Cold"
+  openers: { label: string; script: string }[]; // "Inbound follow-up", "Past customer", "Quote follow-up", "Neighbor install / referral", "Cold"
   objections: { objection: string; response: string }[];
   avoid: string[]; // things never to say
   voicemail: string; // 20-second voicemail script

@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "YLL Call Copilot",
-  description: "Cold-call copilot for Yule Love Lights reps",
+  description: "Call copilot for Yule Love Lights reps",
 };
 
 export default function RootLayout({

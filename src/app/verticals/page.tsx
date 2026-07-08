@@ -19,7 +19,7 @@ export default function VerticalsPage() {
         ← Dashboard
       </Link>
       <h1 className="mt-2 text-2xl font-semibold">Verticals</h1>
-      <p className="mt-1 text-sm text-zinc-500">Cold-call playbooks by line of business.</p>
+      <p className="mt-1 text-sm text-zinc-500">Call playbooks by line of business.</p>
 
       <div className="mt-8">
         {configured ? (

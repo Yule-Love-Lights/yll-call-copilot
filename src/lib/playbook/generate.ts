@@ -1,4 +1,4 @@
-// Turns a vertical description into a full cold-call playbook using Claude's
+// Turns a vertical description into a full call playbook using Claude's
 // tool-use pattern to force structured output: one tool (emit_playbook) whose
 // input_schema mirrors the Playbook type, with tool_choice forcing that tool
 // so the response is always parseable — never free-text that needs scraping.
@@ -11,7 +11,7 @@ import type { Playbook } from './types';
 // model ever changes.
 export const PLAYBOOK_MODEL = 'claude-sonnet-5';
 
-const SYSTEM_PROMPT = `You are a veteran cold-calling coach for Yule Love Lights, a residential and commercial lighting company (holiday lighting, permanent exterior lighting, event lighting, and commercial lighting). You are writing a call playbook that a human rep will use on real phone calls to homeowners and local businesses.
+const SYSTEM_PROMPT = `You are a veteran coach for inbound and warm outbound calling at Yule Love Lights, a residential and commercial lighting company (holiday lighting, permanent exterior lighting, event lighting, and commercial lighting). You are writing a call playbook that a human rep will use on real phone calls to homeowners and local businesses. Most calls are warm: the person called us, requested a quote, is a past customer, was referred, or is due for a seasonal rebook. True cold calls are the rare exception.
 
 Never use B2B-SaaS language ("solutions", "synergy", "stakeholders", "value prop", and similar). This is a lighting company talking to homeowners and business owners, not a software pitch.
 
@@ -19,7 +19,7 @@ Every script must be made of short sentences a rep can actually say out loud on 
 
 Ground every part of the playbook in the vertical description and knowledge notes the user provides. Do not invent company facts that contradict what you are given.
 
-Openers must include at least three variants: one labeled "Past customer", one labeled "Neighbor install", and at least one cold-call variant.
+Openers must include these five variants: one labeled "Inbound follow-up" (they contacted us or requested a quote), one labeled "Past customer" (re-engagement or upsell), one labeled "Quote follow-up" (quote sent, no decision yet), one labeled "Neighbor install / referral", and one labeled "Cold" for the rare true-cold call.
 
 Objections must cover at least these five: price, "not interested", "email me info", talking to a spouse or other decision-maker, and bad timing.
 
@@ -29,7 +29,7 @@ Never use an em dash. Never use the words "unlock", "leverage", or "delve".`;
 
 const EMIT_PLAYBOOK_TOOL: Anthropic.Tool = {
   name: 'emit_playbook',
-  description: 'Return the completed cold-call playbook for this vertical as structured data.',
+  description: 'Return the completed call playbook for this vertical as structured data.',
   input_schema: {
     type: 'object',
     properties: {
@@ -49,7 +49,7 @@ const EMIT_PLAYBOOK_TOOL: Anthropic.Tool = {
           properties: {
             label: {
               type: 'string',
-              description: 'Scenario label, e.g. "Past customer" or "Neighbor install".',
+              description: 'Scenario label, e.g. "Inbound follow-up" or "Past customer".',
             },
             script: {
               type: 'string',
@@ -59,7 +59,7 @@ const EMIT_PLAYBOOK_TOOL: Anthropic.Tool = {
           required: ['label', 'script'],
         },
         description:
-          'Opener scripts. Must include a "Past customer" variant, a "Neighbor install" variant, and at least one cold-call variant.',
+          'Opener scripts. Must include exactly these labels: "Inbound follow-up", "Past customer", "Quote follow-up", "Neighbor install / referral", and "Cold".',
       },
       objections: {
         type: 'array',
@@ -114,7 +114,7 @@ export async function generatePlaybook(input: GeneratePlaybookInput): Promise<Pl
           `Vertical description: ${input.description}`,
           `Knowledge notes: ${input.knowledgeNotes.trim() || '(none provided)'}`,
           '',
-          'Build the full cold-call playbook for this vertical now.',
+          'Build the full call playbook for this vertical now.',
         ].join('\n'),
       },
     ],

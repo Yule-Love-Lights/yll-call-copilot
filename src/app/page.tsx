@@ -31,7 +31,7 @@ export default function Home() {
     <main className="mx-auto w-full max-w-2xl px-6 py-12">
       <h1 className="text-2xl font-semibold">YLL Call Copilot</h1>
       <p className="mt-1 text-sm text-zinc-500">
-        Cold-call copilot for Yule Love Lights reps.
+        Copilot for inbound and warm outbound calls at Yule Love Lights.
       </p>
 
       <nav className="mt-6 flex gap-4">

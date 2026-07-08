@@ -1,6 +1,6 @@
 # YLL Call Copilot
 
-Internal tool for Yule Love Lights. It helps human reps make cold calls: look up the customer in GoHighLevel before dialing, see connection health at a glance, and (in later phases) get on-call guidance. Phase 0 is the skeleton only: a dashboard with a health panel, a GoHighLevel contact search, and a Supabase schema file. No telephony and no AI calls yet.
+Internal tool for Yule Love Lights. It helps human reps handle inbound calls and warm outbound calls (past customers, quote follow-ups, referrals, rebooks): look up the customer in GoHighLevel before dialing, keep a living call playbook per line of business, and (in later phases) get on-call guidance. The AI coaches the rep and never speaks to the customer.
 
 ## Setup
 
