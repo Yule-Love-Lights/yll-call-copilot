@@ -69,17 +69,25 @@ export async function processTranscriptBatch(input: ProcessBatchInput): Promise<
         throw new Error('Claude not configured.');
       }
       const learnings = await extractLearnings(transcript.raw_text, verticalName);
-      const { error: insertError } = await supabase.from('learnings').insert({
-        transcript_id: transcriptId,
-        vertical_id: verticalId,
-        objections: learnings.objections,
-        customer_language: learnings.customer_language,
-        what_worked: learnings.what_worked,
-        what_failed: learnings.what_failed,
-        price_talk: learnings.price_talk,
-        questions: learnings.questions,
-        summary: learnings.summary,
-      });
+      // Upsert, not insert: a retried batch (a timeout/crash mid-batch
+      // re-processes an already-succeeded transcript via /api/ingest/
+      // continue's attempted_ids tracking) must not create a second row for
+      // the same transcript — see the unique(transcript_id) constraint on
+      // this table (0003_knowledge.sql).
+      const { error: insertError } = await supabase.from('learnings').upsert(
+        {
+          transcript_id: transcriptId,
+          vertical_id: verticalId,
+          objections: learnings.objections,
+          customer_language: learnings.customer_language,
+          what_worked: learnings.what_worked,
+          what_failed: learnings.what_failed,
+          price_talk: learnings.price_talk,
+          questions: learnings.questions,
+          summary: learnings.summary,
+        },
+        { onConflict: 'transcript_id' },
+      );
       if (insertError) throw insertError;
 
       done++;

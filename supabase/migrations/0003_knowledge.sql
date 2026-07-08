@@ -31,7 +31,12 @@ create table transcripts (
 
 create table learnings (
   id uuid primary key default gen_random_uuid(),
-  transcript_id uuid references transcripts(id) on delete cascade,
+  -- unique: extraction is idempotent, keyed on this — a retried ingest
+  -- batch (a timeout/crash mid-batch re-drives the same transcript through
+  -- /api/ingest/continue) upserts on conflict instead of inserting a
+  -- second row and silently doubling the objection/question/price-talk
+  -- counts computeInsights/distillProposals read.
+  transcript_id uuid references transcripts(id) on delete cascade unique,
   vertical_id uuid,
   objections jsonb,
   customer_language jsonb,
