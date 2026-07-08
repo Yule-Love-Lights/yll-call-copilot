@@ -1,10 +1,20 @@
 // POST /api/calls — saves a call from the console (/call/[leadId]): body
-// {leadId, outcome, notes, transcript?}. Sequential inserts, each error
-// surfaced rather than swallowed:
-//   1. transcript row (only if transcript text was pasted), then the
-//      existing extraction pipeline (src/lib/transcripts/process.ts) against
-//      it — reused rather than re-implemented, per the brief.
-//   2. the calls row itself, linking the transcript if any.
+// {leadId, outcome, notes, transcript?, callId?}. Sequential inserts, each
+// error surfaced rather than swallowed:
+//   1. transcript row (only if transcript text was pasted AND this is not a
+//      live-coached call — see step 2), then the existing extraction
+//      pipeline (src/lib/transcripts/process.ts) against it — reused rather
+//      than re-implemented, per the brief.
+//   2. the calls row itself. callId absent -> insert a fresh row, linking
+//      the transcript if any (a plain outbound call logged straight from
+//      the console). callId present -> UPDATE that existing row instead:
+//      POST /api/live/end already created it (transcript_id, lead_id,
+//      ghl_contact_id already set from the live session) and handed the id
+//      back to the console via the ?callId= query param, so tagging the
+//      outcome here would otherwise insert a SECOND calls row for the same
+//      conversation. Updating also means no new transcript is created for
+//      this request (step 1) — the live session already stored and
+//      extracted one.
 //   3. the lead's status -> done.
 //   4. for an interested/callback/voicemail outcome, a best-effort
 //      follow-up draft generation (src/lib/leads/followups.ts) — Claude not
@@ -78,10 +88,12 @@ export async function POST(request: Request) {
     }
   }
 
-  // 1. Transcript + extraction (optional).
+  // 1. Transcript + extraction (optional) — skipped for a live-coached call
+  // (input.callId set). Its transcript was already stored and extracted by
+  // POST /api/live/end; doing it again here would create a duplicate.
   let transcriptId: string | null = null;
   const extraction: { attempted: boolean; done: number; failed: number } = { attempted: false, done: 0, failed: 0 };
-  if (input.transcript) {
+  if (!input.callId && input.transcript) {
     const { data: transcriptData, error: transcriptError } = await supabase
       .from('transcripts')
       .insert({
@@ -115,27 +127,59 @@ export async function POST(request: Request) {
     }
   }
 
-  // 2. The call itself.
+  // 2. The call itself — update the live session's row if we have its id,
+  // otherwise insert a fresh one (see the file-header comment).
   const rep_email = await getSessionEmail();
-  const { data: callData, error: callError } = await supabase
-    .from('calls')
-    .insert({
-      lead_id: lead.id,
-      ghl_contact_id: lead.ghl_contact_id,
-      rep_email,
-      direction: 'outbound',
-      outcome: input.outcome,
-      notes: input.notes,
-      transcript_id: transcriptId,
-      ended_at: new Date().toISOString(),
-    })
-    .select('id')
-    .single();
-  if (callError) {
-    console.error('Insert call failed:', callError);
-    return NextResponse.json({ configured: true, saved: false, error: 'Could not save the call.' }, { status: 500 });
+  let callId: string;
+  if (input.callId) {
+    const { data: existingCallData, error: existingCallError } = await supabase
+      .from('calls')
+      .select('id')
+      .eq('id', input.callId)
+      .maybeSingle();
+    if (existingCallError) {
+      console.error('Load existing call for update failed:', existingCallError);
+      return NextResponse.json({ configured: true, saved: false, error: 'Could not load the call.' }, { status: 500 });
+    }
+    if (!existingCallData) {
+      return NextResponse.json({ configured: true, saved: false, error: 'Call not found.' }, { status: 404 });
+    }
+
+    const { error: updateError } = await supabase
+      .from('calls')
+      .update({
+        rep_email,
+        outcome: input.outcome,
+        notes: input.notes,
+        ended_at: new Date().toISOString(),
+      })
+      .eq('id', input.callId);
+    if (updateError) {
+      console.error('Update call failed:', updateError);
+      return NextResponse.json({ configured: true, saved: false, error: 'Could not save the call.' }, { status: 500 });
+    }
+    callId = input.callId;
+  } else {
+    const { data: callData, error: callError } = await supabase
+      .from('calls')
+      .insert({
+        lead_id: lead.id,
+        ghl_contact_id: lead.ghl_contact_id,
+        rep_email,
+        direction: 'outbound',
+        outcome: input.outcome,
+        notes: input.notes,
+        transcript_id: transcriptId,
+        ended_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+    if (callError) {
+      console.error('Insert call failed:', callError);
+      return NextResponse.json({ configured: true, saved: false, error: 'Could not save the call.' }, { status: 500 });
+    }
+    callId = (callData as { id: string }).id;
   }
-  const callId = (callData as { id: string }).id;
 
   // 3. Lead -> done. Non-fatal if it fails: the call already saved, and a
   // rep can still see/finish it from the console.

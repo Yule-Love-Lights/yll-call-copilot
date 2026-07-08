@@ -7,8 +7,19 @@ import CallConsole from './CallConsole';
 
 export const dynamic = 'force-dynamic';
 
-export default async function CallConsolePage({ params }: { params: Promise<{ leadId: string }> }) {
+export default async function CallConsolePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ leadId: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const { leadId } = await params;
+  // Set when the rep just finished a live-coached call (LiveConsole's
+  // onEnd() appends it) — see CallConsole, which sends it back on save so
+  // POST /api/calls updates that call instead of inserting a second one.
+  const { callId: callIdParam } = await searchParams;
+  const callId = typeof callIdParam === 'string' ? callIdParam : null;
   const configured = isSupabaseConfigured();
 
   return (
@@ -26,7 +37,7 @@ export default async function CallConsolePage({ params }: { params: Promise<{ le
 
       <div className="mt-8">
         {configured ? (
-          <CallConsole leadId={leadId} />
+          <CallConsole leadId={leadId} initialCallId={callId} />
         ) : (
           <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
             Supabase not configured — set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and

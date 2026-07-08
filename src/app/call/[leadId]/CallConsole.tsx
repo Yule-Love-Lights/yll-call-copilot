@@ -325,7 +325,7 @@ function FollowupCard({ followup, sendEnabled, onSaved }: { followup: Followup; 
   );
 }
 
-export default function CallConsole({ leadId }: { leadId: string }) {
+export default function CallConsole({ leadId, initialCallId = null }: { leadId: string; initialCallId?: string | null }) {
   const [data, setData] = useState<DetailResponse | null>(null);
   const [status, setStatus] = useState<'loading' | 'done' | 'error'>('loading');
 
@@ -335,6 +335,12 @@ export default function CallConsole({ leadId }: { leadId: string }) {
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // The call POST /api/live/end just created, carried here via ?callId= so
+  // the first save updates it instead of inserting a second `calls` row.
+  // Cleared after a successful save: logging a second outcome for this same
+  // lead later in this page's lifetime should insert a fresh call, not keep
+  // overwriting the live-coached one.
+  const [pendingCallId, setPendingCallId] = useState<string | null>(initialCallId);
 
   const load = useCallback(() => {
     return fetch(`/api/leads/${leadId}`)
@@ -359,13 +365,14 @@ export default function CallConsole({ leadId }: { leadId: string }) {
       const res = await fetch('/api/calls', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leadId, outcome, notes, transcript: transcript || undefined }),
+        body: JSON.stringify({ leadId, outcome, notes, transcript: transcript || undefined, callId: pendingCallId ?? undefined }),
       });
       const json = await res.json();
       if (!json.saved) {
         setSaveError(json.error ?? json.reason ?? 'Could not save the call.');
         return;
       }
+      setPendingCallId(null);
 
       const parts = ['Call saved.'];
       if (json.transcript?.created) {

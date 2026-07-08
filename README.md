@@ -34,5 +34,5 @@ This path is coded against Twilio's and Deepgram's documented APIs but has never
 
 ## Notes
 
-- Auth and Supabase row level security land in a later phase (Phase 0.5). The migration in `supabase/migrations/0001_init.sql` is not applied anywhere yet.
+- Auth is live (staff allowlist sign-in, gated by `src/proxy.ts`). Supabase row level security is still service-role only; every table's RLS policy is deferred until a later pass.
 - Never commit `.env.local` or paste real key values into code, logs, or chat.

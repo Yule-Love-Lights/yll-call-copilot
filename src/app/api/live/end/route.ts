@@ -4,19 +4,12 @@
 // /api/calls), links it onto the calls row opened at /api/live/start, and
 // fires the existing extraction pipeline (src/lib/transcripts/process.ts) --
 // reused rather than re-implemented, per the brief. The client then routes
-// back to the normal /call/[leadId] console for outcome tagging and
-// follow-up drafts, unchanged.
+// back to the normal /call/[leadId] console (passing this call's id along)
+// for outcome tagging and follow-up drafts.
 //
-// Known tradeoff, not fixed here: that normal console flow always inserts
-// its own fresh `calls` row when the rep saves an outcome (see POST
-// /api/calls), so a live-coached call ends up with two `calls` rows -- this
-// one (carries the transcript + extracted learnings, outcome stays null)
-// and the one the rep saves afterward (carries the outcome + follow-ups).
-// The learnings themselves are keyed off the transcript, not the call, so
-// vertical insights are unaffected. Reworking POST /api/calls to update an
-// existing call instead of always inserting was out of scope for this
-// brief's listed build steps -- flagging it rather than changing that
-// shared, already-covered route.
+// Returns callId so the console's outcome save (POST /api/calls) can UPDATE
+// this same row instead of inserting a second one for the same
+// conversation -- see that route's file-header comment.
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
@@ -57,7 +50,7 @@ export async function POST(request: Request) {
   const session = sessionData as LiveSessionRow;
 
   if (session.status === 'ended') {
-    return NextResponse.json({ configured: true, saved: true, alreadyEnded: true });
+    return NextResponse.json({ configured: true, saved: true, alreadyEnded: true, callId: session.call_id });
   }
 
   const { error: endError } = await supabase
@@ -142,6 +135,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     configured: true,
     saved: true,
+    callId: session.call_id,
     transcript: transcriptId ? { created: true, transcriptId, extraction } : { created: false },
   });
 }
