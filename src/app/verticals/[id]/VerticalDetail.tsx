@@ -55,6 +55,7 @@ export default function VerticalDetail({ id }: { id: string }) {
   const [description, setDescription] = useState('');
   const [knowledgeNotes, setKnowledgeNotes] = useState('');
   const [savingMeta, setSavingMeta] = useState(false);
+  const [metaError, setMetaError] = useState<string | null>(null);
 
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
@@ -95,13 +96,25 @@ export default function VerticalDetail({ id }: { id: string }) {
 
   async function onSaveMeta() {
     setSavingMeta(true);
+    setMetaError(null);
     try {
-      await fetch(`/api/verticals/${id}`, {
+      const res = await fetch(`/api/verticals/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description, knowledgeNotes }),
       });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || json.error) {
+        // Do NOT reload on failure — load() always overwrites these two
+        // textareas with whatever the server currently holds, which would
+        // silently replace the rep's just-typed edits with the stale
+        // pre-edit text.
+        setMetaError(json?.error ?? 'Could not save.');
+        return;
+      }
       await load();
+    } catch {
+      setMetaError('Could not save.');
     } finally {
       setSavingMeta(false);
     }
@@ -217,6 +230,7 @@ export default function VerticalDetail({ id }: { id: string }) {
         <button onClick={onSaveMeta} disabled={savingMeta} className={`self-start ${primaryButtonClass}`}>
           {savingMeta ? 'Saving…' : 'Save'}
         </button>
+        {metaError && <p className="text-sm text-red-600 dark:text-red-400">{metaError}</p>}
       </section>
 
       <section className="flex flex-col gap-3">

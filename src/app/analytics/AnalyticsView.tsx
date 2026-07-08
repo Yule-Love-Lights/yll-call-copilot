@@ -7,7 +7,7 @@
 // GET /api/analytics and GET/POST /api/verticals/[id]/brain-review.
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type VerticalOption = { id: string; slug: string; name: string };
 
@@ -118,8 +118,13 @@ export default function AnalyticsView() {
   // call lives inside a .then()/.catch() callback, same convention as
   // CallConsole/VerticalDetail's load() (react-hooks/set-state-in-effect).
   // The "loading" flip on a picker change happens in the onChange handlers
-  // below instead, since those run outside the effect body.
+  // below instead, since those run outside the effect body. requestIdRef
+  // guards against a slower, now-stale response overwriting a newer one
+  // that already landed (e.g. the rep flips the vertical or date range
+  // twice in quick succession) — only the LATEST call's result is applied.
+  const requestIdRef = useRef(0);
   const load = useCallback(() => {
+    const requestId = ++requestIdRef.current;
     if (!verticalId) return Promise.resolve();
     const params = new URLSearchParams({ vertical: verticalId, from, to });
     return Promise.all([
@@ -127,11 +132,15 @@ export default function AnalyticsView() {
       fetch(`/api/verticals/${verticalId}/brain-review`).then(res => res.json()),
     ])
       .then(([statsJson, reviewJson]: [AnalyticsResponse, { latest: LatestReview }]) => {
+        if (requestId !== requestIdRef.current) return; // a newer load() has since started
         setData(statsJson);
         setLatestReview(reviewJson.latest ?? null);
         setStatus('done');
       })
-      .catch(() => setStatus('error'));
+      .catch(() => {
+        if (requestId !== requestIdRef.current) return;
+        setStatus('error');
+      });
   }, [verticalId, from, to]);
 
   useEffect(() => {

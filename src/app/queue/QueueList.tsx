@@ -6,7 +6,7 @@
 // POST /api/queue/build, and POST /api/leads/[id]/decide.
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 
 type Lead = {
@@ -130,6 +130,7 @@ export default function QueueList() {
   const [building, setBuilding] = useState(false);
   const [buildMessage, setBuildMessage] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
+  const [decideError, setDecideError] = useState<string | null>(null);
   const [myEmail, setMyEmail] = useState<string | null>(null);
   const [verticals, setVerticals] = useState<VerticalOption[]>([]);
   const [verticalFilter, setVerticalFilter] = useState('');
@@ -179,20 +180,30 @@ export default function QueueList() {
 
   // Not an async function called directly from useEffect — every setState
   // call lives inside a .then()/.catch() callback (react-hooks/set-state-in-effect).
+  // requestIdRef guards against a slower, now-stale response (e.g. the rep
+  // switched the vertical filter twice in quick succession) overwriting a
+  // newer one that already landed — only the LATEST call's result is ever
+  // applied, whichever settles last.
+  const requestIdRef = useRef(0);
   const load = useCallback(() => {
+    const requestId = ++requestIdRef.current;
     const params = new URLSearchParams();
     if (verticalFilter) params.set('vertical', verticalFilter);
     if (minScoreFilter && minScoreFilter !== '0') params.set('minScore', minScoreFilter);
     return fetch(`/api/queue?${params}`)
       .then(res => res.json())
       .then((json: QueueResponse) => {
+        if (requestId !== requestIdRef.current) return; // a newer load() has since started
         setMigrated(json.migrated !== false);
         setReason(json.reason ?? null);
         setLeads(json.leads ?? []);
         setLastBuildAt(json.lastBuildAt ?? null);
         setStatus('done');
       })
-      .catch(() => setStatus('error'));
+      .catch(() => {
+        if (requestId !== requestIdRef.current) return;
+        setStatus('error');
+      });
   }, [verticalFilter, minScoreFilter]);
 
   useEffect(() => {
@@ -205,6 +216,14 @@ export default function QueueList() {
     try {
       const res = await fetch('/api/queue/build', { method: 'POST' });
       const json = await res.json();
+      if (json.error) {
+        // The genuine unexpected-failure shape (200-parseable JSON, 500
+        // status) — distinct from the two degraded-config shapes below,
+        // which are not failures. Checked first so it can never fall
+        // through to "Added undefined, refreshed undefined."
+        setBuildMessage(json.error);
+        return;
+      }
       if (json.migrated === false) {
         setBuildMessage(json.reason ?? 'Run migration 0004 first.');
         return;
@@ -215,6 +234,8 @@ export default function QueueList() {
       }
       setBuildMessage(`Added ${json.added}, refreshed ${json.refreshed}.`);
       await load();
+    } catch {
+      setBuildMessage('Could not build the queue.');
     } finally {
       setBuilding(false);
     }
@@ -222,13 +243,25 @@ export default function QueueList() {
 
   async function onDecide(id: string, action: 'claim' | 'dismiss') {
     setActingId(id);
+    setDecideError(null);
     try {
-      await fetch(`/api/leads/${id}/decide`, {
+      const res = await fetch(`/api/leads/${id}/decide`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || !json.decided) {
+        // The route legitimately 409s when another rep already claimed or
+        // dismissed this lead — surface that instead of quietly refreshing
+        // as if the action had gone through, which is what let a rep who
+        // lost a claim race click "Open" straight into a lead someone else
+        // already has.
+        setDecideError(json?.reason ?? `Could not ${action} this lead.`);
+      }
       await load();
+    } catch {
+      setDecideError(`Could not ${action} this lead.`);
     } finally {
       setActingId(null);
     }
@@ -295,6 +328,7 @@ export default function QueueList() {
 
       {status === 'loading' && <p className="text-sm text-zinc-500">Loading…</p>}
       {status === 'error' && <p className="text-sm text-red-600 dark:text-red-400">Could not load the queue.</p>}
+      {decideError && <p className="text-sm text-red-600 dark:text-red-400">{decideError}</p>}
 
       {status === 'done' && leads.length === 0 && (
         <p className="text-sm text-zinc-500">Nothing queued. Click &quot;Build queue&quot; to pull fresh leads.</p>

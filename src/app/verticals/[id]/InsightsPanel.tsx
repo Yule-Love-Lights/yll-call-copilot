@@ -67,6 +67,7 @@ export default function InsightsPanel({ verticalId }: { verticalId: string }) {
   const [distilling, setDistilling] = useState(false);
   const [distillMessage, setDistillMessage] = useState<string | null>(null);
   const [decidingId, setDecidingId] = useState<string | null>(null);
+  const [decideError, setDecideError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     return fetch(`/api/verticals/${verticalId}/insights`)
@@ -104,13 +105,25 @@ export default function InsightsPanel({ verticalId }: { verticalId: string }) {
 
   async function onDecide(id: string, approve: boolean) {
     setDecidingId(id);
+    setDecideError(null);
     try {
-      await fetch(`/api/proposals/${id}/decide`, {
+      const res = await fetch(`/api/proposals/${id}/decide`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ approve }),
       });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || !json.decided) {
+        // The route 409s when someone else already decided this proposal,
+        // or 422s when the proposal turned out malformed and never actually
+        // applied — either way the card must stay in the pending list
+        // instead of vanishing as if it had been handled.
+        setDecideError(json?.reason ?? 'Could not save that decision.');
+        return;
+      }
       setProposals(list => list.filter(p => p.id !== id));
+    } catch {
+      setDecideError('Could not save that decision.');
     } finally {
       setDecidingId(null);
     }
@@ -225,6 +238,8 @@ export default function InsightsPanel({ verticalId }: { verticalId: string }) {
         </button>
         {distillMessage && <span className="text-sm text-zinc-500">{distillMessage}</span>}
       </div>
+
+      {decideError && <p className="text-sm text-red-600 dark:text-red-400">{decideError}</p>}
 
       {proposals.length > 0 && (
         <div className="flex flex-col gap-3">
