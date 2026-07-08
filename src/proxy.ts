@@ -10,7 +10,10 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { checkAllowlist } from '@/lib/auth/allowlist';
 
-const PUBLIC_PATHS = ['/login', '/api/health'];
+// /api/webhooks/ghl has no user session (GoHighLevel calls it directly) —
+// it authenticates itself with a shared-secret query param instead (see
+// that route), checked entirely inside the route, not here.
+const PUBLIC_PATHS = ['/login', '/api/health', '/api/webhooks/ghl'];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
