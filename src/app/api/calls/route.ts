@@ -166,7 +166,7 @@ export async function POST(request: Request) {
         lead_id: lead.id,
         ghl_contact_id: lead.ghl_contact_id,
         rep_email,
-        direction: 'outbound',
+        direction: input.direction,
         outcome: input.outcome,
         notes: input.notes,
         transcript_id: transcriptId,

@@ -4,7 +4,9 @@
 // sequential Supabase/Claude work and stays a thin, untested orchestrator,
 // same convention as every other route in this app.
 
-import { CALL_OUTCOMES, type CallOutcome } from './types';
+import { CALL_OUTCOMES, type CallDirection, type CallOutcome } from './types';
+
+const CALL_DIRECTIONS: CallDirection[] = ['inbound', 'outbound'];
 
 // Loose UUID shape check, not a strict v4 validator — good enough to reject
 // garbage before it reaches a `.eq('id', callId)` query. Matches the shape
@@ -22,6 +24,11 @@ export type CallInput = {
   // POST /api/calls, which UPDATEs that row instead of inserting a second
   // one. null for a plain outbound call logged straight from the console.
   callId: string | null;
+  // Which way the call went — defaults to 'outbound' (every call started
+  // from the console/live-coaching flow is a rep dialing out), overridden
+  // to 'inbound' by the console when the lead's own source is 'inbound'
+  // (a webhook-logged call/text the rep is now logging the outcome of).
+  direction: CallDirection;
 };
 
 export type CallInputValidation = { valid: true; input: CallInput } | { valid: false; error: string };
@@ -50,6 +57,14 @@ export function validateCallInput(body: unknown): CallInputValidation {
     return { valid: false, error: 'callId must be a valid id.' };
   }
 
+  let direction: CallDirection = 'outbound';
+  if (b.direction !== undefined) {
+    if (typeof b.direction !== 'string' || !(CALL_DIRECTIONS as string[]).includes(b.direction)) {
+      return { valid: false, error: 'direction must be "inbound" or "outbound".' };
+    }
+    direction = b.direction as CallDirection;
+  }
+
   return {
     valid: true,
     input: {
@@ -58,6 +73,7 @@ export function validateCallInput(body: unknown): CallInputValidation {
       notes,
       transcript: transcriptRaw || null,
       callId: callIdRaw || null,
+      direction,
     },
   };
 }

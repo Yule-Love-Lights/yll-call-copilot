@@ -379,7 +379,19 @@ export default function CallConsole({ leadId, initialCallId = null }: { leadId: 
       const res = await fetch('/api/calls', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leadId, outcome, notes, transcript: transcript || undefined, callId: effectiveCallId ?? undefined }),
+        body: JSON.stringify({
+          leadId,
+          outcome,
+          notes,
+          transcript: transcript || undefined,
+          callId: effectiveCallId ?? undefined,
+          // The lead's own source says whether this call started as an
+          // inbound webhook hit (see GET /api/inbound/recent) or one of the
+          // queue's outbound sources — previously every insert here
+          // hardcoded 'outbound' regardless, permanently mislabeling every
+          // inbound-originated call.
+          direction: data?.lead?.source === 'inbound' ? 'inbound' : 'outbound',
+        }),
       });
       const json = await res.json();
       if (!json.saved) {
