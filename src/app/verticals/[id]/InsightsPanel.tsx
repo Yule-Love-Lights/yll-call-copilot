@@ -216,7 +216,10 @@ export default function InsightsPanel({ verticalId }: { verticalId: string }) {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
+      {/* Anchor for /analytics's "view proposals" link — always rendered
+          (unlike the pending-proposals list below) so the link lands
+          somewhere even when this vertical has none pending right now. */}
+      <div id="proposals" className="flex flex-wrap items-center gap-3">
         <button onClick={onDistill} disabled={distilling} className={primaryButtonClass}>
           {distilling ? 'Proposing…' : 'Propose playbook updates'}
         </button>

@@ -1,0 +1,9 @@
+{
+  "_comment": "Optional weekly compounding-brain review, off by default. The manual 'Run weekly review' button on /analytics (POST /api/verticals/[id]/brain-review) is the real, supported way to run this — this cron entry just lets it also run on a schedule once someone opts in. GET /api/cron/brain-review no-ops unless the CRON_ENABLED=true environment variable is set on this Vercel project; with it unset (the default), this schedule fires but does nothing. Vercel Cron only ever sends GET, so the route is separate from the per-vertical POST route the button uses, and calls the same src/lib/analytics/runBrainReview.ts logic directly for every vertical.",
+  "crons": [
+    {
+      "path": "/api/cron/brain-review",
+      "schedule": "0 13 * * 1"
+    }
+  ]
+}

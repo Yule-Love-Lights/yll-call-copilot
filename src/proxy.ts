@@ -24,7 +24,18 @@ import { checkAllowlist } from '@/lib/auth/allowlist';
 // process, no browser session at all) — public here so the bridge can reach
 // it, with the route itself requiring either a signed-in session or the
 // x-live-bridge-secret header.
-const PUBLIC_PATHS = ['/login', '/api/health', '/api/webhooks/ghl', '/api/twilio/voice', '/api/live/segment'];
+//
+// /api/cron/brain-review is the same shape again: Vercel Cron calls it
+// directly with no browser session (see vercel.json), gated inside the
+// route by CRON_ENABLED (off by default) rather than a session.
+const PUBLIC_PATHS = [
+  '/login',
+  '/api/health',
+  '/api/webhooks/ghl',
+  '/api/twilio/voice',
+  '/api/live/segment',
+  '/api/cron/brain-review',
+];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
