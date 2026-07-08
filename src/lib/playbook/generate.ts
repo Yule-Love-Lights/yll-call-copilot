@@ -96,7 +96,36 @@ export type GeneratePlaybookInput = {
   name: string;
   description: string;
   knowledgeNotes: string;
+  // Phase 1.5 knowledge documents (src/lib/transcripts). Optional and
+  // backward compatible: omitting it reproduces the exact Phase 1 message.
+  documents?: { title: string; content: string }[];
 };
+
+// Renders the "Reference documents:" block appended to the generation
+// prompt. Docs are capped at ~20k total chars so a big upload doesn't blow
+// up the request — callers pass documents oldest-first (their created_at
+// order), and this keeps the NEWEST ones when trimming to the cap ("truncate
+// oldest first"). The single newest document is always included in full
+// even if it alone exceeds the cap — knowledge docs are meant to be
+// reference notes, not novels, so that edge case is left unhandled rather
+// than adding mid-document truncation for a case that shouldn't come up.
+const DOCUMENTS_CHAR_CAP = 20000;
+
+export function buildDocumentsSection(documents: { title: string; content: string }[]): string {
+  if (documents.length === 0) return '';
+
+  const kept: { title: string; content: string }[] = [];
+  let used = 0;
+  for (let i = documents.length - 1; i >= 0; i--) {
+    const doc = documents[i];
+    const block = `Title: ${doc.title}\n${doc.content}`;
+    if (used + block.length > DOCUMENTS_CHAR_CAP && kept.length > 0) break;
+    kept.unshift(doc);
+    used += block.length;
+  }
+
+  return kept.map(doc => `Title: ${doc.title}\n${doc.content}`).join('\n\n');
+}
 
 // One retry: live runs showed the model occasionally fills array fields with
 // XML-tagged strings. The retry sends the validation error back as a
@@ -109,6 +138,7 @@ export async function generatePlaybook(input: GeneratePlaybookInput): Promise<Pl
     throw new Error('Claude not configured. Set ANTHROPIC_API_KEY in .env.local');
   }
 
+  const documents = input.documents ?? [];
   const messages: Anthropic.MessageParam[] = [
     {
       role: 'user',
@@ -116,6 +146,7 @@ export async function generatePlaybook(input: GeneratePlaybookInput): Promise<Pl
         `Vertical name: ${input.name}`,
         `Vertical description: ${input.description}`,
         `Knowledge notes: ${input.knowledgeNotes.trim() || '(none provided)'}`,
+        ...(documents.length > 0 ? ['', 'Reference documents:', buildDocumentsSection(documents)] : []),
         '',
         'Build the full call playbook for this vertical now.',
       ].join('\n'),
