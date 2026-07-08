@@ -66,11 +66,22 @@ export type VoiceTwimlInput = {
   toNumber: string;
   streamUrl: string;
   sessionId: string;
+  // Absolute URL to POST /api/twilio/whisper -- see buildWhisperTwiml below.
+  whisperUrl: string;
 };
 
+// This webhook's TwiML executes on whichever leg triggered it -- the REP's
+// browser softphone leg (Device.connect() is what calls POST
+// /api/twilio/voice; see LiveConsole.tsx), not the customer, who doesn't
+// join until <Dial><Number> rings out and is answered. A bare .say() here
+// would therefore only ever play to the rep (the H3 review finding: every
+// coached call recorded the customer's audio with zero notice to them). The
+// actual customer-facing notice is a Twilio "whisper": the Number noun's
+// `url` attribute, which Twilio requests -- and plays -- on the CUSTOMER's
+// own leg the instant it answers, before bridging it into the call (see
+// buildWhisperTwiml).
 export function buildVoiceTwiml(input: VoiceTwimlInput): string {
   const response = new twilio.twiml.VoiceResponse();
-  response.say(CONSENT_LINE);
 
   const start = response.start();
   // both_tracks so the bridge gets audio from both legs of the call (the
@@ -84,8 +95,18 @@ export function buildVoiceTwiml(input: VoiceTwimlInput): string {
   stream.parameter({ name: 'sessionId', value: input.sessionId });
 
   const dial = response.dial({ callerId: process.env.TWILIO_CALLER_ID ?? '' });
-  dial.number(input.toNumber);
+  dial.number({ url: input.whisperUrl }, input.toNumber);
 
+  return response.toString();
+}
+
+// TwiML requested by the Number noun's whisper `url` above, once the
+// CUSTOMER leg answers and before Twilio bridges it into the call with the
+// rep -- this is what actually delivers the recording-consent notice to the
+// customer.
+export function buildWhisperTwiml(): string {
+  const response = new twilio.twiml.VoiceResponse();
+  response.say(CONSENT_LINE);
   return response.toString();
 }
 

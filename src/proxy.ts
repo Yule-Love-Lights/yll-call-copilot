@@ -16,7 +16,9 @@ import { checkAllowlist } from '@/lib/auth/allowlist';
 //
 // /api/twilio/voice is the same shape: Twilio calls it directly with no
 // browser session, and validates itself via the X-Twilio-Signature header
-// (see that route and src/lib/live/twilioVoice.ts).
+// (see that route and src/lib/live/twilioVoice.ts). /api/twilio/whisper is
+// the same again -- Twilio requests it directly (as the Number noun's
+// whisper `url`) once the customer leg answers, validated the same way.
 //
 // /api/live/segment has two callers: the browser (simulator mode, which
 // keeps its normal staff session and is checked the same way inside that
@@ -33,6 +35,7 @@ const PUBLIC_PATHS = [
   '/api/health',
   '/api/webhooks/ghl',
   '/api/twilio/voice',
+  '/api/twilio/whisper',
   '/api/live/segment',
   '/api/cron/brain-review',
 ];

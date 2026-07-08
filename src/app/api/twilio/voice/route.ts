@@ -52,6 +52,11 @@ export async function POST(request: Request) {
   // for local dev against a tunnel that already terminates TLS (e.g. ngrok).
   const streamUrl = process.env.LIVE_BRIDGE_URL ?? 'wss://localhost:8787';
 
-  const twiml = buildVoiceTwiml({ toNumber, streamUrl, sessionId });
+  // Same host Twilio just used to reach this webhook -- the whisper route
+  // lives in this same Next app (not the media bridge), so there is no
+  // separate env var for it, just this request's own origin.
+  const whisperUrl = new URL('/api/twilio/whisper', request.url).toString();
+
+  const twiml = buildVoiceTwiml({ toNumber, streamUrl, sessionId, whisperUrl });
   return new NextResponse(twiml, { headers: XML_HEADERS });
 }
