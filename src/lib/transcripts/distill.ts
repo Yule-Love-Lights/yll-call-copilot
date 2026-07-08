@@ -100,6 +100,38 @@ function isValidKind(v: unknown): v is ProposalKind {
   return typeof v === 'string' && (KINDS as string[]).includes(v);
 }
 
+// Per-section shape check for current_value/proposed_value — the system
+// prompt above promises openers are {label,script} and objections are
+// {objection,response}, everything else a plain string, but until now
+// nothing enforced it. Without this, apply.ts's add/change silently no-ops
+// on a shape mismatch while the decide route still marked the proposal
+// approved (the H8/M4 review findings).
+function isOpenerShape(v: unknown): v is { label: string; script: string } {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    typeof (v as Record<string, unknown>).label === 'string' &&
+    typeof (v as Record<string, unknown>).script === 'string'
+  );
+}
+function isObjectionShape(v: unknown): v is { objection: string; response: string } {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    typeof (v as Record<string, unknown>).objection === 'string' &&
+    typeof (v as Record<string, unknown>).response === 'string'
+  );
+}
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === 'string' && v.trim().length > 0;
+}
+
+function matchesSectionShape(section: ProposalSection, value: unknown): boolean {
+  if (section === 'openers') return isOpenerShape(value);
+  if (section === 'objections') return isObjectionShape(value);
+  return isNonEmptyString(value); // icp, voicemail, angles, avoid
+}
+
 export type ProposalsValidationResult = { valid: true; proposals: DistilledProposal[] } | { valid: false; error: string };
 
 // Reads value.proposals and validates/normalizes it — ignores any sibling
@@ -129,11 +161,28 @@ export function validateProposals(value: unknown): ProposalsValidationResult {
     if (typeof p.evidence !== 'string' || !p.evidence.trim()) {
       return { valid: false, error: 'evidence must be a non-empty string.' };
     }
+
+    const proposedValue = p.proposed_value ?? null;
+    if (p.kind === 'remove') {
+      // Contract: a remove's proposed_value must be null (apply.ts never
+      // reads it for remove — current_value alone identifies the target).
+      if (proposedValue !== null) {
+        return { valid: false, error: `a "remove" proposal's proposed_value must be null (section "${p.section}").` };
+      }
+    } else if (!matchesSectionShape(p.section, proposedValue)) {
+      return { valid: false, error: `proposed_value does not match the expected shape for section "${p.section}".` };
+    }
+
+    const currentValue = p.current_value ?? null;
+    if (p.kind !== 'add' && currentValue !== null && !matchesSectionShape(p.section, currentValue)) {
+      return { valid: false, error: `current_value does not match the expected shape for section "${p.section}".` };
+    }
+
     proposals.push({
       section: p.section,
       kind: p.kind,
-      current_value: p.current_value ?? null,
-      proposed_value: p.proposed_value ?? null,
+      current_value: currentValue,
+      proposed_value: proposedValue,
       evidence: p.evidence,
     });
   }

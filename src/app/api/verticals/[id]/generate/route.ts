@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
 import { isClaudeConfigured } from '@/lib/claude';
 import { generatePlaybook } from '@/lib/playbook/generate';
+import { publishPlaybookVersion } from '@/lib/playbook/versions';
 import type { VerticalRow } from '@/lib/playbook/types';
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -22,7 +23,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   const { data: verticalData, error: verticalError } = await supabase
     .from('verticals')
-    .select('id, name, description, knowledge_notes, active_version')
+    .select('id, name, description, knowledge_notes')
     .eq('id', id)
     .maybeSingle();
 
@@ -39,10 +40,11 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       { status: 404 },
     );
   }
-  const vertical = verticalData as Pick<
-    VerticalRow,
-    'id' | 'name' | 'description' | 'knowledge_notes' | 'active_version'
-  >;
+  // active_version is no longer read here — publishPlaybookVersion re-reads
+  // it fresh itself (and retries on a collision), so a stale copy from this
+  // earlier fetch could never be trusted for computing the next version
+  // anyway.
+  const vertical = verticalData as Pick<VerticalRow, 'id' | 'name' | 'description' | 'knowledge_notes'>;
 
   // Knowledge documents (Phase 1.5) are optional grounding, not a hard
   // requirement to generate — a missing 0003 migration (isMissingTableError)
@@ -74,31 +76,14 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     );
   }
 
-  const nextVersion = vertical.active_version + 1;
-  const { error: insertError } = await supabase
-    .from('playbook_versions')
-    .insert({ vertical_id: id, version: nextVersion, content: playbook, source: 'generated' });
-
-  if (insertError) {
-    console.error('Store generated playbook failed:', insertError);
-    return NextResponse.json(
-      { configured: true, generated: false, reason: 'Could not store the generated playbook.' },
-      { status: 500 },
-    );
+  // publishPlaybookVersion re-reads active_version fresh and retries once on
+  // a version-number collision — a full Claude-generated playbook that just
+  // took several seconds must not be thrown away because a distill/edit
+  // published in between (the H6 review finding).
+  const result = await publishPlaybookVersion(supabase, id, 'generated', () => ({ ok: true, playbook }));
+  if (!result.ok) {
+    return NextResponse.json({ configured: true, generated: false, reason: result.reason }, { status: result.status });
   }
 
-  const { error: updateError } = await supabase
-    .from('verticals')
-    .update({ active_version: nextVersion })
-    .eq('id', id);
-
-  if (updateError) {
-    console.error('Bump active_version failed:', updateError);
-    return NextResponse.json(
-      { configured: true, generated: false, reason: 'Could not activate the generated playbook.' },
-      { status: 500 },
-    );
-  }
-
-  return NextResponse.json({ configured: true, generated: true, playbook, version: nextVersion });
+  return NextResponse.json({ configured: true, generated: true, playbook, version: result.version });
 }

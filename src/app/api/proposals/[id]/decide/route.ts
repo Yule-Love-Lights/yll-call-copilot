@@ -8,7 +8,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
 import { applyProposal } from '@/lib/playbook/apply';
-import type { Playbook, VerticalRow } from '@/lib/playbook/types';
+import { publishPlaybookVersion } from '@/lib/playbook/versions';
+import type { Playbook } from '@/lib/playbook/types';
 import type { PlaybookProposalRow } from '@/lib/transcripts/types';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -67,61 +68,39 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ configured: true, decided: true, approved: false });
   }
 
-  const { data: verticalData, error: verticalError } = await supabase
-    .from('verticals')
-    .select('id, active_version')
-    .eq('id', proposal.vertical_id)
-    .maybeSingle();
-  if (verticalError || !verticalData) {
-    console.error('Load vertical for proposal decide failed:', verticalError);
-    return NextResponse.json(
-      { configured: true, decided: false, reason: 'Could not load the vertical.' },
-      { status: 500 },
-    );
-  }
-  const vertical = verticalData as Pick<VerticalRow, 'id' | 'active_version'>;
+  // publishPlaybookVersion re-reads active_version fresh on every attempt
+  // and retries once on a version-number collision (two proposals approved
+  // back to back for the same vertical) — resolveContent below runs again
+  // on that retry too, so a collision re-reads the CURRENT playbook rather
+  // than re-applying the proposal to a base that's since gone stale.
+  const result = await publishPlaybookVersion(supabase, proposal.vertical_id, 'edited', async activeVersion => {
+    let currentPlaybook: Playbook | null = null;
+    if (activeVersion > 0) {
+      const { data: versionData } = await supabase
+        .from('playbook_versions')
+        .select('content')
+        .eq('vertical_id', proposal.vertical_id)
+        .eq('version', activeVersion)
+        .maybeSingle();
+      currentPlaybook = (versionData as { content: Playbook } | null)?.content ?? null;
+    }
+    if (!currentPlaybook) {
+      return { ok: false, error: 'This vertical has no active playbook to apply the proposal to.', status: 409 };
+    }
 
-  let currentPlaybook: Playbook | null = null;
-  if (vertical.active_version > 0) {
-    const { data: versionData } = await supabase
-      .from('playbook_versions')
-      .select('content')
-      .eq('vertical_id', vertical.id)
-      .eq('version', vertical.active_version)
-      .maybeSingle();
-    currentPlaybook = (versionData as { content: Playbook } | null)?.content ?? null;
-  }
-  if (!currentPlaybook) {
-    return NextResponse.json(
-      { configured: true, decided: false, reason: 'This vertical has no active playbook to apply the proposal to.' },
-      { status: 409 },
-    );
-  }
+    // A malformed proposal (wrong-shaped proposed_value, or a change/remove
+    // whose current_value matches nothing) must not be marked approved —
+    // applyProposal now reports that instead of silently returning the
+    // playbook unchanged (the H8/M4 review findings).
+    const applied = applyProposal(currentPlaybook, proposal);
+    if (!applied.applied) {
+      return { ok: false, error: applied.reason, status: 422 };
+    }
+    return { ok: true, playbook: applied.playbook };
+  });
 
-  const nextPlaybook = applyProposal(currentPlaybook, proposal);
-  const nextVersion = vertical.active_version + 1;
-
-  const { error: insertError } = await supabase
-    .from('playbook_versions')
-    .insert({ vertical_id: vertical.id, version: nextVersion, content: nextPlaybook, source: 'edited' });
-  if (insertError) {
-    console.error('Store proposal-applied playbook failed:', insertError);
-    return NextResponse.json(
-      { configured: true, decided: false, reason: 'Could not store the updated playbook.' },
-      { status: 500 },
-    );
-  }
-
-  const { error: updateVerticalError } = await supabase
-    .from('verticals')
-    .update({ active_version: nextVersion })
-    .eq('id', vertical.id);
-  if (updateVerticalError) {
-    console.error('Bump active_version for proposal decide failed:', updateVerticalError);
-    return NextResponse.json(
-      { configured: true, decided: false, reason: 'Could not activate the updated playbook.' },
-      { status: 500 },
-    );
+  if (!result.ok) {
+    return NextResponse.json({ configured: true, decided: false, reason: result.reason }, { status: result.status });
   }
 
   const { error: approveError } = await supabase
@@ -135,5 +114,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     console.error('Mark proposal approved failed:', approveError);
   }
 
-  return NextResponse.json({ configured: true, decided: true, approved: true, version: nextVersion });
+  return NextResponse.json({ configured: true, decided: true, approved: true, version: result.version });
 }
