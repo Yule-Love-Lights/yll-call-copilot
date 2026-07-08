@@ -42,6 +42,14 @@ export type HighLevelContact = {
   postalCode?: string;
   customFields?: Array<{ id: string; value?: string }>;
   tags?: string[];
+  // GHL's do-not-disturb flag — the queue builder must never queue a contact
+  // with dnd true.
+  dnd?: boolean;
+  // Phase 2 lead queue (src/lib/leads/queue.ts) needs recency to find fresh
+  // inbound inquiries. Field names verified against a LIVE contact payload
+  // on 2026-07-08 (dateAdded, dateUpdated, tags, dnd all present).
+  dateAdded?: string;
+  dateUpdated?: string;
 };
 
 // ─── Opportunity shape (subset) ────────────────────────────────────────────
@@ -56,4 +64,13 @@ export type HighLevelOpportunity = {
   pipelineStageId?: string;
   status?: 'open' | 'won' | 'lost' | 'abandoned';
   monetaryValue?: number;
+  // Phase 2 lead queue needs opportunity age ("quote sent N days ago") and a
+  // shortcut to contact details so scoring a batch of opportunities doesn't
+  // require one getContact() round trip per row. Best-effort field names,
+  // same caveat as HighLevelContact's date fields above — the opportunities
+  // search response often embeds a lightweight contact ref, but the exact
+  // shape has not been verified against a live payload.
+  createdAt?: string;
+  updatedAt?: string;
+  contact?: { id: string; name?: string; email?: string; phone?: string };
 };

@@ -47,4 +47,26 @@ describe('normalizePlaybookInput', () => {
     const out = normalizePlaybookInput({ angles: 'just prose, no tags' }) as Record<string, unknown>;
     expect(out.angles).toBe('just prose, no tags');
   });
+
+  it('unwraps arrays of one-key string objects (the event-vertical live failure)', () => {
+    const out = normalizePlaybookInput({
+      angles: [{ angle: 'Early bird booking' }, { angle: 'Rebook season' }],
+      avoid: [{ text: 'Never pressure' }, { value: 'No fake urgency' }],
+    }) as Record<string, unknown>;
+
+    expect(out.angles).toEqual(['Early bird booking', 'Rebook season']);
+    expect(out.avoid).toEqual(['Never pressure', 'No fake urgency']);
+  });
+
+  it('leaves object arrays alone when any element cannot unwrap to a string', () => {
+    const mixed = [{ angle: 'ok' }, { angle: 42 }];
+    const out = normalizePlaybookInput({ angles: mixed }) as Record<string, unknown>;
+    expect(out.angles).toEqual(mixed);
+  });
+
+  it('never unwraps the openers/objections object arrays', () => {
+    const openers = [{ label: 'Cold', script: 'hi' }];
+    const out = normalizePlaybookInput({ openers }) as Record<string, unknown>;
+    expect(out.openers).toEqual(openers);
+  });
 });

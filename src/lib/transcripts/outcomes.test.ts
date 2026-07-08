@@ -130,3 +130,27 @@ describe('matchOutcome', () => {
     expect(result).toEqual({ outcome: 'unknown', outcome_source: 'ghl_error', ghl_contact_id: null });
   });
 });
+
+describe('classifyStageName - live GHL vocabulary (verified 2026-07-08)', () => {
+  it('classifies the real booked-side stage names', () => {
+    expect(classifyStageName('Approved')).toBe('booked');
+    expect(classifyStageName('Installed')).toBe('booked');
+    expect(classifyStageName('Job in Jobber')).toBe('booked');
+    expect(classifyStageName('Job Completed')).toBe('booked');
+    expect(classifyStageName('Approved Quote')).toBe('booked');
+  });
+
+  it('classifies the real lost-side stage names', () => {
+    expect(classifyStageName('Declined')).toBe('not_booked');
+    expect(classifyStageName('Out of Budget')).toBe('not_booked');
+    expect(classifyStageName('No Response/Abandoned')).toBe('not_booked');
+    expect(classifyStageName('Declined for 2025')).toBe('not_booked');
+    expect(classifyStageName('Spam Calls')).toBe('not_booked');
+  });
+
+  it('leaves in-flight stages unclassified', () => {
+    expect(classifyStageName('Bid Sent')).toBeNull();
+    expect(classifyStageName('November Reengagement')).toBeNull();
+    expect(classifyStageName('Phone Call/Pre-Bid Visit')).toBeNull();
+  });
+});

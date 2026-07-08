@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
+import InboundPop from './InboundPop';
 
 type Health = { ghl: boolean; supabase: boolean; claude: boolean; version: string };
 
@@ -66,6 +67,12 @@ export default function Home() {
         >
           Verticals →
         </Link>
+        <Link
+          href="/queue"
+          className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+        >
+          Call queue →
+        </Link>
       </nav>
 
       <section className="mt-8 rounded-md border border-zinc-200 dark:border-zinc-800">
@@ -108,6 +115,8 @@ export default function Home() {
           </ul>
         )}
       </section>
+
+      <InboundPop />
     </main>
   );
 }

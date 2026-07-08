@@ -10,7 +10,21 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { checkAllowlist } from '@/lib/auth/allowlist';
 
-const PUBLIC_PATHS = ['/login', '/api/health'];
+// /api/webhooks/ghl has no user session (GoHighLevel calls it directly) —
+// it authenticates itself with a shared-secret query param instead (see
+// that route), checked entirely inside the route, not here.
+//
+// /api/twilio/voice is the same shape: Twilio calls it directly with no
+// browser session, and validates itself via the X-Twilio-Signature header
+// (see that route and src/lib/live/twilioVoice.ts).
+//
+// /api/live/segment has two callers: the browser (simulator mode, which
+// keeps its normal staff session and is checked the same way inside that
+// route) and scripts/live-bridge.mjs (Twilio mode's standalone bridge
+// process, no browser session at all) — public here so the bridge can reach
+// it, with the route itself requiring either a signed-in session or the
+// x-live-bridge-secret header.
+const PUBLIC_PATHS = ['/login', '/api/health', '/api/webhooks/ghl', '/api/twilio/voice', '/api/live/segment'];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

@@ -9,6 +9,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { getClaudeClient } from '../claude';
+import { unwrapObjectStringArray } from '../playbook/normalize';
 import type { Learnings, Objection } from './types';
 
 // Single exported const for the model id — bump here, nowhere else, if the
@@ -103,6 +104,14 @@ export function truncateTranscript(text: string): string {
 // string or XML-tagged text instead of a real JSON array. Recover the two
 // obvious cases before validation; anything else still fails validation and
 // goes to the one retry.
+const LEARNINGS_STRING_ARRAY_KEYS = new Set([
+  'customer_language',
+  'what_worked',
+  'what_failed',
+  'price_talk',
+  'questions',
+]);
+
 function normalizeLearningsInput(input: unknown): unknown {
   if (typeof input !== 'object' || input === null) return input;
   const out: Record<string, unknown> = { ...(input as Record<string, unknown>) };
@@ -116,6 +125,14 @@ function normalizeLearningsInput(input: unknown): unknown {
     'questions',
   ] as const) {
     const v = out[key];
+
+    // String-array fields that arrived as arrays of wrapped-string objects
+    // ([{text:"x"}] / one-key objects) — same recovery as the playbook side.
+    if (LEARNINGS_STRING_ARRAY_KEYS.has(key) && Array.isArray(v)) {
+      out[key] = unwrapObjectStringArray(v);
+      continue;
+    }
+
     if (typeof v !== 'string') continue;
     const s = v.trim();
 
@@ -269,7 +286,7 @@ export async function extractLearnings(transcript: string, verticalName: string)
             type: 'tool_result' as const,
             tool_use_id: block.id,
             is_error: true,
-            content: `That result was rejected: ${checked.error} Call emit_learnings again with every field as real JSON of its declared type. Arrays must be JSON arrays, one element per item, no XML tags, no JSON-encoded strings.`,
+            content: `That result was rejected: ${checked.error} Call emit_learnings again with every field as real JSON of its declared type. Arrays must be JSON arrays, one element per item, no XML tags, no JSON-encoded strings. String-array fields must contain plain strings, never objects.`,
           })),
         },
       );

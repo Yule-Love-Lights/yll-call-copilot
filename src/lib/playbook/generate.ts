@@ -210,7 +210,7 @@ export async function generatePlaybook(input: GeneratePlaybookInput): Promise<Pl
             type: 'tool_result' as const,
             tool_use_id: block.id,
             is_error: true,
-            content: `That playbook was rejected: ${checked.error} Call emit_playbook again with every field as real JSON of its declared type. Arrays must be JSON arrays, one element per item, no XML tags, no JSON-encoded strings.`,
+            content: `That playbook was rejected: ${checked.error} Call emit_playbook again with every field as real JSON of its declared type. Arrays must be JSON arrays, one element per item, no XML tags, no JSON-encoded strings. The angles and avoid fields must be arrays of plain strings, never objects.`,
           })),
         },
       );
