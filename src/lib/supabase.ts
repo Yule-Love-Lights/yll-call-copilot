@@ -7,6 +7,16 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 
+// True when a Postgres/PostgREST error means "this table doesn't exist yet"
+// (SQLSTATE 42P01) — migration 0003_knowledge.sql may not be applied in
+// every environment while Phase 1.5 code ships. Routes that touch its tables
+// check this before returning a hard 500, so a missing migration degrades to
+// a friendly "run the migration" response instead (same philosophy as
+// isSupabaseConfigured() degrading gracefully on missing env).
+export function isMissingTableError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: string }).code === '42P01';
+}
+
 export function isSupabaseConfigured(): boolean {
   return !!(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
