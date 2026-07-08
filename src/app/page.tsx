@@ -6,7 +6,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-type Health = { ghl: boolean; supabase: boolean; version: string };
+type Health = { ghl: boolean; supabase: boolean; claude: boolean; version: string };
 
 function StatusDot({ ok }: { ok: boolean }) {
   return (
@@ -34,12 +34,18 @@ export default function Home() {
         Cold-call copilot for Yule Love Lights reps.
       </p>
 
-      <nav className="mt-6">
+      <nav className="mt-6 flex gap-4">
         <Link
           href="/contacts"
           className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
         >
           Contacts →
+        </Link>
+        <Link
+          href="/verticals"
+          className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+        >
+          Verticals →
         </Link>
       </nav>
 
@@ -67,6 +73,13 @@ export default function Home() {
               <span className="flex items-center gap-2 text-zinc-500">
                 <StatusDot ok={health.supabase} />
                 {health.supabase ? 'configured' : 'not configured'}
+              </span>
+            </li>
+            <li className="flex items-center justify-between px-4 py-3">
+              <span>Claude</span>
+              <span className="flex items-center gap-2 text-zinc-500">
+                <StatusDot ok={health.claude} />
+                {health.claude ? 'configured' : 'not configured'}
               </span>
             </li>
             <li className="flex items-center justify-between px-4 py-3">
