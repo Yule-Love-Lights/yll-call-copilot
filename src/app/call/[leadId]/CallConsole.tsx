@@ -7,6 +7,7 @@
 // POST /api/calls to save.
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { CALL_OUTCOMES, FOLLOWUP_OUTCOMES, type CallOutcome } from '@/lib/leads/types';
 
 type LeadDetail = {
@@ -64,6 +65,7 @@ type DetailResponse = {
   reason?: string;
   error?: string;
   sendEnabled?: boolean;
+  callableNow?: boolean;
   lead?: LeadDetail;
   contact?: Contact | null;
   contactUrl?: string | null;
@@ -325,7 +327,8 @@ function FollowupCard({ followup, sendEnabled, onSaved }: { followup: Followup; 
   );
 }
 
-export default function CallConsole({ leadId }: { leadId: string }) {
+export default function CallConsole({ leadId, initialCallId = null }: { leadId: string; initialCallId?: string | null }) {
+  const router = useRouter();
   const [data, setData] = useState<DetailResponse | null>(null);
   const [status, setStatus] = useState<'loading' | 'done' | 'error'>('loading');
 
@@ -335,6 +338,12 @@ export default function CallConsole({ leadId }: { leadId: string }) {
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // The call POST /api/live/end just created, carried here via ?callId= so
+  // the first save updates it instead of inserting a second `calls` row.
+  // Cleared after a successful save: logging a second outcome for this same
+  // lead later in this page's lifetime should insert a fresh call, not keep
+  // overwriting the live-coached one.
+  const [pendingCallId, setPendingCallId] = useState<string | null>(initialCallId);
 
   const load = useCallback(() => {
     return fetch(`/api/leads/${leadId}`)
@@ -350,6 +359,17 @@ export default function CallConsole({ leadId }: { leadId: string }) {
     load();
   }, [load]);
 
+  // A stale ?callId= surviving in the URL (a refresh, browser back/forward,
+  // or a restored tab on this same /call/[leadId]?callId=X after that call
+  // already saved) must not re-arm as an update target once the lead itself
+  // shows as already 'done' -- logging a new outcome at that point should
+  // insert a fresh call, never UPDATE the one that finished it. Derived at
+  // use rather than corrected via an effect (no setState-in-effect this
+  // way); stripping the param from the URL on save below closes the more
+  // common case (a fresh reload of the SAME tab), this covers a stale tab
+  // that never reloaded.
+  const effectiveCallId = data?.lead?.status === 'done' ? null : pendingCallId;
+
   async function onSave() {
     if (!outcome) return;
     setSaving(true);
@@ -359,13 +379,32 @@ export default function CallConsole({ leadId }: { leadId: string }) {
       const res = await fetch('/api/calls', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leadId, outcome, notes, transcript: transcript || undefined }),
+        body: JSON.stringify({
+          leadId,
+          outcome,
+          notes,
+          transcript: transcript || undefined,
+          callId: effectiveCallId ?? undefined,
+          // The lead's own source says whether this call started as an
+          // inbound webhook hit (see GET /api/inbound/recent) or one of the
+          // queue's outbound sources — previously every insert here
+          // hardcoded 'outbound' regardless, permanently mislabeling every
+          // inbound-originated call.
+          direction: data?.lead?.source === 'inbound' ? 'inbound' : 'outbound',
+        }),
       });
       const json = await res.json();
       if (!json.saved) {
         setSaveError(json.error ?? json.reason ?? 'Could not save the call.');
         return;
       }
+      setPendingCallId(null);
+      // Strip ?callId= now that it has done its job -- otherwise a later
+      // refresh or back/forward navigation on this same URL re-arms
+      // pendingCallId to the call we just finished, and a second, separate
+      // outcome logged in this tab would silently UPDATE it instead of
+      // inserting a fresh row (see POST /api/calls's callId branch).
+      router.replace(`/call/${leadId}`);
 
       const parts = ['Call saved.'];
       if (json.transcript?.created) {
@@ -385,6 +424,12 @@ export default function CallConsole({ leadId }: { leadId: string }) {
       setTranscript('');
       setOutcome(null);
       await load();
+    } catch {
+      // A dropped connection, proxy/timeout error, or a non-JSON error page
+      // (res.json() throwing) must not look like nothing happened -- the
+      // outcome/notes/transcript below are left exactly as the rep typed
+      // them (none of the success-path resets above ran).
+      setSaveError('Could not save the call — check your connection and try again. Your notes have not been lost.');
     } finally {
       setSaving(false);
     }
@@ -407,64 +452,71 @@ export default function CallConsole({ leadId }: { leadId: string }) {
   const sendEnabled = data.sendEnabled === true;
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1.2fr)]">
-      <ContactCard lead={lead} contact={data.contact} contactUrl={data.contactUrl} quoteStage={data.quoteStage} />
-
-      <PlaybookPanel playbook={data.playbook} openerHint={lead.openerHint} topObjections={data.topObjections} />
-
-      <section className="flex flex-col gap-4">
-        <div className={cardClass}>
-          <h2 className="text-sm font-semibold">Outcome</h2>
-          <div className="grid grid-cols-2 gap-2">
-            {CALL_OUTCOMES.map(o => (
-              <button
-                key={o}
-                type="button"
-                onClick={() => setOutcome(o)}
-                className={`rounded-md border px-3 py-2 text-sm font-medium ${
-                  outcome === o
-                    ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
-                    : 'border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900'
-                }`}
-              >
-                {OUTCOME_LABELS[o]}
-              </button>
-            ))}
-          </div>
-
-          <label className="mt-2 text-sm font-semibold" htmlFor="notes">
-            Notes
-          </label>
-          <textarea id="notes" value={notes} onChange={e => setNotes(e.target.value)} rows={4} className={inputClass} />
-
-          <label className="text-sm font-semibold" htmlFor="transcript">
-            Paste transcript (optional)
-          </label>
-          <textarea
-            id="transcript"
-            value={transcript}
-            onChange={e => setTranscript(e.target.value)}
-            rows={6}
-            placeholder="Paste the full call transcript here to extract learnings."
-            className={inputClass}
-          />
-
-          <button onClick={onSave} disabled={saving || !outcome} className={primaryButtonClass}>
-            {saving ? 'Saving…' : 'Save call'}
-          </button>
-          {saveMessage && <p className="text-sm text-zinc-500">{saveMessage}</p>}
-          {saveError && <p className="text-sm text-red-600 dark:text-red-400">{saveError}</p>}
+    <div className="flex flex-col gap-4">
+      {data.callableNow === false && (
+        <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
+          Outside calling hours for this contact right now (TCPA quiet hours: 8am-9pm their local time).
         </div>
+      )}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1.2fr)]">
+        <ContactCard lead={lead} contact={data.contact} contactUrl={data.contactUrl} quoteStage={data.quoteStage} />
 
-        {(data.followups?.length ?? 0) > 0 && (
+        <PlaybookPanel playbook={data.playbook} openerHint={lead.openerHint} topObjections={data.topObjections} />
+
+        <section className="flex flex-col gap-4">
           <div className={cardClass}>
-            <h2 className="text-sm font-semibold">Follow-up drafts</h2>
-            {data.followups!.map(f => (
-              <FollowupCard key={f.id} followup={f} sendEnabled={sendEnabled} onSaved={load} />
-            ))}
+            <h2 className="text-sm font-semibold">Outcome</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {CALL_OUTCOMES.map(o => (
+                <button
+                  key={o}
+                  type="button"
+                  onClick={() => setOutcome(o)}
+                  className={`rounded-md border px-3 py-2 text-sm font-medium ${
+                    outcome === o
+                      ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
+                      : 'border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900'
+                  }`}
+                >
+                  {OUTCOME_LABELS[o]}
+                </button>
+              ))}
+            </div>
+
+            <label className="mt-2 text-sm font-semibold" htmlFor="notes">
+              Notes
+            </label>
+            <textarea id="notes" value={notes} onChange={e => setNotes(e.target.value)} rows={4} className={inputClass} />
+
+            <label className="text-sm font-semibold" htmlFor="transcript">
+              Paste transcript (optional)
+            </label>
+            <textarea
+              id="transcript"
+              value={transcript}
+              onChange={e => setTranscript(e.target.value)}
+              rows={6}
+              placeholder="Paste the full call transcript here to extract learnings."
+              className={inputClass}
+            />
+
+            <button onClick={onSave} disabled={saving || !outcome} className={primaryButtonClass}>
+              {saving ? 'Saving…' : 'Save call'}
+            </button>
+            {saveMessage && <p className="text-sm text-zinc-500">{saveMessage}</p>}
+            {saveError && <p className="text-sm text-red-600 dark:text-red-400">{saveError}</p>}
           </div>
-        )}
-      </section>
+
+          {(data.followups?.length ?? 0) > 0 && (
+            <div className={cardClass}>
+              <h2 className="text-sm font-semibold">Follow-up drafts</h2>
+              {data.followups!.map(f => (
+                <FollowupCard key={f.id} followup={f} sendEnabled={sendEnabled} onSaved={load} />
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

@@ -55,6 +55,7 @@ export default function VerticalDetail({ id }: { id: string }) {
   const [description, setDescription] = useState('');
   const [knowledgeNotes, setKnowledgeNotes] = useState('');
   const [savingMeta, setSavingMeta] = useState(false);
+  const [metaError, setMetaError] = useState<string | null>(null);
 
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
@@ -66,6 +67,10 @@ export default function VerticalDetail({ id }: { id: string }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Playbook | null>(null);
   const [saving, setSaving] = useState(false);
+  // Same silent-failure pattern the review flagged on onSaveMeta (H9),
+  // spotted on these two paths during the fix pass: a failed publish must
+  // say so and keep the user's work on screen.
+  const [publishError, setPublishError] = useState<string | null>(null);
 
   // Not an async function called directly from useEffect — every setState
   // call lives inside a .then()/.catch() callback so React doesn't see a
@@ -95,13 +100,25 @@ export default function VerticalDetail({ id }: { id: string }) {
 
   async function onSaveMeta() {
     setSavingMeta(true);
+    setMetaError(null);
     try {
-      await fetch(`/api/verticals/${id}`, {
+      const res = await fetch(`/api/verticals/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description, knowledgeNotes }),
       });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || json.error) {
+        // Do NOT reload on failure — load() always overwrites these two
+        // textareas with whatever the server currently holds, which would
+        // silently replace the rep's just-typed edits with the stale
+        // pre-edit text.
+        setMetaError(json?.error ?? 'Could not save.');
+        return;
+      }
       await load();
+    } catch {
+      setMetaError('Could not save.');
     } finally {
       setSavingMeta(false);
     }
@@ -142,13 +159,21 @@ export default function VerticalDetail({ id }: { id: string }) {
   async function onRestore() {
     if (!viewedPlaybook) return;
     setRestoring(true);
+    setPublishError(null);
     try {
-      await fetch(`/api/verticals/${id}/playbook`, {
+      const res = await fetch(`/api/verticals/${id}/playbook`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(viewedPlaybook),
       });
-      await load();
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.saved) {
+        await load();
+      } else {
+        setPublishError(json.reason ?? 'Restore failed. The version on screen was not published.');
+      }
+    } catch {
+      setPublishError('Restore failed (network). The version on screen was not published.');
     } finally {
       setRestoring(false);
     }
@@ -163,16 +188,22 @@ export default function VerticalDetail({ id }: { id: string }) {
   async function onSaveEdit() {
     if (!draft) return;
     setSaving(true);
+    setPublishError(null);
     try {
       const res = await fetch(`/api/verticals/${id}/playbook`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(draft),
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (res.ok && json.saved) {
         await load();
+      } else {
+        // Keep the editor open with the draft intact so nothing is lost.
+        setPublishError(json.reason ?? 'Save failed. Your edits are still on screen.');
       }
+    } catch {
+      setPublishError('Save failed (network). Your edits are still on screen.');
     } finally {
       setSaving(false);
     }
@@ -217,6 +248,7 @@ export default function VerticalDetail({ id }: { id: string }) {
         <button onClick={onSaveMeta} disabled={savingMeta} className={`self-start ${primaryButtonClass}`}>
           {savingMeta ? 'Saving…' : 'Save'}
         </button>
+        {metaError && <p className="text-sm text-red-600 dark:text-red-400">{metaError}</p>}
       </section>
 
       <section className="flex flex-col gap-3">
@@ -260,6 +292,9 @@ export default function VerticalDetail({ id }: { id: string }) {
               </button>
             )}
           </div>
+        )}
+        {publishError && (
+          <p className="mt-2 text-sm text-red-600 dark:text-red-400">{publishError}</p>
         )}
       </section>
 

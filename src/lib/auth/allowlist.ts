@@ -31,3 +31,16 @@ export async function checkAllowlist(
   if (error || !data) return 'denied';
   return 'allowed';
 }
+
+// The actual access policy src/proxy.ts consults. 'unconfigured' means
+// checkAllowlist() could not even run the check (getSupabaseServerClient()
+// returned null — SUPABASE_SERVICE_ROLE_KEY missing or wrong). proxy.ts only
+// reaches checkAllowlist() after its OWN separate bailout for "the whole app
+// has zero Supabase config" (NEXT_PUBLIC_SUPABASE_URL/ANON_KEY both absent),
+// so by the time this runs, a real signed-in session already exists —
+// 'unconfigured' here can only be the narrower, non-legitimate case of a
+// broken service-role key or a failed query, which must deny access the
+// same as an explicit 'denied', not silently grant it.
+export function shouldDenyAccess(decision: AllowlistDecision): boolean {
+  return decision === 'denied' || decision === 'unconfigured';
+}

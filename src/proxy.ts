@@ -8,7 +8,7 @@
 
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { checkAllowlist } from '@/lib/auth/allowlist';
+import { checkAllowlist, shouldDenyAccess } from '@/lib/auth/allowlist';
 
 // /api/webhooks/ghl has no user session (GoHighLevel calls it directly) —
 // it authenticates itself with a shared-secret query param instead (see
@@ -16,7 +16,9 @@ import { checkAllowlist } from '@/lib/auth/allowlist';
 //
 // /api/twilio/voice is the same shape: Twilio calls it directly with no
 // browser session, and validates itself via the X-Twilio-Signature header
-// (see that route and src/lib/live/twilioVoice.ts).
+// (see that route and src/lib/live/twilioVoice.ts). /api/twilio/whisper is
+// the same again -- Twilio requests it directly (as the Number noun's
+// whisper `url`) once the customer leg answers, validated the same way.
 //
 // /api/live/segment has two callers: the browser (simulator mode, which
 // keeps its normal staff session and is checked the same way inside that
@@ -24,7 +26,19 @@ import { checkAllowlist } from '@/lib/auth/allowlist';
 // process, no browser session at all) — public here so the bridge can reach
 // it, with the route itself requiring either a signed-in session or the
 // x-live-bridge-secret header.
-const PUBLIC_PATHS = ['/login', '/api/health', '/api/webhooks/ghl', '/api/twilio/voice', '/api/live/segment'];
+//
+// /api/cron/brain-review is the same shape again: Vercel Cron calls it
+// directly with no browser session (see vercel.json), gated inside the
+// route by CRON_ENABLED (off by default) rather than a session.
+const PUBLIC_PATHS = [
+  '/login',
+  '/api/health',
+  '/api/webhooks/ghl',
+  '/api/twilio/voice',
+  '/api/twilio/whisper',
+  '/api/live/segment',
+  '/api/cron/brain-review',
+];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -68,9 +82,16 @@ export async function proxy(request: NextRequest) {
   }
 
   const decision = await checkAllowlist(user.email);
-  if (decision === 'denied') {
+  // Both an explicit denial AND an unusable allowlist check (service-role
+  // key missing/wrong, or the query itself errored) must deny — see
+  // shouldDenyAccess's own comment for why 'unconfigured' can't mean "let
+  // them through" at this point in the flow.
+  if (shouldDenyAccess(decision)) {
     if (isApi) {
-      return NextResponse.json({ error: 'Not on the staff list' }, { status: 403 });
+      return NextResponse.json(
+        { error: decision === 'unconfigured' ? 'Staff allowlist is not configured.' : 'Not on the staff list' },
+        { status: 403 },
+      );
     }
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('denied', '1');
@@ -81,8 +102,13 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Everything except Next internals and static assets (any path with a file
-  // extension, which covers /favicon.ico and public/ files). /login and
-  // /api/health are exempted in code above so this stays one simple pattern.
-  matcher: ['/((?!_next/|.*\\..*).*)'],
+  // Everything except Next internals and known static assets: favicon.ico
+  // and a conservative image/font extension allowlist anchored to the END
+  // of the path. NOT "any path containing a dot anywhere" — that excluded
+  // every dynamic-id route (/call/[leadId], /api/leads/[id], etc.) from auth
+  // entirely whenever the id itself happened to contain a dot, since a dot
+  // can appear inside a route param, not just a file extension. /login and
+  // /api/health are exempted in code above so this stays one simple pattern,
+  // the same shape as the official @supabase/ssr Next.js middleware example.
+  matcher: ['/((?!_next/|favicon\\.ico$|.*\\.(?:ico|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|eot)$).*)'],
 };

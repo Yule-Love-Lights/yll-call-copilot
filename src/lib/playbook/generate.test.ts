@@ -18,9 +18,15 @@ import { generatePlaybook, PLAYBOOK_MODEL } from './generate';
 const samplePlaybook: Playbook = {
   icp: 'Homeowners in the past-customer list with existing holiday lighting.',
   angles: ['Past customer renewal', 'Neighbor referral'],
+  // All five mandated labels (see generate.ts's system prompt / validate.ts's
+  // required-coverage check) — a playbook missing any of these now fails
+  // validation, so this fixture has to reflect what compliant Claude output
+  // actually looks like, not a partial set.
   openers: [
+    { label: 'Inbound follow-up', script: 'Hi, thanks for reaching out to Yule Love Lights.' },
     { label: 'Past customer', script: 'Hi, this is Yule Love Lights. We did your lights last year.' },
-    { label: 'Neighbor install', script: 'Hi, we just finished an install down your street.' },
+    { label: 'Quote follow-up', script: 'Hi, following up on the quote we sent over.' },
+    { label: 'Neighbor install / referral', script: 'Hi, we just finished an install down your street.' },
     { label: 'Cold', script: 'Hi, this is Yule Love Lights, a local lighting company.' },
   ],
   objections: [

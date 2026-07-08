@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { checkAllowlist } from './allowlist';
+import { checkAllowlist, shouldDenyAccess } from './allowlist';
 
 function fakeClient(result: { data: unknown; error: unknown }) {
   const maybeSingle = vi.fn(async () => result);
@@ -64,5 +64,28 @@ describe('checkAllowlist', () => {
       if (savedUrl !== undefined) process.env.NEXT_PUBLIC_SUPABASE_URL = savedUrl;
       if (savedKey !== undefined) process.env.SUPABASE_SERVICE_ROLE_KEY = savedKey;
     }
+  });
+});
+
+// H4: src/proxy.ts used to only special-case 'denied', letting 'unconfigured'
+// fall through to full access. By the time proxy.ts ever calls
+// checkAllowlist(), it has already confirmed NEXT_PUBLIC_SUPABASE_URL/
+// ANON_KEY exist (its own separate "app has zero Supabase config" bailout
+// runs first) — so 'unconfigured' at that point can only mean the narrower,
+// non-legitimate case: SUPABASE_SERVICE_ROLE_KEY is missing, wrong, or the
+// allowlist query itself errored. That must deny, not grant, access. This is
+// the actual policy decision proxy.ts consults; it must never quietly
+// change to fail open again.
+describe('shouldDenyAccess', () => {
+  it('denies an explicit "denied" decision', () => {
+    expect(shouldDenyAccess('denied')).toBe(true);
+  });
+
+  it('denies "unconfigured" — the fail-open gap this closes', () => {
+    expect(shouldDenyAccess('unconfigured')).toBe(true);
+  });
+
+  it('allows "allowed"', () => {
+    expect(shouldDenyAccess('allowed')).toBe(false);
   });
 });

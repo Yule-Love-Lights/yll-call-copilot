@@ -34,6 +34,13 @@ yarn-error.log*
 .env*
 !.env.example
 
+# one-off bootstrap credentials (scripts/create-user.mjs's own output note
+# says "change the password and delete this file after first login" — this
+# rule is the backstop in case that manual step is missed, so a future
+# broad `git add -A`/`git add .` in this actively-pushed repo can never
+# stage a live credential)
+TEMP-LOGIN*
+
 # vercel
 .vercel
 

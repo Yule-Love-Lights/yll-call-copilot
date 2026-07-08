@@ -28,6 +28,7 @@ export default function VerticalsList() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
 
   // Not an async function called directly from useEffect — every setState
@@ -65,18 +66,25 @@ export default function VerticalsList() {
     e.preventDefault();
     if (!name.trim()) return;
     setCreating(true);
+    setCreateError(null);
     try {
       const res = await fetch('/api/verticals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, description }),
       });
-      const json = await res.json();
-      if (res.ok && !json.error) {
-        setName('');
-        setDescription('');
-        await load();
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || json.error) {
+        // Keep the typed name/description — a duplicate-name 409 (or any
+        // other failure) shouldn't make the rep retype the form.
+        setCreateError(json?.error ?? 'Could not create the vertical.');
+        return;
       }
+      setName('');
+      setDescription('');
+      await load();
+    } catch {
+      setCreateError('Could not create the vertical.');
     } finally {
       setCreating(false);
     }
@@ -135,6 +143,7 @@ export default function VerticalsList() {
         <button type="submit" disabled={creating || !name.trim()} className={buttonClass}>
           {creating ? 'Creating…' : 'Create vertical'}
         </button>
+        {createError && <p className="text-sm text-red-600 dark:text-red-400">{createError}</p>}
       </form>
     </div>
   );

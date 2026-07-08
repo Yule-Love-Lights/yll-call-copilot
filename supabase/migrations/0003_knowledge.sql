@@ -31,7 +31,12 @@ create table transcripts (
 
 create table learnings (
   id uuid primary key default gen_random_uuid(),
-  transcript_id uuid references transcripts(id) on delete cascade,
+  -- unique: extraction is idempotent, keyed on this — a retried ingest
+  -- batch (a timeout/crash mid-batch re-drives the same transcript through
+  -- /api/ingest/continue) upserts on conflict instead of inserting a
+  -- second row and silently doubling the objection/question/price-talk
+  -- counts computeInsights/distillProposals read.
+  transcript_id uuid references transcripts(id) on delete cascade unique,
   vertical_id uuid,
   objections jsonb,
   customer_language jsonb,
@@ -49,11 +54,19 @@ create table playbook_proposals (
   section text not null,
   kind text not null check (kind in ('add', 'change', 'remove')),
   current_value jsonb,
-  proposed_value jsonb not null,
+  -- Nullable, not `not null`: every 'remove' proposal is DESIGNED to set
+  -- this to null (both distillProposals' and generateBrainReview's system
+  -- prompts instruct it, and apply.ts's remove path never reads it — only
+  -- current_value identifies what to remove). A `not null` here made a
+  -- multi-row insert containing even one remove fail its NOT NULL check
+  -- and abort the whole batch. The check below keeps the constraint doing
+  -- real work: only 'remove' may have a null proposed_value.
+  proposed_value jsonb,
   evidence text not null,
   status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
   created_at timestamptz default now(),
-  decided_at timestamptz
+  decided_at timestamptz,
+  constraint proposed_value_required_unless_remove check (proposed_value is not null or kind = 'remove')
 );
 
 create table ingest_jobs (

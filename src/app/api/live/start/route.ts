@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
 import { getSessionEmail } from '@/lib/auth/session';
+import { isWithinCallingHours } from '@/lib/leads/callingHours';
 import type { LeadRow } from '@/lib/leads/types';
 import type { LiveSessionMode } from '@/lib/live/types';
 
@@ -54,6 +55,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ configured: true, saved: false, error: 'Lead not found.' }, { status: 404 });
   }
   const lead = leadData as LeadRow;
+
+  // TCPA calling-hours gate — a real phone call must not be PLACED outside
+  // 8am-9pm in the contact's own local time. The simulator is exempt: no
+  // phone call is actually placed, it just drives the same coaching UI
+  // against a scripted transcript.
+  if (mode === 'twilio' && !isWithinCallingHours(lead.timezone, new Date())) {
+    return NextResponse.json(
+      { configured: true, saved: false, reason: 'Outside calling hours for this contact (TCPA quiet hours: 8am-9pm their local time).' },
+      { status: 409 },
+    );
+  }
 
   const rep_email = await getSessionEmail();
   const { data: callData, error: callError } = await supabase

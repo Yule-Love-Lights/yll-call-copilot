@@ -184,16 +184,22 @@ export default function LiveConsole({ leadId }: { leadId: string }) {
       deviceRef.current = null;
     }
     setPhase('ending');
+    // Carry the call id this session was anchored to back to the outcome
+    // console so it updates that same row instead of the console inserting
+    // a second `calls` row for this conversation (see POST /api/calls).
+    let callId: string | null = null;
     try {
       if (sessionId) {
-        await fetch('/api/live/end', {
+        const res = await fetch('/api/live/end', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sessionId }),
         });
+        const json = await res.json().catch(() => null);
+        callId = typeof json?.callId === 'string' ? json.callId : null;
       }
     } finally {
-      router.push(`/call/${leadId}`);
+      router.push(callId ? `/call/${leadId}?callId=${callId}` : `/call/${leadId}`);
     }
   }
 

@@ -35,8 +35,11 @@ export type DistilledProposal = {
   evidence: string;
 };
 
-const SECTIONS: ProposalSection[] = ['icp', 'angles', 'openers', 'objections', 'avoid', 'voicemail'];
-const KINDS: ProposalKind[] = ['add', 'change', 'remove'];
+// Exported so src/lib/analytics/brainReview.ts can build its own emit_review
+// tool schema and reuse validateProposals below verbatim for the shared
+// {proposals: [...]} shape, instead of a second proposals system.
+export const SECTIONS: ProposalSection[] = ['icp', 'angles', 'openers', 'objections', 'avoid', 'voicemail'];
+export const KINDS: ProposalKind[] = ['add', 'change', 'remove'];
 
 const SYSTEM_PROMPT = `You are a sales enablement analyst for a residential and commercial lighting company, Yule Love Lights. You are given aggregated patterns mined from real sales calls for one line of business (objection frequency, common customer questions, what worked, what failed, price talk) plus that line's current call playbook.
 
@@ -97,9 +100,44 @@ function isValidKind(v: unknown): v is ProposalKind {
   return typeof v === 'string' && (KINDS as string[]).includes(v);
 }
 
-type ProposalsValidationResult = { valid: true; proposals: DistilledProposal[] } | { valid: false; error: string };
+// Per-section shape check for current_value/proposed_value — the system
+// prompt above promises openers are {label,script} and objections are
+// {objection,response}, everything else a plain string, but until now
+// nothing enforced it. Without this, apply.ts's add/change silently no-ops
+// on a shape mismatch while the decide route still marked the proposal
+// approved (the H8/M4 review findings).
+function isOpenerShape(v: unknown): v is { label: string; script: string } {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    typeof (v as Record<string, unknown>).label === 'string' &&
+    typeof (v as Record<string, unknown>).script === 'string'
+  );
+}
+function isObjectionShape(v: unknown): v is { objection: string; response: string } {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    typeof (v as Record<string, unknown>).objection === 'string' &&
+    typeof (v as Record<string, unknown>).response === 'string'
+  );
+}
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === 'string' && v.trim().length > 0;
+}
 
-function validateProposals(value: unknown): ProposalsValidationResult {
+function matchesSectionShape(section: ProposalSection, value: unknown): boolean {
+  if (section === 'openers') return isOpenerShape(value);
+  if (section === 'objections') return isObjectionShape(value);
+  return isNonEmptyString(value); // icp, voicemail, angles, avoid
+}
+
+export type ProposalsValidationResult = { valid: true; proposals: DistilledProposal[] } | { valid: false; error: string };
+
+// Reads value.proposals and validates/normalizes it — ignores any sibling
+// keys, so brainReview.ts's {narrative, proposals} tool result validates
+// here unchanged.
+export function validateProposals(value: unknown): ProposalsValidationResult {
   if (typeof value !== 'object' || value === null) {
     return { valid: false, error: 'Result must be an object.' };
   }
@@ -123,11 +161,28 @@ function validateProposals(value: unknown): ProposalsValidationResult {
     if (typeof p.evidence !== 'string' || !p.evidence.trim()) {
       return { valid: false, error: 'evidence must be a non-empty string.' };
     }
+
+    const proposedValue = p.proposed_value ?? null;
+    if (p.kind === 'remove') {
+      // Contract: a remove's proposed_value must be null (apply.ts never
+      // reads it for remove — current_value alone identifies the target).
+      if (proposedValue !== null) {
+        return { valid: false, error: `a "remove" proposal's proposed_value must be null (section "${p.section}").` };
+      }
+    } else if (!matchesSectionShape(p.section, proposedValue)) {
+      return { valid: false, error: `proposed_value does not match the expected shape for section "${p.section}".` };
+    }
+
+    const currentValue = p.current_value ?? null;
+    if (p.kind !== 'add' && currentValue !== null && !matchesSectionShape(p.section, currentValue)) {
+      return { valid: false, error: `current_value does not match the expected shape for section "${p.section}".` };
+    }
+
     proposals.push({
       section: p.section,
       kind: p.kind,
-      current_value: p.current_value ?? null,
-      proposed_value: p.proposed_value ?? null,
+      current_value: currentValue,
+      proposed_value: proposedValue,
       evidence: p.evidence,
     });
   }

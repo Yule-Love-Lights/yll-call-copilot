@@ -6,7 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import twilio from 'twilio';
-import { buildVoiceAccessToken, buildVoiceTwiml, isTwilioConfigured, verifyTwilioSignature } from './twilioVoice';
+import { buildVoiceAccessToken, buildVoiceTwiml, buildWhisperTwiml, CONSENT_LINE, isTwilioConfigured, verifyTwilioSignature } from './twilioVoice';
 
 const TWILIO_ENV_KEYS = [
   'TWILIO_ACCOUNT_SID',
@@ -74,19 +74,61 @@ describe('buildVoiceAccessToken', () => {
 });
 
 describe('buildVoiceTwiml', () => {
-  it('builds the exact expected TwiML: consent Say, both_tracks Stream with the sessionId parameter, then Dial', () => {
+  // H3 regression: this leg is the REP's browser softphone (Device.connect()
+  // triggers this webhook), not the customer -- so it must never Say the
+  // recording-consent line, and the Number noun must carry a whisper `url`
+  // instead, which is what actually plays the notice to the CUSTOMER leg
+  // once Twilio dials it and it answers (see buildWhisperTwiml below).
+  it('builds the exact expected TwiML: both_tracks Stream with the sessionId parameter, then Dial with a whisper url on Number -- no Say on this (rep) leg', () => {
     process.env.TWILIO_CALLER_ID = '+15551234567';
 
-    const xml = buildVoiceTwiml({ toNumber: '+15557654321', streamUrl: 'wss://bridge.example.com:8787', sessionId: 'sess_123' });
+    const xml = buildVoiceTwiml({
+      toNumber: '+15557654321',
+      streamUrl: 'wss://bridge.example.com:8787',
+      sessionId: 'sess_123',
+      whisperUrl: 'https://app.example.com/api/twilio/whisper',
+    });
 
     expect(xml).toBe(
-      '<?xml version="1.0" encoding="UTF-8"?><Response><Say>This call may be recorded.</Say><Start><Stream url="wss://bridge.example.com:8787" track="both_tracks"><Parameter name="sessionId" value="sess_123"/></Stream></Start><Dial callerId="+15551234567"><Number>+15557654321</Number></Dial></Response>',
+      '<?xml version="1.0" encoding="UTF-8"?><Response><Start><Stream url="wss://bridge.example.com:8787" track="both_tracks"><Parameter name="sessionId" value="sess_123"/></Stream></Start><Dial callerId="+15551234567"><Number url="https://app.example.com/api/twilio/whisper">+15557654321</Number></Dial></Response>',
     );
   });
 
+  it('never emits a <Say> on the rep leg', () => {
+    const xml = buildVoiceTwiml({
+      toNumber: '+15557654321',
+      streamUrl: 'wss://bridge.example.com:8787',
+      sessionId: 'sess_123',
+      whisperUrl: 'https://app.example.com/api/twilio/whisper',
+    });
+    expect(xml).not.toContain('<Say>');
+  });
+
+  it('the Number noun carries the whisper url so Twilio requests it once the CUSTOMER leg answers', () => {
+    const xml = buildVoiceTwiml({
+      toNumber: '+15557654321',
+      streamUrl: 'wss://bridge.example.com:8787',
+      sessionId: 'sess_123',
+      whisperUrl: 'https://app.example.com/api/twilio/whisper',
+    });
+    expect(xml).toContain('<Number url="https://app.example.com/api/twilio/whisper">+15557654321</Number>');
+  });
+
   it('falls back to an empty callerId rather than throwing when TWILIO_CALLER_ID is unset', () => {
-    const xml = buildVoiceTwiml({ toNumber: '+15557654321', streamUrl: 'wss://bridge.example.com:8787', sessionId: 'sess_123' });
+    const xml = buildVoiceTwiml({
+      toNumber: '+15557654321',
+      streamUrl: 'wss://bridge.example.com:8787',
+      sessionId: 'sess_123',
+      whisperUrl: 'https://app.example.com/api/twilio/whisper',
+    });
     expect(xml).toContain('<Dial callerId="">');
+  });
+});
+
+describe('buildWhisperTwiml', () => {
+  it('plays the consent notice -- this is what the CUSTOMER leg actually hears, once answered and before being bridged in', () => {
+    const xml = buildWhisperTwiml();
+    expect(xml).toBe(`<?xml version="1.0" encoding="UTF-8"?><Response><Say>${CONSENT_LINE}</Say></Response>`);
   });
 });
 

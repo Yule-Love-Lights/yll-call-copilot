@@ -220,5 +220,8 @@ function toCrmContact(hl: HighLevelContact): CrmContact {
     city: hl.city,
     state: hl.state,
     postalCode: hl.postalCode,
+    dnd: hl.dnd,
+    tags: hl.tags,
+    timezone: hl.timezone,
   };
 }

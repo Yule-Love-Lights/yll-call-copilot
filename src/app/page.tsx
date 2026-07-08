@@ -1,7 +1,9 @@
 'use client';
 
-// Dashboard shell. Phase 0 shows connection health only; call workflow
-// surfaces land in later phases.
+// Dashboard: this-week stat row + the compounding brain's latest one-liner
+// (GET /api/dashboard/summary), quick links, and the connection health panel
+// from Phase 0. Kept light per the brief — no new state beyond what those
+// two fetches need.
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -11,6 +13,15 @@ import InboundPop from './InboundPop';
 
 type Health = { ghl: boolean; supabase: boolean; claude: boolean; version: string };
 
+type Summary = {
+  configured: boolean;
+  calls?: number;
+  interested?: number;
+  queueDepth?: number;
+  inboundPops?: number;
+  latestBrainReview?: { verticalName: string; narrative: string; createdAt: string } | null;
+};
+
 function StatusDot({ ok }: { ok: boolean }) {
   return (
     <span
@@ -19,16 +30,35 @@ function StatusDot({ ok }: { ok: boolean }) {
   );
 }
 
+function StatTile({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex flex-col gap-1 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+      <span className="text-xs font-medium uppercase text-zinc-500">{label}</span>
+      <span className="text-2xl font-semibold">{value}</span>
+    </div>
+  );
+}
+
+const quickLinkClass = 'text-sm font-medium text-blue-600 hover:underline dark:text-blue-400';
+
 export default function Home() {
   const router = useRouter();
   const [health, setHealth] = useState<Health | null>(null);
   const [failed, setFailed] = useState(false);
+  const [summary, setSummary] = useState<Summary | null>(null);
 
   useEffect(() => {
     fetch('/api/health')
       .then(res => res.json())
       .then(setHealth)
       .catch(() => setFailed(true));
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/dashboard/summary')
+      .then(res => res.json())
+      .then(setSummary)
+      .catch(() => {});
   }, []);
 
   async function handleSignOut() {
@@ -54,24 +84,37 @@ export default function Home() {
         Copilot for inbound and warm outbound calls at Yule Love Lights.
       </p>
 
-      <nav className="mt-6 flex gap-4">
+      {summary?.configured && (
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatTile label="Calls this week" value={summary.calls ?? 0} />
+          <StatTile label="Interested" value={summary.interested ?? 0} />
+          <StatTile label="Queue depth" value={summary.queueDepth ?? 0} />
+          <StatTile label="Inbound pops" value={summary.inboundPops ?? 0} />
+        </div>
+      )}
+
+      {summary?.latestBrainReview && (
         <Link
-          href="/contacts"
-          className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+          href="/analytics"
+          className="mt-4 block truncate rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900"
+          title={summary.latestBrainReview.narrative}
         >
+          🧠 {summary.latestBrainReview.verticalName}: {summary.latestBrainReview.narrative}
+        </Link>
+      )}
+
+      <nav className="mt-6 flex flex-wrap gap-4">
+        <Link href="/contacts" className={quickLinkClass}>
           Contacts →
         </Link>
-        <Link
-          href="/verticals"
-          className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
-        >
+        <Link href="/queue" className={quickLinkClass}>
+          Call queue →
+        </Link>
+        <Link href="/verticals" className={quickLinkClass}>
           Verticals →
         </Link>
-        <Link
-          href="/queue"
-          className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
-        >
-          Call queue →
+        <Link href="/analytics" className={quickLinkClass}>
+          Analytics →
         </Link>
       </nav>
 
