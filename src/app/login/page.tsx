@@ -1,0 +1,37 @@
+// /login — staff sign-in (email + password, no self-signup). Server
+// component so we can check Supabase config server-side and show the friendly
+// banner instead of a broken form (same pattern as /contacts and /verticals).
+// The ?denied=1 flag comes from the proxy when a signed-in email is not in
+// app_users; searchParams is a Promise in Next 16, hence the await.
+
+import { isSupabaseConfigured } from '@/lib/supabase';
+import LoginForm from './LoginForm';
+
+export const dynamic = 'force-dynamic';
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ denied?: string }>;
+}) {
+  const { denied } = await searchParams;
+  const configured = isSupabaseConfigured();
+
+  return (
+    <main className="mx-auto w-full max-w-sm px-6 py-16">
+      <h1 className="text-2xl font-semibold">Sign in</h1>
+      <p className="mt-1 text-sm text-zinc-500">Staff access to the YLL Call Copilot.</p>
+
+      <div className="mt-8">
+        {configured ? (
+          <LoginForm denied={denied === '1'} />
+        ) : (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+            Supabase not configured — set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
+            and SUPABASE_SERVICE_ROLE_KEY in .env.local.
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
