@@ -4,7 +4,9 @@
 // surfaces land in later phases.
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 
 type Health = { ghl: boolean; supabase: boolean; claude: boolean; version: string };
 
@@ -17,6 +19,7 @@ function StatusDot({ ok }: { ok: boolean }) {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [health, setHealth] = useState<Health | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -27,9 +30,25 @@ export default function Home() {
       .catch(() => setFailed(true));
   }, []);
 
+  async function handleSignOut() {
+    const supabase = getSupabaseBrowserClient();
+    if (supabase) await supabase.auth.signOut();
+    router.push('/login');
+    router.refresh();
+  }
+
   return (
     <main className="mx-auto w-full max-w-2xl px-6 py-12">
-      <h1 className="text-2xl font-semibold">YLL Call Copilot</h1>
+      <div className="flex items-start justify-between">
+        <h1 className="text-2xl font-semibold">YLL Call Copilot</h1>
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+        >
+          Sign out
+        </button>
+      </div>
       <p className="mt-1 text-sm text-zinc-500">
         Copilot for inbound and warm outbound calls at Yule Love Lights.
       </p>

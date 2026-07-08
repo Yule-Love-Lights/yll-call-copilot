@@ -4,7 +4,7 @@
 // Supabase or Claude env is missing, never 500 on missing config.
 
 import { NextResponse } from 'next/server';
-import { getSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase';
+import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
 import { isClaudeConfigured } from '@/lib/claude';
 import { generatePlaybook } from '@/lib/playbook/generate';
 import type { VerticalRow } from '@/lib/playbook/types';
@@ -44,12 +44,27 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     'id' | 'name' | 'description' | 'knowledge_notes' | 'active_version'
   >;
 
+  // Knowledge documents (Phase 1.5) are optional grounding, not a hard
+  // requirement to generate — a missing 0003 migration (isMissingTableError)
+  // or any other read error degrades to "no documents" rather than failing
+  // generation; only an unexpected error is logged.
+  const { data: documentRows, error: documentsError } = await supabase
+    .from('documents')
+    .select('title, content, created_at')
+    .eq('vertical_id', id)
+    .order('created_at', { ascending: true });
+  if (documentsError && !isMissingTableError(documentsError)) {
+    console.error('Load documents for generate failed:', documentsError);
+  }
+  const documents = (documentRows ?? []) as { title: string; content: string }[];
+
   let playbook;
   try {
     playbook = await generatePlaybook({
       name: vertical.name,
       description: vertical.description,
       knowledgeNotes: vertical.knowledge_notes,
+      documents,
     });
   } catch (err) {
     console.error('Playbook generation failed:', err);

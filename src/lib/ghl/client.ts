@@ -11,7 +11,7 @@
 // API base: https://services.leadconnectorhq.com
 // Version header: Version: 2021-07-28  (required — the gateway 400s without it)
 
-import type { CrmContact, HighLevelContact } from './types';
+import type { CrmContact, HighLevelContact, HighLevelOpportunity } from './types';
 
 const API_BASE = 'https://services.leadconnectorhq.com';
 const API_VERSION_HEADER = '2021-07-28';
@@ -86,6 +86,45 @@ export async function getContact(contactId: string): Promise<CrmContact> {
     `/contacts/${encodeURIComponent(contactId)}`,
   );
   return toCrmContact(json.contact);
+}
+
+// ─── Opportunities (by contact) ───────────────────────────────────────────
+// Used by the Phase 1.5 transcript outcome matcher (src/lib/transcripts/
+// outcomes.ts) to inspect a contact's pipeline stage. Unlike the AI Quote
+// Tool's findOpportunityForContact, this omits pipeline_id — the call
+// copilot isn't pinned to one pipeline, so a contact's opportunities can
+// live in any of them.
+//
+// Endpoint: GET /opportunities/search?location_id=...&contact_id=...
+// Note the snake_case query params — this endpoint predates the rest of the
+// v2 gateway's camelCase convention (same quirk ported in the quote tool).
+export async function getOpportunitiesForContact(contactId: string): Promise<HighLevelOpportunity[]> {
+  const { locationId } = requireConfig();
+  const params = new URLSearchParams({ location_id: locationId, contact_id: contactId });
+  const json = await ghlFetch<{ opportunities?: HighLevelOpportunity[] }>(`/opportunities/search?${params}`);
+  return json.opportunities ?? [];
+}
+
+// ─── Pipeline stage names ──────────────────────────────────────────────────
+// Flattens every pipeline's stage list into a stageId -> stageName map so the
+// outcome matcher can classify an opportunity's pipelineStageId by NAME
+// keywords (this app has no HIGHLEVEL_STAGE_* env vars to pin exact ids —
+// see outcomes.ts). Callers should fetch this once per ingest run and pass
+// the map through, rather than refetching per transcript.
+//
+// Endpoint: GET /opportunities/pipelines?locationId=...
+export async function getStageNameMap(): Promise<Map<string, string>> {
+  const { locationId } = requireConfig();
+  const json = await ghlFetch<{ pipelines?: { stages?: { id?: string; name?: string }[] }[] }>(
+    `/opportunities/pipelines?locationId=${encodeURIComponent(locationId)}`,
+  );
+  const map = new Map<string, string>();
+  for (const pipeline of json.pipelines ?? []) {
+    for (const stage of pipeline.stages ?? []) {
+      if (stage.id) map.set(stage.id, stage.name ?? '');
+    }
+  }
+  return map;
 }
 
 // ─── Mapper: HighLevel → CrmContact ───────────────────────────────────────

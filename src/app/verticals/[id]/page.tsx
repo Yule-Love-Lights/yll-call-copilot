@@ -6,6 +6,9 @@
 import Link from 'next/link';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import VerticalDetail from './VerticalDetail';
+import KnowledgeDocuments from './KnowledgeDocuments';
+import TranscriptsPanel from './TranscriptsPanel';
+import InsightsPanel from './InsightsPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +24,12 @@ export default async function VerticalDetailPage({ params }: { params: Promise<{
 
       <div className="mt-8">
         {configured ? (
-          <VerticalDetail id={id} />
+          <div className="flex flex-col gap-12">
+            <VerticalDetail id={id} />
+            <KnowledgeDocuments verticalId={id} />
+            <TranscriptsPanel verticalId={id} />
+            <InsightsPanel verticalId={id} />
+          </div>
         ) : (
           <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
             Supabase not configured — set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and

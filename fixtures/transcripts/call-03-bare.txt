@@ -1,0 +1,12 @@
+Rep: Hi, this is Casey from Yule Love Lights, is this Denise?
+Customer: Speaking, who is this again?
+Rep: Casey, with Yule Love Lights, we did your neighbor's lights on Maple last year and they mentioned you might be interested.
+Customer: Oh right, their house did look great. What's this going to run me?
+Rep: Depends on the house, but for a place your size it's usually in the fifteen hundred range for the season.
+Customer: Hmm, that's higher than I expected honestly.
+Rep: A lot of people say that at first, it does include full installation, maintenance, and takedown in January.
+Customer: Okay that changes things a little. Can you come look at the house first?
+Rep: Absolutely, when's a good time this week?
+Customer: This isn't a great time, we're mid-renovation. Can you call back in a few weeks?
+Rep: Of course, I'll follow up in a few weeks. Thanks Denise.
+Customer: Thanks, bye.
