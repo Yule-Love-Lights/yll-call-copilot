@@ -5,6 +5,7 @@
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
+import { isWithinCallingHours } from '@/lib/leads/callingHours';
 import type { LeadRow } from '@/lib/leads/types';
 
 export async function GET(request: Request) {
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
   let query = supabase
     .from('leads')
     .select(
-      'id, ghl_contact_id, full_name, phone, email, address, vertical_slug, reason, opener_hint, score, source, status, claimed_by, queued_at',
+      'id, ghl_contact_id, full_name, phone, email, address, vertical_slug, reason, opener_hint, score, source, status, claimed_by, timezone, queued_at',
     )
     .in('status', ['queued', 'claimed'])
     .order('score', { ascending: false })
@@ -48,6 +49,7 @@ export async function GET(request: Request) {
     .maybeSingle();
 
   const rows = (data ?? []) as Omit<LeadRow, 'done_at'>[];
+  const now = new Date();
   return NextResponse.json({
     configured: true,
     leads: rows.map(r => ({
@@ -65,6 +67,9 @@ export async function GET(request: Request) {
       status: r.status,
       claimedBy: r.claimed_by,
       queuedAt: r.queued_at,
+      // TCPA calling-hours gate — whether NOW falls inside 8am-9pm in this
+      // contact's own local time (src/lib/leads/callingHours.ts).
+      callableNow: isWithinCallingHours(r.timezone, now),
     })),
     lastBuildAt: (lastBuildData as { created_at: string } | null)?.created_at ?? null,
   });

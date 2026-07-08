@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
 import { getContact, getContactPageUrl, getOpportunitiesForContact, getStageNameMap, isHighLevelConfigured } from '@/lib/ghl/client';
+import { isWithinCallingHours } from '@/lib/leads/callingHours';
 import { computeInsights } from '@/lib/transcripts/insights';
 import type { Playbook, VerticalRow } from '@/lib/playbook/types';
 import type { CrmContact } from '@/lib/ghl/types';
@@ -106,6 +107,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     // instead of only discovering the gate is closed after a failed POST —
     // the env var itself is server-only and never reaches the browser.
     sendEnabled: process.env.GHL_SEND_ENABLED === 'true',
+    // TCPA calling-hours gate — whether NOW falls inside 8am-9pm in this
+    // contact's own local time (src/lib/leads/callingHours.ts).
+    callableNow: isWithinCallingHours(lead.timezone, new Date()),
     lead: {
       id: lead.id,
       ghlContactId: lead.ghl_contact_id,

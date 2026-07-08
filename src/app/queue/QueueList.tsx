@@ -24,6 +24,7 @@ type Lead = {
   status: 'queued' | 'claimed' | 'done' | 'dismissed';
   claimedBy: string | null;
   queuedAt: string;
+  callableNow: boolean;
 };
 
 type QueueResponse = {
@@ -84,6 +85,11 @@ function LeadRowCard({
               Claimed by you
             </span>
           )}
+          {!lead.callableNow && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+              Quiet hours
+            </span>
+          )}
         </div>
         <span className="text-sm text-zinc-500">{lead.reason}</span>
         <span className="text-xs text-zinc-400">
@@ -94,7 +100,12 @@ function LeadRowCard({
       <div className="flex shrink-0 gap-2">
         {lead.status === 'queued' && (
           <>
-            <button onClick={onClaim} disabled={acting} className={secondaryButtonClass}>
+            <button
+              onClick={onClaim}
+              disabled={acting || !lead.callableNow}
+              title={lead.callableNow ? undefined : 'Outside calling hours for this contact (TCPA quiet hours).'}
+              className={secondaryButtonClass}
+            >
               {acting ? '…' : 'Claim'}
             </button>
             <button onClick={onDismiss} disabled={acting} className={secondaryButtonClass}>

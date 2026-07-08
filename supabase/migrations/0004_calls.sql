@@ -19,6 +19,11 @@ create table leads (
   source text not null,
   status text not null default 'queued' check (status in ('queued', 'claimed', 'done', 'dismissed')),
   claimed_by text,
+  -- Contact-local IANA time zone (e.g. "America/Chicago"), from GHL. Nullable
+  -- — not every contact has one on file. Feeds the TCPA calling-hours gate
+  -- (src/lib/leads/callingHours.ts), which falls back to the company's own
+  -- zone when this is null.
+  timezone text,
   queued_at timestamptz default now(),
   done_at timestamptz
 );

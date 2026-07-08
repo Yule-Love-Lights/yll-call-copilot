@@ -64,6 +64,7 @@ type DetailResponse = {
   reason?: string;
   error?: string;
   sendEnabled?: boolean;
+  callableNow?: boolean;
   lead?: LeadDetail;
   contact?: Contact | null;
   contactUrl?: string | null;
@@ -414,64 +415,71 @@ export default function CallConsole({ leadId, initialCallId = null }: { leadId: 
   const sendEnabled = data.sendEnabled === true;
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1.2fr)]">
-      <ContactCard lead={lead} contact={data.contact} contactUrl={data.contactUrl} quoteStage={data.quoteStage} />
-
-      <PlaybookPanel playbook={data.playbook} openerHint={lead.openerHint} topObjections={data.topObjections} />
-
-      <section className="flex flex-col gap-4">
-        <div className={cardClass}>
-          <h2 className="text-sm font-semibold">Outcome</h2>
-          <div className="grid grid-cols-2 gap-2">
-            {CALL_OUTCOMES.map(o => (
-              <button
-                key={o}
-                type="button"
-                onClick={() => setOutcome(o)}
-                className={`rounded-md border px-3 py-2 text-sm font-medium ${
-                  outcome === o
-                    ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
-                    : 'border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900'
-                }`}
-              >
-                {OUTCOME_LABELS[o]}
-              </button>
-            ))}
-          </div>
-
-          <label className="mt-2 text-sm font-semibold" htmlFor="notes">
-            Notes
-          </label>
-          <textarea id="notes" value={notes} onChange={e => setNotes(e.target.value)} rows={4} className={inputClass} />
-
-          <label className="text-sm font-semibold" htmlFor="transcript">
-            Paste transcript (optional)
-          </label>
-          <textarea
-            id="transcript"
-            value={transcript}
-            onChange={e => setTranscript(e.target.value)}
-            rows={6}
-            placeholder="Paste the full call transcript here to extract learnings."
-            className={inputClass}
-          />
-
-          <button onClick={onSave} disabled={saving || !outcome} className={primaryButtonClass}>
-            {saving ? 'Saving…' : 'Save call'}
-          </button>
-          {saveMessage && <p className="text-sm text-zinc-500">{saveMessage}</p>}
-          {saveError && <p className="text-sm text-red-600 dark:text-red-400">{saveError}</p>}
+    <div className="flex flex-col gap-4">
+      {data.callableNow === false && (
+        <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
+          Outside calling hours for this contact right now (TCPA quiet hours: 8am-9pm their local time).
         </div>
+      )}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1.2fr)]">
+        <ContactCard lead={lead} contact={data.contact} contactUrl={data.contactUrl} quoteStage={data.quoteStage} />
 
-        {(data.followups?.length ?? 0) > 0 && (
+        <PlaybookPanel playbook={data.playbook} openerHint={lead.openerHint} topObjections={data.topObjections} />
+
+        <section className="flex flex-col gap-4">
           <div className={cardClass}>
-            <h2 className="text-sm font-semibold">Follow-up drafts</h2>
-            {data.followups!.map(f => (
-              <FollowupCard key={f.id} followup={f} sendEnabled={sendEnabled} onSaved={load} />
-            ))}
+            <h2 className="text-sm font-semibold">Outcome</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {CALL_OUTCOMES.map(o => (
+                <button
+                  key={o}
+                  type="button"
+                  onClick={() => setOutcome(o)}
+                  className={`rounded-md border px-3 py-2 text-sm font-medium ${
+                    outcome === o
+                      ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
+                      : 'border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900'
+                  }`}
+                >
+                  {OUTCOME_LABELS[o]}
+                </button>
+              ))}
+            </div>
+
+            <label className="mt-2 text-sm font-semibold" htmlFor="notes">
+              Notes
+            </label>
+            <textarea id="notes" value={notes} onChange={e => setNotes(e.target.value)} rows={4} className={inputClass} />
+
+            <label className="text-sm font-semibold" htmlFor="transcript">
+              Paste transcript (optional)
+            </label>
+            <textarea
+              id="transcript"
+              value={transcript}
+              onChange={e => setTranscript(e.target.value)}
+              rows={6}
+              placeholder="Paste the full call transcript here to extract learnings."
+              className={inputClass}
+            />
+
+            <button onClick={onSave} disabled={saving || !outcome} className={primaryButtonClass}>
+              {saving ? 'Saving…' : 'Save call'}
+            </button>
+            {saveMessage && <p className="text-sm text-zinc-500">{saveMessage}</p>}
+            {saveError && <p className="text-sm text-red-600 dark:text-red-400">{saveError}</p>}
           </div>
-        )}
-      </section>
+
+          {(data.followups?.length ?? 0) > 0 && (
+            <div className={cardClass}>
+              <h2 className="text-sm font-semibold">Follow-up drafts</h2>
+              {data.followups!.map(f => (
+                <FollowupCard key={f.id} followup={f} sendEnabled={sendEnabled} onSaved={load} />
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

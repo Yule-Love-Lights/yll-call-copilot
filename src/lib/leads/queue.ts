@@ -198,6 +198,7 @@ export async function buildQueue(): Promise<BuildQueueResult> {
         opener_hint: candidate.opener_hint,
         score: candidate.score,
         source: candidate.source,
+        timezone: candidate.timezone,
       };
 
       if (decision.action === 'insert') {
