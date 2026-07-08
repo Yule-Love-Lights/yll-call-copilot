@@ -70,7 +70,7 @@ describe('generatePlaybook', () => {
       expect(call.model).toBe(PLAYBOOK_MODEL);
       expect(call.model).toBe('claude-sonnet-5');
       expect(call.tool_choice).toEqual({ type: 'tool', name: 'emit_playbook' });
-      expect(call.max_tokens).toBe(4000);
+      expect(call.max_tokens).toBe(8000);
       expect(call.tools[0].name).toBe('emit_playbook');
     });
 
@@ -106,6 +106,81 @@ describe('generatePlaybook', () => {
       await expect(
         generatePlaybook({ name: 'Holiday Lighting', description: 'x', knowledgeNotes: '' }),
       ).rejects.toThrow(/did not return a playbook/i);
+    });
+
+    it('throws when the response was cut off by the token limit', async () => {
+      // Regression: the first live run hit max_tokens and a truncated tool
+      // input (icp + angles only) reached the database as version 1.
+      createMock.mockResolvedValue({
+        content: [
+          { type: 'tool_use', id: 'toolu_1', name: 'emit_playbook', input: { icp: 'x', angles: ['y'] } },
+        ],
+        stop_reason: 'max_tokens',
+      });
+
+      await expect(
+        generatePlaybook({ name: 'Holiday Lighting', description: 'x', knowledgeNotes: '' }),
+      ).rejects.toThrow(/token limit/i);
+    });
+
+    it('throws when the tool input is not a complete playbook, after one retry', async () => {
+      createMock.mockResolvedValue({
+        content: [
+          { type: 'tool_use', id: 'toolu_1', name: 'emit_playbook', input: { icp: 'x', angles: ['y'] } },
+        ],
+        stop_reason: 'tool_use',
+      });
+
+      await expect(
+        generatePlaybook({ name: 'Holiday Lighting', description: 'x', knowledgeNotes: '' }),
+      ).rejects.toThrow(/incomplete playbook/i);
+      expect(createMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('recovers when the retry returns a valid playbook', async () => {
+      createMock
+        .mockResolvedValueOnce({
+          content: [
+            { type: 'tool_use', id: 'toolu_1', name: 'emit_playbook', input: { icp: 'x', angles: 'prose, not an array' } },
+          ],
+          stop_reason: 'tool_use',
+        })
+        .mockResolvedValueOnce({
+          content: [{ type: 'tool_use', id: 'toolu_2', name: 'emit_playbook', input: samplePlaybook }],
+          stop_reason: 'tool_use',
+        });
+
+      const result = await generatePlaybook({ name: 'Holiday Lighting', description: 'x', knowledgeNotes: '' });
+      expect(result).toEqual(samplePlaybook);
+      expect(createMock).toHaveBeenCalledTimes(2);
+
+      // The retry must carry the failed tool call back as an is_error tool_result.
+      const secondCallMessages = createMock.mock.calls[1][0].messages;
+      const toolResult = secondCallMessages.at(-1).content[0];
+      expect(toolResult.type).toBe('tool_result');
+      expect(toolResult.is_error).toBe(true);
+      expect(toolResult.tool_use_id).toBe('toolu_1');
+    });
+
+    it('normalizes XML-tagged array fields instead of failing', async () => {
+      createMock.mockResolvedValue({
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_1',
+            name: 'emit_playbook',
+            input: {
+              ...samplePlaybook,
+              angles: '<angle>Early bird booking</angle><angle>Rebook season</angle>',
+            },
+          },
+        ],
+        stop_reason: 'tool_use',
+      });
+
+      const result = await generatePlaybook({ name: 'Holiday Lighting', description: 'x', knowledgeNotes: '' });
+      expect(result.angles).toEqual(['Early bird booking', 'Rebook season']);
+      expect(createMock).toHaveBeenCalledTimes(1);
     });
   });
 });

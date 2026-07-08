@@ -5,6 +5,8 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { getClaudeClient } from '../claude';
+import { normalizePlaybookInput } from './normalize';
+import { validatePlaybook } from './validate';
 import type { Playbook } from './types';
 
 // Single exported const for the model id — bump here, nowhere else, if the
@@ -25,7 +27,9 @@ Objections must cover at least these five: price, "not interested", "email me in
 
 The voicemail script must be short enough for a rep to speak in under 20 seconds.
 
-Never use an em dash. Never use the words "unlock", "leverage", or "delve".`;
+Never use an em dash. Never use the words "unlock", "leverage", or "delve".
+
+In the emit_playbook tool call, every field must be real JSON of its declared type. Arrays must be JSON arrays with one element per item, never a single string and never items wrapped in XML tags like <angle>. Objects must be JSON objects.`;
 
 const EMIT_PLAYBOOK_TOOL: Anthropic.Tool = {
   name: 'emit_playbook',
@@ -94,38 +98,93 @@ export type GeneratePlaybookInput = {
   knowledgeNotes: string;
 };
 
+// One retry: live runs showed the model occasionally fills array fields with
+// XML-tagged strings. The retry sends the validation error back as a
+// tool_result so the second attempt can correct itself.
+const MAX_ATTEMPTS = 2;
+
 export async function generatePlaybook(input: GeneratePlaybookInput): Promise<Playbook> {
   const client = getClaudeClient();
   if (!client) {
     throw new Error('Claude not configured. Set ANTHROPIC_API_KEY in .env.local');
   }
 
-  const response = await client.messages.create({
-    model: PLAYBOOK_MODEL,
-    max_tokens: 4000,
-    system: SYSTEM_PROMPT,
-    tools: [EMIT_PLAYBOOK_TOOL],
-    tool_choice: { type: 'tool', name: 'emit_playbook' },
-    messages: [
-      {
-        role: 'user',
-        content: [
-          `Vertical name: ${input.name}`,
-          `Vertical description: ${input.description}`,
-          `Knowledge notes: ${input.knowledgeNotes.trim() || '(none provided)'}`,
-          '',
-          'Build the full call playbook for this vertical now.',
-        ].join('\n'),
-      },
-    ],
-  });
+  const messages: Anthropic.MessageParam[] = [
+    {
+      role: 'user',
+      content: [
+        `Vertical name: ${input.name}`,
+        `Vertical description: ${input.description}`,
+        `Knowledge notes: ${input.knowledgeNotes.trim() || '(none provided)'}`,
+        '',
+        'Build the full call playbook for this vertical now.',
+      ].join('\n'),
+    },
+  ];
 
-  const toolUse = response.content.find(
-    (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use' && block.name === 'emit_playbook',
-  );
-  if (!toolUse) {
-    throw new Error('Claude did not return a playbook.');
+  let lastError = 'unknown validation error';
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const response = await client.messages.create({
+      model: PLAYBOOK_MODEL,
+      // 4000 proved too small in the first live run: the tool input got cut
+      // mid-JSON and a playbook with only icp+angles reached the database.
+      max_tokens: 8000,
+      system: SYSTEM_PROMPT,
+      tools: [EMIT_PLAYBOOK_TOOL],
+      tool_choice: { type: 'tool', name: 'emit_playbook' },
+      messages,
+    });
+
+    // A response cut off by the token ceiling can carry a partial tool input
+    // that still parses — reject it before it can reach the database.
+    if (response.stop_reason === 'max_tokens') {
+      throw new Error('Playbook generation ran past the token limit; nothing was saved. Try again.');
+    }
+
+    const toolUse = response.content.find(
+      (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use' && block.name === 'emit_playbook',
+    );
+    if (!toolUse) {
+      throw new Error('Claude did not return a playbook.');
+    }
+
+    const checked = validatePlaybook(normalizePlaybookInput(toolUse.input));
+    if (checked.valid) {
+      return checked.playbook;
+    }
+    lastError = checked.error;
+
+    // Log a compact shape summary (keys and types only) so a schema drift is
+    // diagnosable from the server log without dumping whole payloads.
+    const raw = toolUse.input as Record<string, unknown>;
+    const shape = Object.fromEntries(
+      Object.entries(raw ?? {}).map(([k, v]) => [
+        k,
+        Array.isArray(v) ? `array(${v.length})[${typeof v[0]}]` : typeof v,
+      ]),
+    );
+    console.error(`Invalid playbook shape from Claude (attempt ${attempt}):`, JSON.stringify(shape));
+
+    if (attempt < MAX_ATTEMPTS) {
+      // The API requires a tool_result for EVERY tool_use block in the
+      // assistant turn (the model can emit more than one), so answer all.
+      const allToolUses = response.content.filter(
+        (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use',
+      );
+      messages.push(
+        { role: 'assistant', content: response.content },
+        {
+          role: 'user',
+          content: allToolUses.map((block) => ({
+            type: 'tool_result' as const,
+            tool_use_id: block.id,
+            is_error: true,
+            content: `That playbook was rejected: ${checked.error} Call emit_playbook again with every field as real JSON of its declared type. Arrays must be JSON arrays, one element per item, no XML tags, no JSON-encoded strings.`,
+          })),
+        },
+      );
+    }
   }
 
-  return toolUse.input as Playbook;
+  throw new Error(`Claude returned an incomplete playbook (${lastError}); nothing was saved.`);
 }
