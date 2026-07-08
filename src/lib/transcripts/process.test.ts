@@ -17,17 +17,24 @@ vi.mock('./extract', () => ({
   extractLearnings: (...args: unknown[]) => extractLearningsMock(...args),
 }));
 
+let highLevelConfigured = false;
 vi.mock('../ghl/client', () => ({
-  isHighLevelConfigured: () => false,
+  isHighLevelConfigured: () => highLevelConfigured,
   getStageNameMap: vi.fn(async () => new Map()),
+}));
+
+const matchOutcomeMock = vi.fn();
+vi.mock('./outcomes', () => ({
+  matchOutcome: (...args: unknown[]) => matchOutcomeMock(...args),
 }));
 
 import { processTranscriptBatch } from './process';
 
 type UpsertCall = { row: Record<string, unknown>; options?: Record<string, unknown> };
 
-function fakeSupabase() {
+function fakeSupabase(opts: { outcomeUpdateError?: { message: string } | null } = {}) {
   const upsertCalls: UpsertCall[] = [];
+  const outcomeUpdateCalls: Record<string, unknown>[] = [];
   const upsert = vi.fn((row: Record<string, unknown>, options?: Record<string, unknown>) => {
     upsertCalls.push({ row, options });
     return Promise.resolve({ error: null });
@@ -40,12 +47,16 @@ function fakeSupabase() {
   );
   const eq = vi.fn(() => ({ maybeSingle }));
   const select = vi.fn(() => ({ eq }));
+  const update = vi.fn((row: Record<string, unknown>) => {
+    outcomeUpdateCalls.push(row);
+    return { eq: () => Promise.resolve({ error: opts.outcomeUpdateError ?? null }) };
+  });
   const from = vi.fn((table: string) => {
     if (table === 'learnings') return { upsert };
-    if (table === 'transcripts') return { select, update: () => ({ eq: () => Promise.resolve({ error: null }) }) };
+    if (table === 'transcripts') return { select, update };
     throw new Error(`Unexpected table in test: ${table}`);
   });
-  return { client: { from } as unknown as SupabaseClient, upsertCalls };
+  return { client: { from } as unknown as SupabaseClient, upsertCalls, outcomeUpdateCalls };
 }
 
 const sampleLearnings = {
@@ -60,6 +71,7 @@ const sampleLearnings = {
 
 describe('processTranscriptBatch — learnings idempotency (H5)', () => {
   beforeEach(() => {
+    highLevelConfigured = false;
     extractLearningsMock.mockReset().mockResolvedValue(sampleLearnings);
   });
 
@@ -104,5 +116,63 @@ describe('processTranscriptBatch — learnings idempotency (H5)', () => {
     });
 
     expect(result).toEqual({ done: 1, failed: 0 });
+  });
+});
+
+// L2: the transcripts.update() that stores the GHL-matched outcome/
+// outcome_source/ghl_contact_id used to discard its {error} entirely,
+// unlike every other write in this function — a transient failure there
+// still counted the transcript as `done` (and Claude extraction still ran),
+// permanently leaving `outcome` stuck at 'unknown' with no retry path since
+// attempted_ids marks it handled either way.
+describe('processTranscriptBatch — surfaces a failed outcome-match write (L2)', () => {
+  beforeEach(() => {
+    highLevelConfigured = true;
+    extractLearningsMock.mockReset().mockResolvedValue(sampleLearnings);
+    matchOutcomeMock.mockReset().mockResolvedValue({ outcome: 'booked', outcome_source: 'ghl_stage', ghl_contact_id: 'c1' });
+  });
+
+  it('counts the transcript as failed, not done, when the outcome update errors', async () => {
+    const { client } = fakeSupabase({ outcomeUpdateError: { message: 'transient write failure' } });
+
+    const result = await processTranscriptBatch({
+      supabase: client,
+      transcriptIds: ['t1'],
+      verticalId: 'v1',
+      verticalName: 'Holiday Lighting',
+      matchOutcomes: true,
+    });
+
+    expect(result).toEqual({ done: 0, failed: 1 });
+  });
+
+  it('does not spend a Claude extraction call on a transcript whose outcome write already failed', async () => {
+    const { client } = fakeSupabase({ outcomeUpdateError: { message: 'transient write failure' } });
+
+    await processTranscriptBatch({
+      supabase: client,
+      transcriptIds: ['t1'],
+      verticalId: 'v1',
+      verticalName: 'Holiday Lighting',
+      matchOutcomes: true,
+    });
+
+    expect(extractLearningsMock).not.toHaveBeenCalled();
+  });
+
+  it('still counts done and extracts normally when the outcome write succeeds', async () => {
+    const { client, outcomeUpdateCalls } = fakeSupabase({ outcomeUpdateError: null });
+
+    const result = await processTranscriptBatch({
+      supabase: client,
+      transcriptIds: ['t1'],
+      verticalId: 'v1',
+      verticalName: 'Holiday Lighting',
+      matchOutcomes: true,
+    });
+
+    expect(result).toEqual({ done: 1, failed: 0 });
+    expect(outcomeUpdateCalls).toEqual([{ outcome: 'booked', outcome_source: 'ghl_stage', ghl_contact_id: 'c1' }]);
+    expect(extractLearningsMock).toHaveBeenCalledTimes(1);
   });
 });

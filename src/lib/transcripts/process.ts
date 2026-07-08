@@ -54,7 +54,16 @@ export async function processTranscriptBatch(input: ProcessBatchInput): Promise<
           { customer_phone: transcript.customer_phone, customer_name: transcript.customer_name },
           stageNames,
         );
-        await supabase
+        // Checked, unlike the rest of this pipeline's writes: a swallowed
+        // failure here left outcome stuck at its 'unknown' default forever
+        // (attempted_ids marks this transcript handled either way, so
+        // there's no retry path once this batch moves on) while still
+        // counting the transcript as successfully processed, silently
+        // skewing the booked/not_booked/unknown split computeInsights
+        // reports. Thrown here (same as the learnings insert below) so it
+        // counts into `failed` and gets logged via this loop's own catch,
+        // instead of continuing on as if the match had actually stuck.
+        const { error: outcomeUpdateError } = await supabase
           .from('transcripts')
           .update({
             outcome: match.outcome,
@@ -62,6 +71,7 @@ export async function processTranscriptBatch(input: ProcessBatchInput): Promise<
             ghl_contact_id: match.ghl_contact_id,
           })
           .eq('id', transcriptId);
+        if (outcomeUpdateError) throw outcomeUpdateError;
         await delay(GHL_RATE_LIMIT_GAP_MS);
       }
 
