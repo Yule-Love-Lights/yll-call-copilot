@@ -70,18 +70,35 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     );
   }
 
+  // Claim the draft BEFORE calling GHL: a conditional update on
+  // status='draft' means two rapid clicks can't both pass the status check
+  // above and message the customer twice — the second click matches zero
+  // rows here and stops. If the GHL call then fails, the catch flips the
+  // row to 'failed', so the optimistic 'approved_sent' only ever survives a
+  // send that actually went through.
+  const { data: claimedRows, error: claimError } = await supabase
+    .from('followups')
+    .update({ status: 'approved_sent', sent_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('status', 'draft')
+    .select('id');
+  if (claimError) {
+    console.error('Claim followup for send failed:', claimError);
+    return NextResponse.json({ configured: true, sent: false, error: 'Could not send the follow-up.' }, { status: 500 });
+  }
+  if (!claimedRows || claimedRows.length === 0) {
+    return NextResponse.json(
+      { configured: true, sent: false, error: 'This follow-up was already sent or failed.' },
+      { status: 409 },
+    );
+  }
+
   try {
     if (followup.kind === 'email') {
       await sendConversationMessage({ type: 'Email', contactId, subject: followup.subject ?? '', html: followup.body });
     } else {
       await sendConversationMessage({ type: 'SMS', contactId, message: followup.body });
     }
-
-    const { error: updateError } = await supabase
-      .from('followups')
-      .update({ status: 'approved_sent', sent_at: new Date().toISOString() })
-      .eq('id', id);
-    if (updateError) console.error('Mark followup sent failed:', updateError);
 
     return NextResponse.json({ configured: true, sent: true });
   } catch (err) {
