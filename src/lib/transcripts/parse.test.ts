@@ -9,9 +9,14 @@ import { describe, expect, it } from 'vitest';
 import { normalizePhone, parseCsv, parseTranscriptFiles } from './parse';
 
 const FIXTURES_DIR = join(process.cwd(), 'fixtures', 'transcripts');
+const RINGCENTRAL_FIXTURES_DIR = join(process.cwd(), 'fixtures', 'ringcentral');
 
 function readFixture(name: string): string {
   return readFileSync(join(FIXTURES_DIR, name), 'utf8');
+}
+
+function readRingCentralFixture(name: string): string {
+  return readFileSync(join(RINGCENTRAL_FIXTURES_DIR, name), 'utf8');
 }
 
 describe('normalizePhone', () => {
@@ -158,5 +163,20 @@ describe('parseTranscriptFiles — .csv', () => {
     const csv = '"Name","Transcript"\n"Jamie Lee","hi"\n"",""';
     const results = parseTranscriptFiles([{ name: 'blank-row.csv', text: csv }]);
     expect(results).toHaveLength(1);
+  });
+});
+
+describe('parseTranscriptFiles — auto-detected RingCentral .txt', () => {
+  it('routes a RingCentral-shaped .txt through the RingCentral parser instead of the header-block parser', () => {
+    const name = '10_Dec_2025_3_36_PM_transcript.txt';
+    const [result] = parseTranscriptFiles([{ name, text: readRingCentralFixture(name) }]);
+
+    // The filename carries the date (no header block exists to read it
+    // from), and a single uploaded file has no corpus to run rep detection
+    // against, so customer_name/customer_phone are left null.
+    expect(result.called_at).toBe('2025-12-10T20:36:00.000Z');
+    expect(result.customer_name).toBeNull();
+    expect(result.customer_phone).toBeNull();
+    expect(result.raw_text).toContain('Jamie Rivera: Hi, this is Jamie from Yule Love Lights');
   });
 });
