@@ -43,3 +43,17 @@ export type HighLevelContact = {
   customFields?: Array<{ id: string; value?: string }>;
   tags?: string[];
 };
+
+// ─── Opportunity shape (subset) ────────────────────────────────────────────
+// Ported from the AI Quote Tool's integration layer, trimmed to what the
+// Phase 1.5 transcript outcome matcher needs: which pipeline stage a
+// contact's opportunity currently sits in.
+export type HighLevelOpportunity = {
+  id: string;
+  name?: string;
+  contactId: string;
+  pipelineId: string;
+  pipelineStageId?: string;
+  status?: 'open' | 'won' | 'lost' | 'abandoned';
+  monetaryValue?: number;
+};
