@@ -1,0 +1,14 @@
+Customer Name: Alan Prescott
+Phone Number: 555-908-2214
+Call Date: 2025-11-05
+
+Rep: Hi Alan, this is Morgan with Yule Love Lights calling about the estimate for your house on Birchwood.
+Customer: Yeah I got that, honestly it's more than I want to spend this year.
+Rep: Totally fair, can I ask what budget you had in mind?
+Customer: Probably half of what you quoted.
+Rep: I can see if there's a smaller package, maybe just the front roofline instead of the whole house.
+Customer: Even that feels like a lot right now, things are tight.
+Rep: No problem at all. Would it help if I emailed you the smaller option to look over?
+Customer: Sure, email me info and I'll think about it for next year probably.
+Rep: I'll send that over. Thanks for your time, Alan.
+Customer: Thanks, bye.
