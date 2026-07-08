@@ -67,6 +67,10 @@ export default function VerticalDetail({ id }: { id: string }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Playbook | null>(null);
   const [saving, setSaving] = useState(false);
+  // Same silent-failure pattern the review flagged on onSaveMeta (H9),
+  // spotted on these two paths during the fix pass: a failed publish must
+  // say so and keep the user's work on screen.
+  const [publishError, setPublishError] = useState<string | null>(null);
 
   // Not an async function called directly from useEffect — every setState
   // call lives inside a .then()/.catch() callback so React doesn't see a
@@ -155,13 +159,21 @@ export default function VerticalDetail({ id }: { id: string }) {
   async function onRestore() {
     if (!viewedPlaybook) return;
     setRestoring(true);
+    setPublishError(null);
     try {
-      await fetch(`/api/verticals/${id}/playbook`, {
+      const res = await fetch(`/api/verticals/${id}/playbook`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(viewedPlaybook),
       });
-      await load();
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.saved) {
+        await load();
+      } else {
+        setPublishError(json.reason ?? 'Restore failed. The version on screen was not published.');
+      }
+    } catch {
+      setPublishError('Restore failed (network). The version on screen was not published.');
     } finally {
       setRestoring(false);
     }
@@ -176,16 +188,22 @@ export default function VerticalDetail({ id }: { id: string }) {
   async function onSaveEdit() {
     if (!draft) return;
     setSaving(true);
+    setPublishError(null);
     try {
       const res = await fetch(`/api/verticals/${id}/playbook`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(draft),
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (res.ok && json.saved) {
         await load();
+      } else {
+        // Keep the editor open with the draft intact so nothing is lost.
+        setPublishError(json.reason ?? 'Save failed. Your edits are still on screen.');
       }
+    } catch {
+      setPublishError('Save failed (network). Your edits are still on screen.');
     } finally {
       setSaving(false);
     }
@@ -274,6 +292,9 @@ export default function VerticalDetail({ id }: { id: string }) {
               </button>
             )}
           </div>
+        )}
+        {publishError && (
+          <p className="mt-2 text-sm text-red-600 dark:text-red-400">{publishError}</p>
         )}
       </section>
 

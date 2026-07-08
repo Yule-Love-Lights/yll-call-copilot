@@ -54,15 +54,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   if (!approve) {
-    const { error: rejectError } = await supabase
+    // Conditional on status so two staff deciding the same proposal at the
+    // same moment can't both "win" — same check-then-act fix as the lead
+    // claim race (M5/L1), applied to the reject path.
+    const { data: rejectedRows, error: rejectError } = await supabase
       .from('playbook_proposals')
       .update({ status: 'rejected', decided_at: new Date().toISOString() })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('status', 'pending')
+      .select('id');
     if (rejectError) {
       console.error('Reject proposal failed:', rejectError);
       return NextResponse.json(
         { configured: true, decided: false, reason: 'Could not reject the proposal.' },
         { status: 500 },
+      );
+    }
+    if (!rejectedRows || rejectedRows.length === 0) {
+      return NextResponse.json(
+        { configured: true, decided: false, reason: 'This proposal was already decided by someone else.' },
+        { status: 409 },
       );
     }
     return NextResponse.json({ configured: true, decided: true, approved: false });

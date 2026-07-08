@@ -33,6 +33,10 @@ To switch a call over to a real phone call once those accounts exist:
 
 This path is coded against Twilio's and Deepgram's documented APIs but has never run against a live account -- treat it as unverified until someone confirms a real call end to end.
 
+## Deploy note (Vercel)
+
+`vercel.json` carries one cron entry: a Monday-morning GET to `/api/cron/brain-review`, which loops every vertical through the same weekly-review logic as the manual button on `/analytics`. It no-ops unless `CRON_ENABLED=true` is set on the Vercel project, so deploying does not silently start scheduled AI runs. Vercel Cron only sends GET, which is why the cron route exists separately from the per-vertical POST route the button uses.
+
 ## Notes
 
 - Auth is live (staff allowlist sign-in, gated by `src/proxy.ts`). Supabase row level security is still service-role only; every table's RLS policy is deferred until a later pass.
