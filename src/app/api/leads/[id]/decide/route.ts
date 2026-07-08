@@ -50,10 +50,27 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const update =
     action === 'claim' ? { status: 'claimed', claimed_by: await getSessionEmail() } : { status: 'dismissed' };
 
-  const { error: updateError } = await supabase.from('leads').update(update).eq('id', id);
+  // Conditional on status='queued' right on the write itself, not just the
+  // read above — otherwise two reps who both pass the read-time check
+  // (opening the same top-of-queue lead within the same window) can both
+  // write and both get decided:true back. Same compare-and-swap this
+  // codebase already uses for POST /api/followups/[id]/send's claim-before-
+  // send step.
+  const { data: updatedRows, error: updateError } = await supabase
+    .from('leads')
+    .update(update)
+    .eq('id', id)
+    .eq('status', 'queued')
+    .select('id');
   if (updateError) {
     console.error(`Lead ${action} failed:`, updateError);
     return NextResponse.json({ configured: true, decided: false, reason: 'Could not update the lead.' }, { status: 500 });
+  }
+  if (!updatedRows || updatedRows.length === 0) {
+    return NextResponse.json(
+      { configured: true, decided: false, reason: 'This lead is no longer queued.' },
+      { status: 409 },
+    );
   }
 
   return NextResponse.json({ configured: true, decided: true, status: update.status });
