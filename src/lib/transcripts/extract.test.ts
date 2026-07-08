@@ -79,13 +79,39 @@ describe('extractLearnings', () => {
       await expect(extractLearnings('x', 'Holiday Lighting')).rejects.toThrow(/did not return learnings/i);
     });
 
-    it('throws when the response was cut off by the token limit', async () => {
+    it('retries once at a higher token ceiling (8192) when cut off by the 4096 limit, then throws if that also gets cut off', async () => {
       createMock.mockResolvedValue({
         content: [{ type: 'tool_use', id: 'toolu_1', name: 'emit_learnings', input: { objections: [] } }],
         stop_reason: 'max_tokens',
       });
 
       await expect(extractLearnings('x', 'Holiday Lighting')).rejects.toThrow(/token limit/i);
+
+      // One initial call at 4096, one retry at 8192 — not a silent
+      // immediate throw, and not consuming one of the validation-retry
+      // MAX_ATTEMPTS (a token-ceiling hit is a different failure mode than
+      // a malformed shape).
+      expect(createMock).toHaveBeenCalledTimes(2);
+      expect(createMock.mock.calls[0][0].max_tokens).toBe(4096);
+      expect(createMock.mock.calls[1][0].max_tokens).toBe(8192);
+    });
+
+    it('recovers when the retry at the higher token budget is not cut off', async () => {
+      createMock
+        .mockResolvedValueOnce({
+          content: [{ type: 'tool_use', id: 'toolu_1', name: 'emit_learnings', input: { objections: [] } }],
+          stop_reason: 'max_tokens',
+        })
+        .mockResolvedValueOnce({
+          content: [{ type: 'tool_use', id: 'toolu_2', name: 'emit_learnings', input: sampleLearnings }],
+          stop_reason: 'tool_use',
+        });
+
+      const result = await extractLearnings('x', 'Holiday Lighting');
+
+      expect(result).toEqual(sampleLearnings);
+      expect(createMock).toHaveBeenCalledTimes(2);
+      expect(createMock.mock.calls[1][0].max_tokens).toBe(8192);
     });
 
     it('throws after one retry when the tool input never validates', async () => {

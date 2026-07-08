@@ -223,8 +223,14 @@ function validateLearnings(value: unknown): LearningsValidationResult {
 // back as a tool_result so the second attempt can correct itself.
 const MAX_ATTEMPTS = 2;
 // Small structured-extraction call — the schema is a handful of short
-// arrays plus a 1-3 sentence summary, nowhere near Haiku's 64K ceiling.
+// arrays plus a 1-3 sentence summary, nowhere near Haiku's 64K ceiling. Not
+// bottomless, though: a verbose or objection-heavy call requesting
+// near-duplicated verbatim content across six arrays can plausibly approach
+// it (generate.ts hit an analogous truncation at a comparable 4000-token
+// budget in production and had to double it) — MAX_TOKENS_RETRY is that
+// same one-shot headroom bump before giving up entirely.
 const MAX_TOKENS = 4096;
+const MAX_TOKENS_RETRY = 8192;
 
 export async function extractLearnings(transcript: string, verticalName: string): Promise<Learnings> {
   const client = getClaudeClient();
@@ -246,19 +252,28 @@ export async function extractLearnings(transcript: string, verticalName: string)
     },
   ];
 
-  let lastError = 'unknown validation error';
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const response = await client.messages.create({
+  const callExtract = (maxTokens: number) =>
+    client.messages.create({
       model: EXTRACT_MODEL,
-      max_tokens: MAX_TOKENS,
+      max_tokens: maxTokens,
       system: SYSTEM_PROMPT,
       tools: [EMIT_LEARNINGS_TOOL],
       tool_choice: { type: 'tool', name: 'emit_learnings' },
       messages,
     });
 
+  let lastError = 'unknown validation error';
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let response = await callExtract(MAX_TOKENS);
+
     if (response.stop_reason === 'max_tokens') {
-      throw new Error('Learnings extraction ran past the token limit; nothing was saved.');
+      // One extra shot at double the budget before giving up entirely — a
+      // truncated tool call can never validate, so retrying at the SAME
+      // budget (the validation-retry loop below) would just truncate again.
+      response = await callExtract(MAX_TOKENS_RETRY);
+      if (response.stop_reason === 'max_tokens') {
+        throw new Error('Learnings extraction ran past the token limit; nothing was saved.');
+      }
     }
 
     const toolUse = response.content.find(
