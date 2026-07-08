@@ -1,6 +1,6 @@
 -- RLS deferred with auth (post Phase 1).
 -- Phase 1 schema for YLL Call Copilot: a vertical (a line of business) plus a
--- version history of its generated/edited cold-call playbook. File only —
+-- version history of its generated/edited call playbook. File only —
 -- not applied anywhere yet, kept in the repo so the schema ships with the
 -- code (same convention as 0001_init.sql).
 
