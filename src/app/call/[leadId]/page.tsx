@@ -13,9 +13,16 @@ export default async function CallConsolePage({ params }: { params: Promise<{ le
 
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-12">
-      <Link href="/queue" className="text-sm text-zinc-500 hover:underline">
-        ← Queue
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link href="/queue" className="text-sm text-zinc-500 hover:underline">
+          ← Queue
+        </Link>
+        {configured && (
+          <Link href={`/call/${leadId}/live`} className="text-sm text-blue-600 hover:underline dark:text-blue-400">
+            Live coaching →
+          </Link>
+        )}
+      </div>
 
       <div className="mt-8">
         {configured ? (
