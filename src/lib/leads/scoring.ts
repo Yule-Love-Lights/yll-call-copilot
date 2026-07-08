@@ -133,6 +133,38 @@ export function isCallable(input: { dnd?: boolean | null; tags: string[]; stageN
   return true;
 }
 
+// GET /api/inbound/recent's lazy lead auto-create (a webhook-logged inbound
+// call/text with no existing `leads` row yet) used to insert a plain
+// 'queued' row with zero DNC check at all. This is the pure decision for
+// that insert: a contact we could positively confirm callable (dnd/tags/
+// stage all clear) is queued normally; anything else — including "we could
+// not verify" (HighLevel not configured, or the hydration call failed) —
+// inserts 'dismissed' with a DNC-flagged reason instead. The screen-pop
+// (src/app/InboundPop.tsx) still shows the card either way (staff should
+// know the phone is ringing), but GET /api/queue only ever lists
+// 'queued'/'claimed' rows, so a dismissed row can never render as a
+// callable queue entry.
+export type InboundAutoCreateFields = {
+  reason: string;
+  opener_hint: string;
+  score: number;
+  source: 'inbound';
+  status: 'queued' | 'dismissed';
+};
+
+export function buildInboundAutoCreateFields(callable: boolean): InboundAutoCreateFields {
+  if (callable) {
+    return { reason: 'Inbound call just now', opener_hint: 'Inbound follow-up', score: SCORE_INBOUND, source: 'inbound', status: 'queued' };
+  }
+  return {
+    reason: 'DNC - do not call back (inbound call just now)',
+    opener_hint: 'Inbound follow-up',
+    score: SCORE_INBOUND,
+    source: 'inbound',
+    status: 'dismissed',
+  };
+}
+
 export function hasRebookedThisSeason(tags: string[], openStageNames: string[]): boolean {
   if (tags.some(t => matchesAnyKeyword(t, REBOOKED_TAG_KEYWORDS))) return true;
   return openStageNames.some(s => matchesAnyKeyword(s, REBOOKED_STAGE_KEYWORDS));
@@ -155,6 +187,9 @@ export type LeadCandidate = {
   opener_hint: string;
   score: number;
   source: LeadSource;
+  // Contact-local IANA time zone, for the TCPA calling-hours gate
+  // (src/lib/leads/callingHours.ts) — null when GHL never returned one.
+  timezone: string | null;
 };
 
 function contactFullName(contact: HighLevelContact): string | null {
@@ -188,13 +223,24 @@ export function buildInboundCandidate(input: InboundCandidateInput): LeadCandida
     opener_hint: 'Inbound follow-up',
     score: SCORE_INBOUND,
     source: 'inbound_speed',
+    timezone: contact.timezone ?? null,
   };
 }
 
 // Minimal contact shape, not a full HighLevelContact: in queue.ts this comes
-// from either an opportunity's embedded `contact` ref or a getContact()
-// fallback (CrmContact) — both normalize down to this before scoring.
-export type MinimalContact = { id: string; name?: string | null; email?: string | null; phone?: string | null };
+// from a getContact() hydration (CrmContact) that normalizes down to this
+// before scoring. dnd/tags/timezone are carried through (unlike
+// name/email/phone, which are cosmetic) because the do-not-call gate and the
+// TCPA calling-hours gate both need them.
+export type MinimalContact = {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  dnd?: boolean | null;
+  tags?: string[];
+  timezone?: string | null;
+};
 
 export type QuoteFollowupCandidateInput = {
   opportunity: HighLevelOpportunity;
@@ -222,6 +268,7 @@ export function buildQuoteFollowupCandidate(input: QuoteFollowupCandidateInput):
     opener_hint: 'Quote follow-up',
     score: SCORE_QUOTE_FOLLOWUP,
     source: 'quote_followup',
+    timezone: contact.timezone ?? null,
   };
 }
 
@@ -250,6 +297,7 @@ export function buildSeasonPlayCandidate(input: SeasonPlayCandidateInput): LeadC
     opener_hint: 'Past customer',
     score: SCORE_SEASON_PLAY,
     source: 'season_play' as const,
+    timezone: contact.timezone ?? null,
   };
 
   if (play === 'rebook') {

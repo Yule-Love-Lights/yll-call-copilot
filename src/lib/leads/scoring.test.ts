@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  buildInboundAutoCreateFields,
   buildInboundCandidate,
   buildQuoteFollowupCandidate,
   buildSeasonPlayCandidate,
@@ -311,5 +312,29 @@ describe('live GHL stage vocabulary (verified 2026-07-08)', () => {
     expect(isPastCustomer([], ['November Reengagement'])).toBe(true);
     expect(isPastCustomer([], ['End of Year'])).toBe(true);
     expect(isPastCustomer([], ['Open'])).toBe(false);
+  });
+});
+
+// GET /api/inbound/recent's lazy lead auto-create — H2: a webhook-logged
+// inbound call/text with no existing lead used to insert a plain 'queued'
+// row with zero DNC check. buildInboundAutoCreateFields is the pure
+// insert-shape decision the route now makes AFTER checking isCallable.
+describe('buildInboundAutoCreateFields (inbound auto-create DNC gate)', () => {
+  it('queues normally when the contact is confirmed callable', () => {
+    expect(buildInboundAutoCreateFields(true)).toEqual({
+      reason: 'Inbound call just now',
+      opener_hint: 'Inbound follow-up',
+      score: SCORE_INBOUND,
+      source: 'inbound',
+      status: 'queued',
+    });
+  });
+
+  it('inserts a dismissed, DNC-flagged row when the contact is not callable (or unverifiable)', () => {
+    const fields = buildInboundAutoCreateFields(false);
+    expect(fields.status).toBe('dismissed');
+    expect(fields.reason).toMatch(/^DNC - do not call back/);
+    expect(fields.source).toBe('inbound');
+    expect(fields.score).toBe(SCORE_INBOUND);
   });
 });

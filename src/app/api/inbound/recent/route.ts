@@ -8,6 +8,8 @@
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
+import { getContact, isHighLevelConfigured } from '@/lib/ghl/client';
+import { buildInboundAutoCreateFields, isCallable } from '@/lib/leads/scoring';
 import type { LeadRow } from '@/lib/leads/types';
 
 const WINDOW_MS = 10 * 60 * 1000;
@@ -63,16 +65,28 @@ export async function GET() {
     let lead = existingLeadData as Pick<LeadRow, 'id' | 'reason' | 'status'> | null;
 
     if (!lead) {
+      // Do-not-call gate: an inbound call/text from a DND/DNC-tagged contact
+      // must not leave behind a standing queued row any rep can claim and
+      // call back later. Best-effort GHL lookup — an unverifiable contact
+      // (HighLevel not configured, or the lookup itself fails) fails closed
+      // (callable stays false) rather than defaulting to callable.
+      let callable = false;
+      if (isHighLevelConfigured()) {
+        try {
+          const contact = await getContact(contactId);
+          callable = isCallable({ dnd: contact.dnd, tags: contact.tags ?? [], stageNames: [] });
+        } catch (err) {
+          console.error(`Could not verify do-not-call status for inbound contact ${contactId}:`, err);
+        }
+      }
+
       const { data: createdLeadData, error: createError } = await supabase
         .from('leads')
         .insert({
           ghl_contact_id: contactId,
           full_name: row.detail?.name ?? null,
           phone: row.detail?.phone ?? null,
-          reason: 'Inbound call just now',
-          opener_hint: 'Inbound follow-up',
-          score: 100,
-          source: 'inbound',
+          ...buildInboundAutoCreateFields(callable),
         })
         .select('id, reason, status')
         .single();

@@ -8,6 +8,7 @@
 //
 // No cron here — this only runs when a human clicks "Build queue."
 
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseServerClient, isSupabaseConfigured } from '../supabase';
 import {
   getContact,
@@ -38,7 +39,7 @@ export const MAX_LEADS_PER_SOURCE = 100;
 
 export type BuildQueueResult = { added: number; refreshed: number };
 
-async function collectCandidates(now: Date): Promise<LeadCandidate[]> {
+async function collectCandidates(now: Date, supabase: SupabaseClient): Promise<LeadCandidate[]> {
   const stageNames = await getStageNameMap();
   await delay(GHL_RATE_LIMIT_GAP_MS);
   const openOpportunities = await getOpenOpportunities();
@@ -75,9 +76,16 @@ async function collectCandidates(now: Date): Promise<LeadCandidate[]> {
     }
   }
 
-  // Source 2: quote follow-ups. An opportunity's embedded `contact` ref
-  // covers the common case with no extra call; only fall back to
-  // getContact() (sequential, gapped) when GHL didn't embed one.
+  // Source 2: quote follow-ups. An opportunity's embedded `contact` ref only
+  // ever carries name/email/phone — GHL's opportunity search never embeds
+  // dnd/tags — so it is never enough on its own to clear the do-not-call
+  // gate below. Every opportunity that clears the cheap status/stage/age
+  // filters here is hydrated via getContact() (sequential, gapped) so the
+  // gate sees this contact's REAL dnd flag and tags; this only runs for
+  // actual candidates, so the added GHL traffic stays small. A contact that
+  // fails to hydrate is excluded rather than treated as callable (fail
+  // closed) — there's no other DNC signal for it, and sitting out one
+  // build is far cheaper than dialing someone who opted out.
   let quoteCount = 0;
   for (const opp of openOpportunities) {
     if (quoteCount >= MAX_LEADS_PER_SOURCE) break;
@@ -86,24 +94,29 @@ async function collectCandidates(now: Date): Promise<LeadCandidate[]> {
     if (!isQuoteSentStage(stageName)) continue;
     if (!olderThanDays(opp.updatedAt ?? opp.createdAt, 3, now)) continue;
 
-    let contactRef: MinimalContact | null = opp.contact
-      ? { id: opp.contact.id, name: opp.contact.name, email: opp.contact.email, phone: opp.contact.phone }
-      : null;
-    if (!contactRef) {
-      try {
-        const hydrated = await getContact(opp.contactId);
-        contactRef = { id: hydrated.id, name: hydrated.fullName ?? null, email: hydrated.email ?? null, phone: hydrated.phone ?? null };
-      } catch (err) {
-        console.error(`Could not hydrate contact ${opp.contactId} for a quote follow-up candidate:`, err);
-      }
-      await delay(GHL_RATE_LIMIT_GAP_MS);
+    let contactRef: MinimalContact | null = null;
+    try {
+      const hydrated = await getContact(opp.contactId);
+      contactRef = {
+        id: hydrated.id,
+        name: hydrated.fullName ?? null,
+        email: hydrated.email ?? null,
+        phone: hydrated.phone ?? null,
+        dnd: hydrated.dnd,
+        tags: hydrated.tags ?? [],
+      };
+    } catch (err) {
+      console.error(`Could not hydrate contact ${opp.contactId} for a quote follow-up candidate:`, err);
+      const { error: logError } = await supabase.from('events_log').insert({
+        kind: 'queue_dnc_hydration_failed',
+        detail: { ghl_contact_id: opp.contactId, source: 'quote_followup' },
+      });
+      if (logError) console.error('Log queue_dnc_hydration_failed event failed:', logError);
     }
+    await delay(GHL_RATE_LIMIT_GAP_MS);
     if (!contactRef) continue;
 
-    // The embedded contact ref carries no tags/dnd, so this gate can only
-    // see the contact's opportunity stage names — a dnd-flagged contact
-    // slips this source until hydration adds the flag. Documented gap.
-    if (!isCallable({ dnd: undefined, tags: [], stageNames: stageNamesFor(opp.contactId) })) continue;
+    if (!isCallable({ dnd: contactRef.dnd, tags: contactRef.tags ?? [], stageNames: stageNamesFor(opp.contactId) })) continue;
 
     const candidate = buildQuoteFollowupCandidate({ opportunity: opp, stageName, contact: contactRef, now });
     if (candidate) {
@@ -136,7 +149,7 @@ export async function buildQueue(): Promise<BuildQueueResult> {
   const supabase = getSupabaseServerClient()!;
   const now = new Date();
 
-  const candidates = await collectCandidates(now);
+  const candidates = await collectCandidates(now, supabase);
 
   // Dedupe by contact — a person could plausibly match more than one source
   // in the same build (e.g. a past customer who also just requested a new

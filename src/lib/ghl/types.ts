@@ -23,6 +23,15 @@ export type CrmContact = {
   city?: string;
   state?: string;
   postalCode?: string;
+  // Carried through (unlike the rest of this redacted shape) because the
+  // Phase 2 lead queue needs them post-hydration to run the do-not-call gate
+  // (isCallable) — see queue.ts's quote-follow-up source, which used to
+  // score a hydrated contact without ever reading these two back off it.
+  dnd?: boolean;
+  tags?: string[];
+  // IANA time zone (e.g. "America/Chicago"), used by the TCPA calling-hours
+  // gate (src/lib/leads/callingHours.ts) — contact-local, not the server's.
+  timezone?: string;
 };
 
 // ─── HighLevel API shape (subset) ─────────────────────────────────────────
@@ -47,9 +56,13 @@ export type HighLevelContact = {
   dnd?: boolean;
   // Phase 2 lead queue (src/lib/leads/queue.ts) needs recency to find fresh
   // inbound inquiries. Field names verified against a LIVE contact payload
-  // on 2026-07-08 (dateAdded, dateUpdated, tags, dnd all present).
+  // on 2026-07-08 (dateAdded, dateUpdated, tags, dnd, timezone all present).
   dateAdded?: string;
   dateUpdated?: string;
+  // IANA time zone (e.g. "America/Chicago") — feeds the TCPA calling-hours
+  // gate (src/lib/leads/callingHours.ts) so a callback is scored against the
+  // CONTACT's local time, not the server's or the company's.
+  timezone?: string;
 };
 
 // ─── Opportunity shape (subset) ────────────────────────────────────────────
