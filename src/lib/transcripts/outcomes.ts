@@ -20,8 +20,23 @@ export type MatchableTranscript = {
   customer_name?: string | null;
 };
 
-const BOOKED_KEYWORDS = ['signed', 'won', 'booked'];
-const NOT_BOOKED_KEYWORDS = ['lost', 'dead', 'not'];
+// Vocabulary verified against the LIVE GHL pipelines on 2026-07-08 (stage
+// names like "⏰Approved", "⭐Installed", "💼Job in Jobber", "Job Completed",
+// "⛔Out of Budget", "Declined for 2025", "No Response/Abandoned"). The bare
+// 'not' keyword was dropped: as a substring it also matched unrelated words.
+const BOOKED_KEYWORDS = ['signed', 'won', 'booked', 'approved', 'installed', 'completed', 'closed', 'job in jobber'];
+const NOT_BOOKED_KEYWORDS = [
+  'lost',
+  'dead',
+  'declined',
+  'abandoned',
+  'out of budget',
+  'spam',
+  'no response',
+  'do not call',
+  'not booked',
+  'not interested',
+];
 
 // Exported for the unit tests — a stage name maps to at most one outcome;
 // 'booked' keywords are checked first so a name like "Not Booked - Lost"

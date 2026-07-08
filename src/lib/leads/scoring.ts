@@ -80,7 +80,10 @@ export function seasonPlay(date: Date): 'rebook' | 'permanent' {
 }
 
 // ─── Source 1: inbound speed-to-lead ────────────────────────────────────────
-const FRESH_INQUIRY_STAGE_KEYWORDS = ['new', 'lead', 'inquiry', 'quote requested'];
+// 'interested' and 'contacted' verified against the live GHL pipelines
+// ("Interested In Services", "Contacted", "Interested"). 'open' deliberately
+// excluded: "Previous Year Open" is a rebook signal, not a fresh inquiry.
+const FRESH_INQUIRY_STAGE_KEYWORDS = ['new', 'lead', 'inquiry', 'quote requested', 'interested', 'contacted'];
 const FRESH_INQUIRY_TAG_KEYWORDS = ['new lead', 'inquiry', 'quote requested', 'new inquiry'];
 
 export function isFreshInquiry(stageName: string | null | undefined, tags: string[]): boolean {
@@ -89,7 +92,8 @@ export function isFreshInquiry(stageName: string | null | undefined, tags: strin
 }
 
 // ─── Source 2: quote follow-ups ─────────────────────────────────────────────
-const QUOTE_WORD_KEYWORDS = ['quote', 'estimate', 'proposal'];
+// 'bid' verified against the live GHL pipelines ("📨Bid Sent", "Bid Sent").
+const QUOTE_WORD_KEYWORDS = ['quote', 'estimate', 'proposal', 'bid'];
 const SENT_WORD_KEYWORDS = ['sent', 'delivered'];
 
 export function isQuoteSentStage(stageName: string | null | undefined): boolean {
@@ -106,8 +110,27 @@ const REBOOKED_STAGE_KEYWORDS = ['rebook', 'renewed', 'renewal'];
 const PERMANENT_TAG_KEYWORDS = ['permanent lighting', 'permanent', 'year-round lighting', 'year round lighting'];
 const PERMANENT_STAGE_KEYWORDS = ['permanent'];
 
-export function isPastCustomer(tags: string[]): boolean {
-  return tags.some(t => matchesAnyKeyword(t, PAST_CUSTOMER_TAG_KEYWORDS));
+// Stage names verified live: "Previous Year Open", "Previous Year Quotes",
+// "November Reengagement", "🎄End of Year" all mark last season's customers.
+const PAST_CUSTOMER_STAGE_KEYWORDS = ['previous year', 'reengagement', 'end of year'];
+
+export function isPastCustomer(tags: string[], openStageNames: string[] = []): boolean {
+  if (tags.some(t => matchesAnyKeyword(t, PAST_CUSTOMER_TAG_KEYWORDS))) return true;
+  return openStageNames.some(s => matchesAnyKeyword(s, PAST_CUSTOMER_STAGE_KEYWORDS));
+}
+
+// ─── Do-not-call gate ────────────────────────────────────────────────────────
+// Verified live: this GHL location has "DO NOT CALL", "Spam Calls", and
+// "Pause Communications Until October" stages, and contacts carry a `dnd`
+// flag. A contact matching ANY of these must never enter the call queue,
+// whatever the other signals say.
+const DO_NOT_CALL_KEYWORDS = ['do not call', 'dnc', 'spam', 'pause communications'];
+
+export function isCallable(input: { dnd?: boolean | null; tags: string[]; stageNames: string[] }): boolean {
+  if (input.dnd === true) return false;
+  if (input.tags.some(t => matchesAnyKeyword(t, DO_NOT_CALL_KEYWORDS))) return false;
+  if (input.stageNames.some(s => matchesAnyKeyword(s, DO_NOT_CALL_KEYWORDS))) return false;
+  return true;
 }
 
 export function hasRebookedThisSeason(tags: string[], openStageNames: string[]): boolean {
@@ -211,7 +234,7 @@ export type SeasonPlayCandidateInput = {
 export function buildSeasonPlayCandidate(input: SeasonPlayCandidateInput): LeadCandidate | null {
   const { contact, openStageNames, play } = input;
   const tags = contact.tags ?? [];
-  if (!isPastCustomer(tags)) return null;
+  if (!isPastCustomer(tags, openStageNames)) return null;
 
   // The play itself names the vertical: rebook season is the holiday book,
   // the off-season play pitches permanent. Slugs match the seeded defaults

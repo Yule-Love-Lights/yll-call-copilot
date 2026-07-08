@@ -17,6 +17,7 @@ import {
   SCORE_INBOUND,
   SCORE_QUOTE_FOLLOWUP,
   SCORE_SEASON_PLAY,
+  isCallable,
 } from './scoring';
 import type { HighLevelContact, HighLevelOpportunity } from '../ghl/types';
 
@@ -268,5 +269,47 @@ describe('decideUpsert', () => {
 
   it('skips a dismissed lead (a rep decision a rebuild should not undo)', () => {
     expect(decideUpsert({ id: 'lead1', status: 'dismissed' })).toEqual({ action: 'skip' });
+  });
+});
+
+describe('isCallable (do-not-call gate, live-verified stage vocabulary)', () => {
+  it('blocks a dnd-flagged contact', () => {
+    expect(isCallable({ dnd: true, tags: [], stageNames: [] })).toBe(false);
+  });
+
+  it('blocks DO NOT CALL / Spam Calls / Pause Communications stages', () => {
+    expect(isCallable({ tags: [], stageNames: ['DO NOT CALL'] })).toBe(false);
+    expect(isCallable({ tags: [], stageNames: ['Spam Calls'] })).toBe(false);
+    expect(isCallable({ tags: [], stageNames: ['Pause Communications Until October'] })).toBe(false);
+  });
+
+  it('blocks a dnc tag', () => {
+    expect(isCallable({ tags: ['DNC'], stageNames: [] })).toBe(false);
+  });
+
+  it('allows a normal contact', () => {
+    expect(isCallable({ dnd: false, tags: ['past customer'], stageNames: ['Approved'] })).toBe(true);
+  });
+});
+
+describe('live GHL stage vocabulary (verified 2026-07-08)', () => {
+  it('isQuoteSentStage matches the real Bid Sent stages', () => {
+    expect(isQuoteSentStage('Bid Sent')).toBe(true);
+    expect(isQuoteSentStage('Sent Quote')).toBe(true);
+    expect(isQuoteSentStage('Proposal Sent')).toBe(true);
+    expect(isQuoteSentStage('Make Quote')).toBe(false);
+  });
+
+  it('isFreshInquiry matches Interested/Contacted without swallowing rebook stages', () => {
+    expect(isFreshInquiry('Interested In Services', [])).toBe(true);
+    expect(isFreshInquiry('Contacted', [])).toBe(true);
+    expect(isFreshInquiry('Previous Year Open', [])).toBe(false);
+  });
+
+  it('isPastCustomer accepts the rebook-flavored stage names', () => {
+    expect(isPastCustomer([], ['Previous Year Open'])).toBe(true);
+    expect(isPastCustomer([], ['November Reengagement'])).toBe(true);
+    expect(isPastCustomer([], ['End of Year'])).toBe(true);
+    expect(isPastCustomer([], ['Open'])).toBe(false);
   });
 });

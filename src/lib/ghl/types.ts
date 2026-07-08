@@ -42,10 +42,12 @@ export type HighLevelContact = {
   postalCode?: string;
   customFields?: Array<{ id: string; value?: string }>;
   tags?: string[];
+  // GHL's do-not-disturb flag — the queue builder must never queue a contact
+  // with dnd true.
+  dnd?: boolean;
   // Phase 2 lead queue (src/lib/leads/queue.ts) needs recency to find fresh
-  // inbound inquiries. Best-effort field names — HighLevel's contact list
-  // response has not been verified live against these; adjust if a real
-  // payload uses different keys.
+  // inbound inquiries. Field names verified against a LIVE contact payload
+  // on 2026-07-08 (dateAdded, dateUpdated, tags, dnd all present).
   dateAdded?: string;
   dateUpdated?: string;
 };

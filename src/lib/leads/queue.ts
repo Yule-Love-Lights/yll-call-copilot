@@ -23,6 +23,7 @@ import {
   buildQuoteFollowupCandidate,
   buildSeasonPlayCandidate,
   decideUpsert,
+  isCallable,
   isQuoteSentStage,
   olderThanDays,
   seasonPlay,
@@ -63,6 +64,10 @@ async function collectCandidates(now: Date): Promise<LeadCandidate[]> {
   let inboundCount = 0;
   for (const c of contacts) {
     if (inboundCount >= MAX_LEADS_PER_SOURCE) break;
+    // Do-not-call gate first: dnd flag, DNC-ish tags, or a DNC-ish stage
+    // (live pipelines include "DO NOT CALL", "Spam Calls", "Pause
+    // Communications Until October") keep a contact out of the queue.
+    if (!isCallable({ dnd: c.dnd, tags: c.tags ?? [], stageNames: stageNamesFor(c.id) })) continue;
     const candidate = buildInboundCandidate({ contact: c, stageName: stageNamesFor(c.id)[0] ?? null, now });
     if (candidate) {
       candidates.push(candidate);
@@ -95,6 +100,11 @@ async function collectCandidates(now: Date): Promise<LeadCandidate[]> {
     }
     if (!contactRef) continue;
 
+    // The embedded contact ref carries no tags/dnd, so this gate can only
+    // see the contact's opportunity stage names — a dnd-flagged contact
+    // slips this source until hydration adds the flag. Documented gap.
+    if (!isCallable({ dnd: undefined, tags: [], stageNames: stageNamesFor(opp.contactId) })) continue;
+
     const candidate = buildQuoteFollowupCandidate({ opportunity: opp, stageName, contact: contactRef, now });
     if (candidate) {
       candidates.push(candidate);
@@ -110,6 +120,7 @@ async function collectCandidates(now: Date): Promise<LeadCandidate[]> {
   let seasonCount = 0;
   for (const c of contacts) {
     if (seasonCount >= MAX_LEADS_PER_SOURCE) break;
+    if (!isCallable({ dnd: c.dnd, tags: c.tags ?? [], stageNames: stageNamesFor(c.id) })) continue;
     const candidate = buildSeasonPlayCandidate({ contact: c, openStageNames: stageNamesFor(c.id), play });
     if (candidate) {
       candidates.push(candidate);
