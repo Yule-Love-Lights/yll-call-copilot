@@ -7,6 +7,7 @@
 // POST /api/calls to save.
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { CALL_OUTCOMES, FOLLOWUP_OUTCOMES, type CallOutcome } from '@/lib/leads/types';
 
 type LeadDetail = {
@@ -327,6 +328,7 @@ function FollowupCard({ followup, sendEnabled, onSaved }: { followup: Followup; 
 }
 
 export default function CallConsole({ leadId, initialCallId = null }: { leadId: string; initialCallId?: string | null }) {
+  const router = useRouter();
   const [data, setData] = useState<DetailResponse | null>(null);
   const [status, setStatus] = useState<'loading' | 'done' | 'error'>('loading');
 
@@ -357,6 +359,17 @@ export default function CallConsole({ leadId, initialCallId = null }: { leadId: 
     load();
   }, [load]);
 
+  // A stale ?callId= surviving in the URL (a refresh, browser back/forward,
+  // or a restored tab on this same /call/[leadId]?callId=X after that call
+  // already saved) must not re-arm as an update target once the lead itself
+  // shows as already 'done' -- logging a new outcome at that point should
+  // insert a fresh call, never UPDATE the one that finished it. Derived at
+  // use rather than corrected via an effect (no setState-in-effect this
+  // way); stripping the param from the URL on save below closes the more
+  // common case (a fresh reload of the SAME tab), this covers a stale tab
+  // that never reloaded.
+  const effectiveCallId = data?.lead?.status === 'done' ? null : pendingCallId;
+
   async function onSave() {
     if (!outcome) return;
     setSaving(true);
@@ -366,7 +379,7 @@ export default function CallConsole({ leadId, initialCallId = null }: { leadId: 
       const res = await fetch('/api/calls', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leadId, outcome, notes, transcript: transcript || undefined, callId: pendingCallId ?? undefined }),
+        body: JSON.stringify({ leadId, outcome, notes, transcript: transcript || undefined, callId: effectiveCallId ?? undefined }),
       });
       const json = await res.json();
       if (!json.saved) {
@@ -374,6 +387,12 @@ export default function CallConsole({ leadId, initialCallId = null }: { leadId: 
         return;
       }
       setPendingCallId(null);
+      // Strip ?callId= now that it has done its job -- otherwise a later
+      // refresh or back/forward navigation on this same URL re-arms
+      // pendingCallId to the call we just finished, and a second, separate
+      // outcome logged in this tab would silently UPDATE it instead of
+      // inserting a fresh row (see POST /api/calls's callId branch).
+      router.replace(`/call/${leadId}`);
 
       const parts = ['Call saved.'];
       if (json.transcript?.created) {
@@ -393,6 +412,12 @@ export default function CallConsole({ leadId, initialCallId = null }: { leadId: 
       setTranscript('');
       setOutcome(null);
       await load();
+    } catch {
+      // A dropped connection, proxy/timeout error, or a non-JSON error page
+      // (res.json() throwing) must not look like nothing happened -- the
+      // outcome/notes/transcript below are left exactly as the rep typed
+      // them (none of the success-path resets above ran).
+      setSaveError('Could not save the call — check your connection and try again. Your notes have not been lost.');
     } finally {
       setSaving(false);
     }

@@ -70,10 +70,27 @@ export async function POST(request: Request) {
     .eq('id', session.call_id);
   if (callEndError) console.error('Mark call ended failed:', callEndError);
 
+  // Re-read transcript_running now, AFTER marking the session ended, rather
+  // than trusting the single copy read at the top of this request. A
+  // /api/live/segment call already in flight when the rep clicked "End
+  // call" writes its line to this same column a few seconds later (its own
+  // Claude call for the coaching card runs first) — re-reading here closes
+  // most of that window cheaply. A segment landing in the sliver between
+  // THIS read and the transcripts insert just below is still possible in
+  // principle, but is now a matter of a couple hundred milliseconds rather
+  // than however long that segment's Claude call took.
+  const { data: refreshedSessionData, error: refreshError } = await supabase
+    .from('live_sessions')
+    .select('transcript_running')
+    .eq('id', sessionId)
+    .maybeSingle();
+  if (refreshError) console.error('Re-read live session transcript failed:', refreshError);
+  const finalTranscript = (refreshedSessionData as Pick<LiveSessionRow, 'transcript_running'> | null)?.transcript_running ?? session.transcript_running;
+
   let transcriptId: string | null = null;
   const extraction: { attempted: boolean; done: number; failed: number } = { attempted: false, done: 0, failed: 0 };
 
-  if (session.transcript_running.trim()) {
+  if (finalTranscript.trim()) {
     const { data: callData } = await supabase.from('calls').select('lead_id').eq('id', session.call_id).maybeSingle();
     const leadId = (callData as Pick<CallRow, 'lead_id'> | null)?.lead_id ?? null;
 
@@ -105,7 +122,7 @@ export async function POST(request: Request) {
         customer_name: lead?.full_name ?? null,
         customer_phone: lead?.phone ?? null,
         called_at: session.started_at,
-        raw_text: session.transcript_running,
+        raw_text: finalTranscript,
       })
       .select('id')
       .single();
