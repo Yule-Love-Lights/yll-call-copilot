@@ -5,6 +5,8 @@
 // caller (src/app/api/ingest/transcripts/route.ts) into the same
 // {name, text} shape before reaching this module.
 
+import { looksLikeRingCentralTranscript, parseRingCentralTranscript } from './ringcentral';
+
 export type UploadedFile = { name: string; text: string };
 
 export type ParsedTranscript = {
@@ -215,11 +217,34 @@ function parseCsvFile(file: UploadedFile): ParsedTranscript[] {
     });
 }
 
+// A RingCentral export's body (see ringcentral.ts) has its own
+// "Speaker | date" turn-header shape instead of a "Label: value" header
+// block, and its call date/time lives only in the FILENAME, not in the
+// body. A single uploaded file (or small ad-hoc batch here) can't compute
+// the corpus-wide speaker frequency repDetection.ts needs to tell a rep
+// from a customer, so customer_name is left null — extraction still runs
+// fine on that; only outcome-matching (which also tries customer_phone)
+// is skipped for this transcript. The disk-folder bulk loader
+// (scripts/ingest-ringcentral.mjs) is the path that CAN compute that
+// frequency across the whole export and fill customer_name in.
+function parseRingCentralFile(file: UploadedFile): ParsedTranscript {
+  const parsed = parseRingCentralTranscript(file.name, file.text);
+  return {
+    source_file: file.name,
+    customer_name: null,
+    customer_phone: null,
+    called_at: parsed.called_at,
+    raw_text: parsed.raw_text,
+  };
+}
+
 export function parseTranscriptFiles(files: UploadedFile[]): ParsedTranscript[] {
   const out: ParsedTranscript[] = [];
   for (const file of files) {
     if (file.name.toLowerCase().endsWith('.csv')) {
       out.push(...parseCsvFile(file));
+    } else if (looksLikeRingCentralTranscript(file.text)) {
+      out.push(parseRingCentralFile(file));
     } else {
       // .txt is the only other type the API route accepts.
       out.push(parseTxtFile(file));

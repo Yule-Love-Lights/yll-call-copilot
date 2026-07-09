@@ -44,6 +44,14 @@ TEMP-LOGIN*
 # vercel
 .vercel
 
+# per-machine Claude Code config (launch.json, etc.) -- never committed
+/.claude/
+
+# real RingCentral call transcripts (customer/rep conversations) -- never
+# committed; scripts/ingest-ringcentral.mjs reads this folder from disk.
+# Synthetic fixtures for tests live in fixtures/ringcentral/ instead.
+/Transcripts/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
