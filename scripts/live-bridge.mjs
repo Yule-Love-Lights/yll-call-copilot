@@ -20,6 +20,7 @@
 // the Next.js build, so it does not get automatic env loading).
 
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
@@ -57,7 +58,7 @@ function envVar(name, fallback) {
 const DEEPGRAM_API_KEY = envVar('DEEPGRAM_API_KEY');
 const LIVE_BRIDGE_SECRET = envVar('LIVE_BRIDGE_SECRET');
 const LIVE_APP_BASE_URL = envVar('LIVE_APP_BASE_URL', 'http://localhost:3000');
-const PORT = Number(envVar('LIVE_BRIDGE_PORT', '8787'));
+const PORT = Number(process.env.PORT || envVar('LIVE_BRIDGE_PORT', '8787'));
 
 if (!DEEPGRAM_API_KEY) {
   console.error('DEEPGRAM_API_KEY is not set (checked shell env and .env.local) -- the bridge cannot transcribe without it.');
@@ -71,6 +72,12 @@ if (!LIVE_BRIDGE_SECRET) {
 }
 
 const deepgram = new DefaultDeepgramClient({ apiKey: DEEPGRAM_API_KEY });
+
+// PORT: a managed host (Railway/Render/Fly) assigns the public port via the
+// PORT env var and expects the process to bind to it; LIVE_BRIDGE_PORT/8787 is
+// only the local-dev fallback. process.env.PORT wins so the same file runs
+// unchanged whether hosted or local.
+// (see the const PORT line above for the resolved value)
 
 // A caller-side gap at least this long is worth reporting as a SILENCE
 // trigger (see src/lib/live/engine.ts's SILENCE_THRESHOLD_MS, 4000ms --
@@ -187,7 +194,18 @@ function handleTwilioConnection(ws) {
   });
 }
 
-const wss = new WebSocketServer({ port: PORT });
+// Attach the WebSocket server to a plain HTTP server rather than binding the
+// ws server to the port directly. Two reasons: managed hosts (Railway/Render/
+// Fly) health-check the service with an ordinary HTTP GET and mark the deploy
+// unhealthy if nothing answers, and the same server both serves that 200 and
+// upgrades the Twilio Media Stream connection on one port. GET / -> "ok".
+const httpServer = createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('yll-call-copilot live-coaching bridge: ok\n');
+});
+const wss = new WebSocketServer({ server: httpServer });
 wss.on('connection', handleTwilioConnection);
-console.log(`Live coaching bridge listening on ws://localhost:${PORT}.`);
-console.log('Twilio Media Streams requires a wss:// URL in production -- put a TLS tunnel (e.g. ngrok) in front of this port and set LIVE_BRIDGE_URL to it.');
+httpServer.listen(PORT, () => {
+  console.log(`Live coaching bridge listening on :${PORT} (HTTP health + WebSocket upgrade).`);
+  console.log('Hosted: point LIVE_BRIDGE_URL at the public wss:// URL of this service. Local: put a TLS tunnel in front of this port.');
+});
