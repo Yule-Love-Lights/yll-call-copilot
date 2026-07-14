@@ -5,6 +5,15 @@
 // draftForInboundEmail() pipeline the webhook and /api/inbox/check use, so
 // GET /api/inbox (which always shows the newest draft per inbound email)
 // picks up the regenerated reply automatically.
+//
+// draftForInboundEmail claims the inbound_emails row with a status
+// 'new' -> 'drafted' conditional update (src/lib/email/ingest.ts) so a
+// concurrent /api/inbox/check retry sweep can't double-draft it. A redraft
+// target is normally already 'drafted' (the first draft succeeded), so this
+// route resets it to 'new' first to hand the claim back before requesting a
+// new one -- draftForInboundEmail owns the status from there (including
+// reverting to 'new' again on a Claude/validation failure), so this route no
+// longer needs its own separate revert-on-failure step.
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
@@ -52,15 +61,14 @@ export async function POST(_request: Request, { params }: { params: Promise<{ dr
   }
   const inboundEmail = inboundEmailData as Pick<InboundEmailRow, 'id' | 'subject' | 'body' | 'from_name'>;
 
+  const { error: resetError } = await supabase.from('inbound_emails').update({ status: 'new' }).eq('id', inboundEmail.id);
+  if (resetError) console.error('Reset inbound email to new before redraft failed:', resetError);
+
   const result = await draftForInboundEmail(supabase, inboundEmail);
   if (!result.ok) {
-    // The prior draft was just superseded above, so this email would
-    // otherwise have no active draft AND sit outside the retry sweep in
-    // POST /api/inbox/check (which only rescans status='new' rows) --
-    // flipping it back to 'new' here is what makes that sweep, or a second
-    // manual redraft, able to recover it.
-    const { error: revertError } = await supabase.from('inbound_emails').update({ status: 'new' }).eq('id', inboundEmail.id);
-    if (revertError) console.error('Revert inbound email to new after failed redraft failed:', revertError);
+    // draftForInboundEmail already reverts the row to 'new' on a claim or
+    // Claude/validation failure -- the retry sweep in POST /api/inbox/check
+    // or a second manual redraft can recover it from there.
     return NextResponse.json({ configured: true, redrafted: false, error: result.error }, { status: 502 });
   }
 

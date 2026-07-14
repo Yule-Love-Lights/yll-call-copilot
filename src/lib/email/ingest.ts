@@ -39,19 +39,33 @@ type OfferElement = {
   key?: unknown;
   customer_line?: unknown;
   applies_to?: unknown;
+  active?: unknown;
 };
 
-function appliesToVertical(applies_to: unknown, verticalSlug: string): boolean {
+// applies_to is authored as either an array ('["holiday","permanent"]'), a
+// single slug, or a comma-list string ("holiday,permanent") -- and 'all' (or
+// 'all' as one entry of a comma-list) is the wildcard meaning every vertical,
+// not a literal slug to match against verticalSlug. Exported for direct unit
+// coverage (see ingest.test.ts) rather than only exercised indirectly through
+// loadGuarantees/ingestInboundEmail.
+export function appliesToVertical(applies_to: unknown, verticalSlug: string): boolean {
   if (applies_to == null) return true;
-  const list = Array.isArray(applies_to) ? applies_to : [applies_to];
-  return list.length === 0 || list.includes(verticalSlug);
+  const rawList = Array.isArray(applies_to) ? applies_to : [applies_to];
+  const list = rawList
+    .flatMap(item => (typeof item === 'string' ? item.split(',') : [item]))
+    .map(item => (typeof item === 'string' ? item.trim() : item))
+    .filter(item => item !== '');
+  if (list.length === 0) return true;
+  if (list.includes('all')) return true;
+  return list.includes(verticalSlug);
 }
 
 // Reads the latest offer_versions row (ships in sibling migration 0014) for
 // the guarantee lines to weave into a reply. Degrades to DEFAULT_GUARANTEES
 // on a missing table, an empty/malformed row, an unreachable table, or any
-// other error -- this must never block drafting.
-async function loadGuarantees(supabase: SupabaseClient, verticalSlug: string): Promise<GuaranteeOption[]> {
+// other error -- this must never block drafting. Exported for direct unit
+// coverage (see ingest.test.ts).
+export async function loadGuarantees(supabase: SupabaseClient, verticalSlug: string): Promise<GuaranteeOption[]> {
   try {
     const { data, error } = await supabase
       .from('offer_versions')
@@ -68,6 +82,7 @@ async function loadGuarantees(supabase: SupabaseClient, verticalSlug: string): P
     if (!Array.isArray(elements) || elements.length === 0) return DEFAULT_GUARANTEES;
 
     const options: GuaranteeOption[] = (elements as OfferElement[])
+      .filter(el => el.active !== false)
       .filter(el => appliesToVertical(el.applies_to, verticalSlug))
       .filter((el): el is OfferElement & { key: string; customer_line: string } => typeof el.key === 'string' && typeof el.customer_line === 'string' && el.customer_line.trim().length > 0)
       .map(el => ({ key: el.key, text: el.customer_line }));
@@ -86,10 +101,35 @@ export type DraftResult = { ok: true } | { ok: false; error: string };
 // ingestInboundEmail below (fresh ingest) and POST /api/inbox/[id]/redraft
 // (a rep-triggered regenerate) and the retry sweep in POST /api/inbox/check
 // (anything left at 'new' by a prior failed attempt here).
+//
+// Claims the row (status 'new' -> 'drafted') BEFORE the slow Claude call
+// (5-20s) so two callers racing the same row -- the check retry sweep vs the
+// webhook's own draft, or two overlapping /api/inbox/check clicks -- can't
+// both draft (and bill) the same email. Same conditional-update-before-slow-
+// work pattern as POST /api/inbox/[draftId]/send's claim-before-send. A
+// caller that redrafts an already-'drafted'/'sent' row (the redraft route)
+// must reset it to 'new' first so this claim can succeed.
 export async function draftForInboundEmail(
   supabase: SupabaseClient,
   inboundEmail: Pick<InboundEmailRow, 'id' | 'subject' | 'body' | 'from_name'>,
 ): Promise<DraftResult> {
+  const { data: claimedRows, error: claimError } = await supabase
+    .from('inbound_emails')
+    .update({ status: 'drafted' })
+    .eq('id', inboundEmail.id)
+    .eq('status', 'new')
+    .select('id');
+  if (claimError) {
+    console.error('Claim inbound email for drafting failed:', claimError);
+    return { ok: false, error: 'Could not claim the email for drafting.' };
+  }
+  if (!claimedRows || claimedRows.length === 0) {
+    // Someone else already owns this row (another in-flight draft, or it was
+    // already sent/dismissed) -- not an error, just a no-op so this caller
+    // doesn't double-draft.
+    return { ok: false, error: 'Already claimed by another drafting attempt.' };
+  }
+
   try {
     const verticalSlug = detectVerticalSlug(inboundEmail.subject, inboundEmail.body);
     const { verticalName, playbook } = await loadPlaybookForVertical(supabase, verticalSlug);
@@ -121,10 +161,14 @@ export async function draftForInboundEmail(
 
     return { ok: true };
   } catch (err) {
-    // Best-effort: the row stays 'new' (or stays as it was), which
-    // POST /api/inbox/check's retry sweep and a rep's manual "Redraft"
-    // button can both pick up later. Never throw out of here -- the caller
-    // (an ingest, a redraft click, or the retry sweep) must keep going.
+    // Release the claim: this row was just flipped to 'drafted' above, but
+    // no draft row exists (Claude/validation failed, or the insert/status
+    // write did) -- revert to 'new' so POST /api/inbox/check's retry sweep
+    // and a rep's manual "Redraft" button can both pick it up later. Never
+    // throw out of here -- the caller (an ingest, a redraft click, or the
+    // retry sweep) must keep going.
+    const { error: revertError } = await supabase.from('inbound_emails').update({ status: 'new' }).eq('id', inboundEmail.id);
+    if (revertError) console.error('Revert inbound email to new after failed draft failed:', revertError);
     console.error('Draft inbound email reply failed (left as new for retry):', err);
     return { ok: false, error: err instanceof Error ? err.message : 'Could not draft a reply.' };
   }

@@ -11,6 +11,18 @@
 // against a live delivery (same caveat as leads/webhook.ts), so this reads
 // defensively from either a flat shape (contactId/subject/body at the top
 // level) or nested `contact`/`message`/`email` objects.
+//
+// When GHL omits every id field we'd otherwise use as source_message_id, a
+// null id would defeat src/lib/email/ingest.ts's dedup (Postgres unique
+// treats every NULL as distinct, and the existence check there skips null
+// ids entirely) -- a redelivered webhook (e.g. GHL timing out waiting on our
+// synchronous Claude drafting call) would then insert and draft the same
+// email twice. So this derives a deterministic id from the contact + content
+// instead of leaving it null: the same contact sending the same
+// subject/body always produces the same id, so a retry of the identical
+// payload is deduped the same way a real message id would be.
+
+import { createHash } from 'node:crypto';
 
 export type InboundEmailEvent = {
   // False for anything that isn't an inbound email with an identifiable
@@ -44,6 +56,16 @@ function fullNameFrom(root: Record<string, unknown>, contact: Record<string, unk
   return joined || null;
 }
 
+// Deterministic stand-in for a GHL message id when the payload has none --
+// same contact + same subject/body always hashes to the same id, so a
+// redelivery of the identical email is still deduped by
+// src/lib/email/ingest.ts's existing source_message_id unique + existence
+// check (see the file-header comment).
+function deriveMessageId(contactId: string, subject: string | null, body: string): string {
+  const hash = createHash('sha256').update(`${subject ?? ''}\n${body}`).digest('hex').slice(0, 24);
+  return `derived:${contactId}:${hash}`;
+}
+
 export function mapGhlInboundEmailPayload(payload: unknown): InboundEmailEvent {
   const empty: InboundEmailEvent = {
     recognized: false,
@@ -72,7 +94,7 @@ export function mapGhlInboundEmailPayload(payload: unknown): InboundEmailEvent {
 
   const contactId = asString(root.contactId) ?? asString(root.contact_id) ?? asString(contact.id);
   const conversationId = asString(root.conversationId) ?? asString(root.conversation_id);
-  const sourceMessageId = asString(root.messageId) ?? asString(root.emailMessageId) ?? asString(message.id) ?? asString(root.id);
+  let sourceMessageId = asString(root.messageId) ?? asString(root.emailMessageId) ?? asString(message.id) ?? asString(root.id);
   const subject = asString(root.subject) ?? asString(message.subject) ?? asString(email.subject);
   const body = asString(root.body) ?? asString(message.body) ?? asString(email.body);
   const fromAddress = asString(root.from) ?? asString(email.from) ?? asString(contact.email);
@@ -80,6 +102,12 @@ export function mapGhlInboundEmailPayload(payload: unknown): InboundEmailEvent {
   const receivedAt = asString(root.dateAdded) ?? asString(message.dateAdded);
 
   const recognized = isEmail && !isOutbound && contactId !== null && body !== null;
+
+  // GHL didn't give us any message id -- derive one so a webhook retry of
+  // the same email doesn't defeat ingest.ts's dedup (see file header).
+  if (!sourceMessageId && recognized && contactId !== null && body !== null) {
+    sourceMessageId = deriveMessageId(contactId, subject, body);
+  }
 
   return { recognized, sourceMessageId, contactId, conversationId, fromAddress, fromName, subject, body, receivedAt };
 }

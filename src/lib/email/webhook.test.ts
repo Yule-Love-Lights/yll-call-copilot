@@ -88,4 +88,57 @@ describe('mapGhlInboundEmailPayload', () => {
     const result = mapGhlInboundEmailPayload({ type: 'ContactTagUpdate', contactId: 'c6' });
     expect(result.recognized).toBe(false);
   });
+
+  // FIX for a MED idempotency bug: a recognized inbound email with no
+  // messageId/emailMessageId/message.id/root.id anywhere in the payload used
+  // to come back with sourceMessageId: null, which defeats
+  // src/lib/email/ingest.ts's dedup entirely (Postgres unique treats every
+  // NULL as distinct, and the existence check there skips null ids) -- a
+  // webhook redelivery would insert and draft the same email twice. A
+  // derived id (from the contact + subject/body) makes a redelivery of the
+  // identical payload produce the identical id instead.
+  describe('deriving a source_message_id when GHL sends none', () => {
+    const basePayload = {
+      type: 'InboundMessage',
+      messageType: 'Email',
+      contactId: 'c7',
+      subject: 'Question about pricing',
+      body: 'How much for a two story colonial?',
+    };
+
+    it('derives a non-null id in the "derived:<contactId>:<hash>" shape', () => {
+      const result = mapGhlInboundEmailPayload(basePayload);
+      expect(result.recognized).toBe(true);
+      expect(result.sourceMessageId).toMatch(/^derived:c7:[0-9a-f]{24}$/);
+    });
+
+    it('derives the identical id for an identical redelivered payload', () => {
+      const first = mapGhlInboundEmailPayload(basePayload);
+      const redelivered = mapGhlInboundEmailPayload({ ...basePayload });
+      expect(redelivered.sourceMessageId).toBe(first.sourceMessageId);
+    });
+
+    it('derives a different id when the body differs', () => {
+      const first = mapGhlInboundEmailPayload(basePayload);
+      const second = mapGhlInboundEmailPayload({ ...basePayload, body: 'A completely different question.' });
+      expect(second.sourceMessageId).not.toBe(first.sourceMessageId);
+    });
+
+    it('derives a different id when the contact differs (same content, different customer)', () => {
+      const first = mapGhlInboundEmailPayload(basePayload);
+      const second = mapGhlInboundEmailPayload({ ...basePayload, contactId: 'c8' });
+      expect(second.sourceMessageId).not.toBe(first.sourceMessageId);
+    });
+
+    it('does not derive an id when the payload is not recognized (no contact/body to draft against)', () => {
+      const result = mapGhlInboundEmailPayload({ type: 'InboundMessage', messageType: 'Email', contactId: 'c9' });
+      expect(result.recognized).toBe(false);
+      expect(result.sourceMessageId).toBeNull();
+    });
+
+    it('still prefers a real GHL message id over deriving one', () => {
+      const result = mapGhlInboundEmailPayload({ ...basePayload, messageId: 'real-msg-1' });
+      expect(result.sourceMessageId).toBe('real-msg-1');
+    });
+  });
 });
