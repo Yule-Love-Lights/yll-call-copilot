@@ -30,6 +30,10 @@ import { checkAllowlist, shouldDenyAccess } from '@/lib/auth/allowlist';
 // /api/cron/brain-review is the same shape again: Vercel Cron calls it
 // directly with no browser session (see vercel.json), gated inside the
 // route by CRON_ENABLED (off by default) rather than a session.
+//
+// /api/cron/second-mile is the same shape again: Vercel Cron calls it
+// directly with no browser session (see vercel.json), gated inside the
+// route by CRON_ENABLED (off by default) rather than a session.
 const PUBLIC_PATHS = [
   '/login',
   '/api/health',
@@ -38,6 +42,7 @@ const PUBLIC_PATHS = [
   '/api/twilio/whisper',
   '/api/live/segment',
   '/api/cron/brain-review',
+  '/api/cron/second-mile',
 ];
 
 export async function proxy(request: NextRequest) {
