@@ -15,6 +15,15 @@
 // contact ids by src/lib/ghl/secondMile.ts) since the message is an
 // instruction to the crew, not the customer; cold_snap_checkin sends to the
 // touch's own ghl_contact_id (the customer).
+//
+// Per-recipient send tracking (payload.sent_to): reveal_photo can target
+// several crew contacts. If contact #2 of 3 fails, a naive revert-and-retry
+// would re-send to contact #1, who already got the SMS. So every contact id
+// that gets a successful send is recorded in payload.sent_to BEFORE we
+// decide the overall outcome; a retry skips anyone already in that list.
+// On a partial failure the row still reverts to 'pending' (same reason as
+// above, no 'failed' status), but the payload update carries the sent_to
+// progress so the retry only messages who's left.
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
@@ -104,19 +113,51 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ configured: true, sent: false, error: 'This touch is no longer pending.' }, { status: 409 });
   }
 
-  try {
-    for (const contactId of targetContactIds) {
-      await sendConversationMessage({ type: 'SMS', contactId, message: draftBody });
-    }
-    return NextResponse.json({ configured: true, sent: true });
-  } catch (err) {
-    console.error('Send second-mile touch via GHL failed:', err);
-    // No 'failed' status in this table's check constraint (unlike
-    // followups) — revert to 'pending' so the rep can just try Send again.
-    const { error: revertError } = await supabase.from('second_mile_touches').update({ status: 'pending', done_at: null, done_by: null }).eq('id', id);
-    if (revertError) console.error('Revert second-mile touch to pending after failed send failed:', revertError);
+  // Skip anyone already recorded as sent on a prior attempt (a retry after
+  // a partial failure), see the sent_to note in the file header.
+  const sentTo = new Set<string>(Array.isArray(payload.sent_to) ? (payload.sent_to as string[]) : []);
+  const pendingContactIds = targetContactIds.filter(contactId => !sentTo.has(contactId));
 
-    const message = err instanceof HighLevelError ? err.message : 'Could not send via GoHighLevel.';
-    return NextResponse.json({ configured: true, sent: false, error: message }, { status: 502 });
+  const failedContactIds: string[] = [];
+  let firstErrorMessage: string | null = null;
+  for (const contactId of pendingContactIds) {
+    try {
+      await sendConversationMessage({ type: 'SMS', contactId, message: draftBody });
+      sentTo.add(contactId);
+    } catch (err) {
+      console.error('Send second-mile touch via GHL failed for one recipient:', err);
+      failedContactIds.push(contactId);
+      if (firstErrorMessage === null) firstErrorMessage = err instanceof HighLevelError ? err.message : null;
+    }
   }
+
+  const updatedPayload = { ...payload, sent_to: [...sentTo] };
+
+  if (failedContactIds.length === 0) {
+    // Everyone (already-sent + newly-sent this run) has the message. Status
+    // is already 'done' from the claim above; persist the final sent_to
+    // list so a stray future retry (should the row somehow revert) can't
+    // duplicate a send.
+    const { error: updateError } = await supabase.from('second_mile_touches').update({ payload: updatedPayload }).eq('id', id);
+    if (updateError) console.error('Persist second-mile sent_to after full send failed:', updateError);
+    return NextResponse.json({ configured: true, sent: true });
+  }
+
+  // No 'failed' status in this table's check constraint (unlike followups),
+  // so revert to 'pending' so the rep can just try Send again, but keep the
+  // sent_to progress so that retry only messages who's still missing it.
+  const { error: revertError } = await supabase
+    .from('second_mile_touches')
+    .update({ status: 'pending', done_at: null, done_by: null, payload: updatedPayload })
+    .eq('id', id);
+  if (revertError) console.error('Revert second-mile touch to pending after failed send failed:', revertError);
+
+  const message =
+    sentTo.size > 0
+      ? `Sent to ${sentTo.size} of ${targetContactIds.length}, retry to reach the rest.`
+      : (firstErrorMessage ?? 'Could not send via GoHighLevel.');
+  return NextResponse.json(
+    { configured: true, sent: false, error: message, sentCount: sentTo.size, totalCount: targetContactIds.length, failedContactIds },
+    { status: 502 },
+  );
 }
