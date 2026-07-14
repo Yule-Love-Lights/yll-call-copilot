@@ -121,19 +121,22 @@ describe('getWonOpportunities', () => {
   });
 
   it('fetches opportunities filtered to status=won', async () => {
-    const fetchSpy = vi.fn(async (_input: string, _init?: RequestInit) => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ opportunities: [{ id: 'o1', contactId: 'c1', pipelineId: 'p1', status: 'won' }] }),
-      text: async () => '',
-    }));
+    let calledUrl = '';
+    const fetchSpy = vi.fn(async (input: string) => {
+      calledUrl = input;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ opportunities: [{ id: 'o1', contactId: 'c1', pipelineId: 'p1', status: 'won' }] }),
+        text: async () => '',
+      };
+    });
     vi.stubGlobal('fetch', fetchSpy);
 
     const result = await getWonOpportunities();
 
     expect(result).toHaveLength(1);
     expect(result[0].status).toBe('won');
-    const calledUrl = fetchSpy.mock.calls[0][0];
     expect(calledUrl).toContain('status=won');
   });
 });
