@@ -110,6 +110,9 @@ export default function Home() {
         <Link href="/queue" className={quickLinkClass}>
           Call queue →
         </Link>
+        <Link href="/inbox" className={quickLinkClass}>
+          Email inbox →
+        </Link>
         <Link href="/verticals" className={quickLinkClass}>
           Verticals →
         </Link>
