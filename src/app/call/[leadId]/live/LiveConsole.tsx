@@ -27,7 +27,11 @@ type CoachingEvent = {
   repRating: 'helpful' | 'noise' | null;
 };
 
-const POLL_INTERVAL_MS = 2000;
+// 750ms, not 2s: a coaching card that lands 2 seconds after the customer
+// speaks is too late to use mid-sentence. This is the single biggest lever on
+// perceived latency. It drives both the transcript pane and the cards, and at
+// a handful of concurrent reps the extra serverless polls are cheap.
+const POLL_INTERVAL_MS = 750;
 
 const cardClass = 'flex flex-col gap-3 rounded-md border border-zinc-200 p-4 dark:border-zinc-800';
 const primaryButtonClass =
