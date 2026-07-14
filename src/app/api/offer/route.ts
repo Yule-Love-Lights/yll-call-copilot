@@ -1,11 +1,16 @@
 // GET /api/offer: the active offer content (highest version), plus the
-// version history. POST /api/offer: validates a full OfferContent and
-// stores it as the next version (source: 'edited'), mirroring PUT
-// /api/verticals/[id]/playbook. Staff session, gated by the app's normal
-// proxy auth like every other route here, no extra auth check needed.
+// version history. Open to all signed-in staff (gated by the app's normal
+// proxy auth like every other route here). POST /api/offer: validates a
+// full OfferContent and stores it as the next version (source: 'edited'),
+// mirroring PUT /api/verticals/[id]/playbook -- restricted to non-rep roles
+// (owner/admin), same as the sibling settings routes: these are the exact
+// guarantee lines reps say to customers and the scorer grades against, not
+// something any rep should be able to silently rewrite.
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
+import { getSessionEmail } from '@/lib/auth/session';
+import { resolveStaffRole } from '@/lib/auth/role';
 import { DEFAULT_OFFER_CONTENT, saveOfferEdit, validateOfferContent } from '@/lib/offer/store';
 import type { OfferVersionRow } from '@/lib/offer/store';
 
@@ -56,13 +61,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ configured: false, saved: false, reason: 'Supabase not configured.' });
   }
 
+  const supabase = getSupabaseServerClient()!;
+  const role = await resolveStaffRole(supabase, await getSessionEmail());
+  if (role === 'rep') {
+    return NextResponse.json(
+      { configured: true, saved: false, reason: 'Offer editing is for the coach.' },
+      { status: 403 },
+    );
+  }
+
   const body = await request.json().catch(() => null);
   const validated = validateOfferContent(body);
   if (!validated.valid) {
     return NextResponse.json({ configured: true, saved: false, reason: validated.error }, { status: 400 });
   }
 
-  const supabase = getSupabaseServerClient()!;
   const result = await saveOfferEdit(supabase, validated.content);
   if (!result.ok) {
     return NextResponse.json({ configured: true, saved: false, reason: result.reason }, { status: result.status });

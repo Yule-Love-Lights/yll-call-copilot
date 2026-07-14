@@ -2,14 +2,27 @@
 // as a brand new version (source: 'edited'). History is never rewritten,
 // same "restore" convention as PUT /api/verticals/[id]/playbook: the UI
 // resends an older version's content, which lands as a new version on top.
+// Restricted to non-rep roles (owner/admin), same gate as POST /api/offer --
+// rolling back is still publishing a new offer version.
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
+import { getSessionEmail } from '@/lib/auth/session';
+import { resolveStaffRole } from '@/lib/auth/role';
 import { saveOfferEdit, validateOfferContent } from '@/lib/offer/store';
 
 export async function POST(request: Request) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ configured: false, saved: false, reason: 'Supabase not configured.' });
+  }
+
+  const supabase = getSupabaseServerClient()!;
+  const role = await resolveStaffRole(supabase, await getSessionEmail());
+  if (role === 'rep') {
+    return NextResponse.json(
+      { configured: true, saved: false, reason: 'Offer editing is for the coach.' },
+      { status: 403 },
+    );
   }
 
   const body = await request.json().catch(() => null);
@@ -21,8 +34,6 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-
-  const supabase = getSupabaseServerClient()!;
 
   const { data, error } = await supabase
     .from('offer_versions')
