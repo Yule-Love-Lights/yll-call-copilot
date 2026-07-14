@@ -1,0 +1,314 @@
+// Coverage for the recordings pipeline: the duration pre-check, the
+// post-transcription junk guard, the happy path's writes, and per-row
+// failure isolation in the batch runner. Every external dependency (GHL,
+// Deepgram, Claude, the outcome matcher) is mocked — no live calls. Mocking
+// style mirrors src/lib/transcripts/process.test.ts.
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+const getContactMock = vi.fn();
+vi.mock('../ghl/client', () => ({
+  getContact: (...args: unknown[]) => getContactMock(...args),
+}));
+
+const downloadRecordingAudioMock = vi.fn();
+const getGhlUserEmailMock = vi.fn();
+vi.mock('../ghl/recordings', () => ({
+  downloadRecordingAudio: (...args: unknown[]) => downloadRecordingAudioMock(...args),
+  getGhlUserEmail: (...args: unknown[]) => getGhlUserEmailMock(...args),
+}));
+
+let deepgramConfigured = true;
+const transcribeRecordingMock = vi.fn();
+vi.mock('../deepgram', () => ({
+  isDeepgramConfigured: () => deepgramConfigured,
+  transcribeRecording: (...args: unknown[]) => transcribeRecordingMock(...args),
+}));
+
+let claudeConfigured = true;
+vi.mock('../claude', () => ({
+  isClaudeConfigured: () => claudeConfigured,
+}));
+
+const extractLearningsMock = vi.fn();
+vi.mock('../transcripts/extract', () => ({
+  extractLearnings: (...args: unknown[]) => extractLearningsMock(...args),
+}));
+
+const matchRecordingOutcomeMock = vi.fn();
+vi.mock('./outcomes', () => ({
+  matchRecordingOutcome: (...args: unknown[]) => matchRecordingOutcomeMock(...args),
+}));
+
+import { processOneRecording, processPendingRecordings } from './pipeline';
+
+const sampleLearnings = {
+  objections: [],
+  customer_language: [],
+  what_worked: [],
+  what_failed: [],
+  price_talk: [],
+  questions: [],
+  summary: 'summary',
+};
+
+type Row = {
+  id: string;
+  ghl_message_id: string | null;
+  ghl_contact_id: string | null;
+  ghl_user_id: string | null;
+  direction: string | null;
+  called_at: string | null;
+  duration_seconds: number | null;
+};
+
+function baseRow(overrides: Partial<Row> = {}): Row {
+  return {
+    id: 'r1',
+    ghl_message_id: 'm1',
+    ghl_contact_id: 'c1',
+    ghl_user_id: 'u1',
+    direction: 'inbound',
+    called_at: '2026-07-10T12:00:00.000Z',
+    duration_seconds: 120,
+    ...overrides,
+  };
+}
+
+// Fake Supabase client covering the tables pipeline.ts touches:
+// call_recordings (select for the batch, update for status writes),
+// verticals (the holiday vertical lookup), transcripts (insert), and
+// learnings (upsert).
+function fakeSupabase(
+  opts: {
+    pendingRows?: Row[];
+    vertical?: { id: string; name: string } | null;
+    transcriptInsertError?: { message: string } | null;
+  } = {},
+) {
+  const updateCalls: { id: string; patch: Record<string, unknown> }[] = [];
+  const insertCalls: Record<string, unknown>[] = [];
+  const upsertCalls: { row: Record<string, unknown>; options?: Record<string, unknown> }[] = [];
+
+  const from = vi.fn((table: string) => {
+    if (table === 'call_recordings') {
+      return {
+        select: () => ({
+          eq: () => ({
+            order: () => ({
+              limit: async () => ({ data: opts.pendingRows ?? [], error: null }),
+            }),
+          }),
+        }),
+        update: (patch: Record<string, unknown>) => ({
+          eq: async (_column: string, value: string) => {
+            updateCalls.push({ id: value, patch });
+            return { error: null };
+          },
+        }),
+      };
+    }
+    if (table === 'verticals') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: opts.vertical ?? { id: 'v1', name: 'Holiday' }, error: null }),
+          }),
+        }),
+      };
+    }
+    if (table === 'transcripts') {
+      return {
+        insert: (row: Record<string, unknown>) => ({
+          select: () => ({
+            single: async () => {
+              insertCalls.push(row);
+              if (opts.transcriptInsertError) return { data: null, error: opts.transcriptInsertError };
+              return { data: { id: 'tr1' }, error: null };
+            },
+          }),
+        }),
+      };
+    }
+    if (table === 'learnings') {
+      return {
+        upsert: (row: Record<string, unknown>, options?: Record<string, unknown>) => {
+          upsertCalls.push({ row, options });
+          return Promise.resolve({ error: null });
+        },
+      };
+    }
+    throw new Error(`Unexpected table in test: ${table}`);
+  });
+
+  return { client: { from } as unknown as SupabaseClient, updateCalls, insertCalls, upsertCalls };
+}
+
+const HOLIDAY_VERTICAL = { id: 'v1', name: 'Holiday' };
+
+describe('processOneRecording', () => {
+  beforeEach(() => {
+    deepgramConfigured = true;
+    claudeConfigured = true;
+    getContactMock.mockReset().mockResolvedValue({ phone: '5551234567', email: 'jamie@example.com', fullName: 'Jamie Lee' });
+    downloadRecordingAudioMock.mockReset().mockResolvedValue(Buffer.from('fake-audio'));
+    getGhlUserEmailMock.mockReset().mockResolvedValue('rep@yulelovelights.com');
+    transcribeRecordingMock.mockReset().mockResolvedValue({
+      rawText: 'Speaker 0: hi there this is a real conversation about holiday lights for your home this season.\n\nSpeaker 1: great, tell me more about pricing and scheduling please.',
+      utterances: [
+        { speaker: 0, start: 0, end: 3, text: 'hi there this is a real conversation about holiday lights for your home this season' },
+        { speaker: 1, start: 3, end: 6, text: 'great, tell me more about pricing and scheduling please' },
+      ],
+      durationSeconds: 120,
+    });
+    extractLearningsMock.mockReset().mockResolvedValue(sampleLearnings);
+    matchRecordingOutcomeMock.mockReset().mockResolvedValue({ outcome: 'unknown', outcome_source: null });
+  });
+
+  it('skips recordings shorter than 20 seconds without downloading or transcribing', async () => {
+    const { client, updateCalls } = fakeSupabase();
+    const row = baseRow({ duration_seconds: 10 });
+
+    const result = await processOneRecording(client, row, HOLIDAY_VERTICAL);
+
+    expect(result).toBe('skipped');
+    expect(downloadRecordingAudioMock).not.toHaveBeenCalled();
+    expect(transcribeRecordingMock).not.toHaveBeenCalled();
+    expect(updateCalls).toEqual([{ id: 'r1', patch: { status: 'skipped', skip_reason: 'duration_under_20s' } }]);
+  });
+
+  it('fails immediately with no ghl_message_id', async () => {
+    const { client, updateCalls } = fakeSupabase();
+    const row = baseRow({ ghl_message_id: null });
+
+    const result = await processOneRecording(client, row, HOLIDAY_VERTICAL);
+
+    expect(result).toBe('failed');
+    expect(downloadRecordingAudioMock).not.toHaveBeenCalled();
+    expect(updateCalls[0].patch.status).toBe('failed');
+  });
+
+  it('fails without downloading when Deepgram is not configured', async () => {
+    deepgramConfigured = false;
+    const { client } = fakeSupabase();
+
+    const result = await processOneRecording(client, baseRow(), HOLIDAY_VERTICAL);
+
+    expect(result).toBe('failed');
+    expect(downloadRecordingAudioMock).not.toHaveBeenCalled();
+  });
+
+  it('skips a transcribed call the junk detector rejects (e.g. single-speaker voicemail)', async () => {
+    transcribeRecordingMock.mockResolvedValueOnce({
+      rawText: 'Speaker 0: please leave a message after the tone.',
+      utterances: [{ speaker: 0, start: 0, end: 2, text: 'please leave a message after the tone' }],
+      durationSeconds: 30,
+    });
+    const { client, updateCalls } = fakeSupabase();
+
+    const result = await processOneRecording(client, baseRow(), HOLIDAY_VERTICAL);
+
+    expect(result).toBe('skipped');
+    expect(updateCalls).toEqual([{ id: 'r1', patch: { status: 'skipped', skip_reason: 'single_speaker' } }]);
+    expect(extractLearningsMock).not.toHaveBeenCalled();
+  });
+
+  it('transcribes a real call end to end: inserts the transcript, extracts learnings, marks the row transcribed', async () => {
+    matchRecordingOutcomeMock.mockResolvedValueOnce({ outcome: 'booked', outcome_source: 'quote_tool' });
+    const { client, updateCalls, insertCalls, upsertCalls } = fakeSupabase();
+
+    const result = await processOneRecording(client, baseRow(), HOLIDAY_VERTICAL);
+
+    expect(result).toBe('transcribed');
+    expect(insertCalls).toHaveLength(1);
+    expect(insertCalls[0]).toMatchObject({
+      vertical_id: 'v1',
+      source_file: 'ghl:m1',
+      customer_phone: '5551234567',
+      customer_name: 'Jamie Lee',
+      outcome: 'booked',
+      outcome_source: 'quote_tool',
+      ghl_contact_id: 'c1',
+      rep_email: 'rep@yulelovelights.com',
+      direction: 'inbound',
+      duration_seconds: 120,
+    });
+    expect(upsertCalls).toEqual([
+      { row: expect.objectContaining({ transcript_id: 'tr1', vertical_id: 'v1' }), options: { onConflict: 'transcript_id' } },
+    ]);
+    expect(updateCalls).toEqual([{ id: 'r1', patch: { status: 'transcribed', transcript_id: 'tr1' } }]);
+  });
+
+  it('still marks the recording transcribed when learnings extraction fails (best-effort)', async () => {
+    extractLearningsMock.mockRejectedValueOnce(new Error('Claude overloaded'));
+    const { client, updateCalls } = fakeSupabase();
+
+    const result = await processOneRecording(client, baseRow(), HOLIDAY_VERTICAL);
+
+    expect(result).toBe('transcribed');
+    expect(updateCalls).toEqual([{ id: 'r1', patch: { status: 'transcribed', transcript_id: 'tr1' } }]);
+  });
+
+  it('marks the row failed with an error detail when the download throws', async () => {
+    downloadRecordingAudioMock.mockRejectedValueOnce(new Error('GHL 404'));
+    const { client, updateCalls } = fakeSupabase();
+
+    const result = await processOneRecording(client, baseRow(), HOLIDAY_VERTICAL);
+
+    expect(result).toBe('failed');
+    expect(updateCalls).toEqual([{ id: 'r1', patch: { status: 'failed', detail: { error: 'GHL 404' } } }]);
+  });
+
+  it('degrades rep_email and contact fields to null on a GHL contact hydrate failure, without failing the recording', async () => {
+    getContactMock.mockRejectedValueOnce(new Error('contact not found'));
+    const { client, insertCalls } = fakeSupabase();
+
+    const result = await processOneRecording(client, baseRow(), HOLIDAY_VERTICAL);
+
+    expect(result).toBe('transcribed');
+    expect(insertCalls[0]).toMatchObject({ customer_phone: null, customer_name: null });
+  });
+});
+
+describe('processPendingRecordings', () => {
+  beforeEach(() => {
+    deepgramConfigured = true;
+    claudeConfigured = true;
+    getContactMock.mockReset().mockResolvedValue({ phone: null, email: null, fullName: null });
+    getGhlUserEmailMock.mockReset().mockResolvedValue(null);
+    matchRecordingOutcomeMock.mockReset().mockResolvedValue({ outcome: 'unknown', outcome_source: null });
+    extractLearningsMock.mockReset().mockResolvedValue(sampleLearnings);
+    downloadRecordingAudioMock.mockReset();
+    transcribeRecordingMock.mockReset();
+  });
+
+  it('returns all-zero counts with no pending rows and never resolves the vertical', async () => {
+    const { client } = fakeSupabase({ pendingRows: [] });
+
+    const result = await processPendingRecordings(client, 6);
+
+    expect(result).toEqual({ done: 0, skipped: 0, failed: 0 });
+  });
+
+  it('processes each pending row independently: one failure does not stop the rest', async () => {
+    downloadRecordingAudioMock
+      .mockRejectedValueOnce(new Error('GHL down')) // r1 fails
+      .mockResolvedValueOnce(Buffer.from('audio')); // r2 succeeds
+    transcribeRecordingMock.mockResolvedValueOnce({
+      rawText: 'Speaker 0: hello and welcome to yule love lights how can I help you today with your display.\n\nSpeaker 1: I would like a quote for my house please.',
+      utterances: [
+        { speaker: 0, start: 0, end: 3, text: 'hello and welcome to yule love lights how can I help you today with your display' },
+        { speaker: 1, start: 3, end: 6, text: 'I would like a quote for my house please' },
+      ],
+      durationSeconds: 90,
+    });
+
+    const rows: Row[] = [baseRow({ id: 'r1' }), baseRow({ id: 'r2' })];
+    const { client } = fakeSupabase({ pendingRows: rows });
+
+    const result = await processPendingRecordings(client, 6);
+
+    expect(result).toEqual({ done: 1, skipped: 0, failed: 1 });
+  });
+});
