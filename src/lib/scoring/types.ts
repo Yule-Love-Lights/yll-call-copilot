@@ -152,6 +152,10 @@ export type OfferElement = {
   grade_hint: string;
   applies_to: string; // plain-English scope hint fed to the model, e.g. "holiday calls only"
   situational: boolean; // true = only applicable when the fit is actually there (e.g. permanent_seed)
+  // Optional so pre-existing offer_versions content (saved before this field
+  // existed) still grades -- only an explicit `false` deactivates an
+  // element (see getOfferElements in scoring/batch.ts). Undefined = active.
+  active?: boolean;
 };
 
 export const DEFAULT_OFFER_ELEMENTS: OfferElement[] = [

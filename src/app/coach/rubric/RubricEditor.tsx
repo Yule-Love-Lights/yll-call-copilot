@@ -251,20 +251,14 @@ function RubricView({ rubric, onEdit }: { rubric: RubricContent; onEdit?: () => 
 function DimEditor({ dims, onChange }: { dims: RubricDim[]; onChange: (dims: RubricDim[]) => void }) {
   return (
     <div className="flex flex-col gap-3">
+      <p className="text-sm text-zinc-500">
+        Dimension point caps are fixed in this version. Edit the instructions and the three-part weighting.
+      </p>
       {dims.map((d, i) => (
         <div key={d.key} className="flex flex-col gap-2 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
           <div className="flex items-center gap-2">
             <span className="min-w-32 text-sm font-medium">{d.name}</span>
-            <input
-              type="number"
-              value={d.weight}
-              onChange={e => {
-                const next = [...dims];
-                next[i] = { ...next[i], weight: Number(e.target.value) };
-                onChange(next);
-              }}
-              className={`w-20 ${inputClass}`}
-            />
+            <span className="text-sm text-zinc-500">{d.weight} pts (fixed)</span>
           </div>
           <textarea
             value={d.instructions}

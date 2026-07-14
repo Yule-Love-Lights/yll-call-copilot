@@ -69,7 +69,12 @@ export async function getOfferElements(supabase: SupabaseClient): Promise<OfferE
     }
     return DEFAULT_OFFER_ELEMENTS;
   }
-  const elements = (data as { content?: { elements?: OfferElement[] } } | null)?.content?.elements;
+  const rawElements = (data as { content?: { elements?: OfferElement[] } } | null)?.content?.elements;
+  // Deactivating an element in the offer editor must actually stop it being
+  // graded -- only an explicit `active === false` opts an element out, so a
+  // pre-existing row with no `active` field at all still grades (backward
+  // compatible with content saved before this field existed).
+  const elements = rawElements?.filter(e => e.active !== false);
   return elements && elements.length > 0 ? elements : DEFAULT_OFFER_ELEMENTS;
 }
 
@@ -80,7 +85,7 @@ export async function scoreNextBatch(supabase: SupabaseClient, limit: number): P
 
   const { data: transcriptRows, error: transcriptsError } = await supabase
     .from('transcripts')
-    .select('id, raw_text, vertical_id, called_at, utterances')
+    .select('id, raw_text, vertical_id, called_at, utterances, rep_email')
     .order('called_at', { ascending: false, nullsFirst: false })
     .limit(CANDIDATE_WINDOW);
   if (transcriptsError) {
@@ -94,6 +99,7 @@ export async function scoreNextBatch(supabase: SupabaseClient, limit: number): P
     vertical_id: string | null;
     called_at: string | null;
     utterances: Utterance[] | null;
+    rep_email: string | null;
   }[];
   if (candidates.length === 0) return { scored: 0, skipped: 0, failed: 0 };
 
@@ -157,12 +163,25 @@ export async function scoreNextBatch(supabase: SupabaseClient, limit: number): P
 
       const context = await loadVerticalContext(candidate.vertical_id);
 
-      const { data: callRow } = await supabase
-        .from('calls')
-        .select('rep_email')
-        .eq('transcript_id', candidate.id)
-        .maybeSingle();
-      const repEmail = (callRow as { rep_email: string | null } | null)?.rep_email ?? null;
+      // The recordings pipeline writes rep identity onto transcripts.rep_email
+      // directly and never creates a calls row for that transcript, so the
+      // calls-table lookup below is only a fallback for the manual-log path
+      // (src/app/api/calls/route.ts) where transcripts.rep_email is never
+      // set. Without this preference every recording-sourced score lost its
+      // rep_email (null) and vanished from feedback/digest/scoreboard.
+      let repEmail: string | null = candidate.rep_email ?? null;
+      if (!repEmail) {
+        const { data: callRow } = await supabase
+          .from('calls')
+          .select('rep_email')
+          .eq('transcript_id', candidate.id)
+          .maybeSingle();
+        repEmail = (callRow as { rep_email: string | null } | null)?.rep_email ?? null;
+      }
+      // Guard against case drift between GHL user emails and app_users
+      // logins (e.g. rep-scoping in GET /api/scores matches on session email
+      // case).
+      repEmail = repEmail ? repEmail.toLowerCase() : null;
 
       const content = await scoreCall({
         verticalName: context.name,

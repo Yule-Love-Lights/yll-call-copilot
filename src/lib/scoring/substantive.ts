@@ -24,7 +24,12 @@ export function isSubstantiveTranscript(input: SubstantiveCheckInput): boolean {
   if (input.raw_text.trim().length < MIN_RAW_TEXT_CHARS) return false;
 
   if (input.utterances && input.utterances.length > 0) {
-    const turns = input.utterances.map(u => ({ speaker: u.speaker, text: u.text }));
+    // junkReasonFromTurns's JunkTurn contract is speaker: string (shared with
+    // the RingCentral text-parsed turns, which are always string labels);
+    // stringify a diarizer's numeric speaker id to satisfy it. Distinctness
+    // is preserved (different ids stringify differently), which is all the
+    // single_speaker/automated_speaker checks need.
+    const turns = input.utterances.map(u => ({ speaker: String(u.speaker), text: u.text }));
     if (junkReasonFromTurns(turns) !== null) return false;
   }
 

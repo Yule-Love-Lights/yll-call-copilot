@@ -122,7 +122,15 @@ const ESTIMATED_METRICS_FLAG = ' (estimated: no diarized utterances available fo
 // computed (or, when utterances is null, model-estimated) hard_metrics into
 // the final, pinned CallScoreContent shape. `hardMetrics` is whichever the
 // caller already decided to use; `isEstimated` only controls the notes flag.
-export function assembleCallScore(raw: RawModelScore, hardMetrics: HardMetrics, isEstimated: boolean): CallScoreContent {
+// `weighting` defaults to the pinned 0.40/0.35/0.25 split but the caller
+// (scoreCall, below) passes the active rubric's own weighting so a Settings
+// edit to it actually changes the stored overall.
+export function assembleCallScore(
+  raw: RawModelScore,
+  hardMetrics: HardMetrics,
+  isEstimated: boolean,
+  weighting: OverallWeighting = DEFAULT_WEIGHTING,
+): CallScoreContent {
   const sales = buildSalesScorecard(raw.sales);
   const hospitalityRaw = buildHospitalityScorecard(raw.hospitality);
   const hospitality: HospitalityScorecard = isEstimated
@@ -140,7 +148,7 @@ export function assembleCallScore(raw: RawModelScore, hardMetrics: HardMetrics, 
     notes: raw.experience.notes,
   };
   const experienceScore = computeExperienceScore(experience);
-  const overall = computeOverall(experienceScore, sales.total, hospitality.total);
+  const overall = computeOverall(experienceScore, sales.total, hospitality.total, weighting);
 
   return {
     emotional: raw.emotional,
@@ -211,9 +219,13 @@ function isHardMetricsEstimate(v: unknown): v is HardMetrics {
     m.rep_talk_ratio >= 0 &&
     m.rep_talk_ratio <= 1 &&
     isFiniteNumber(m.question_count) &&
+    m.question_count >= 0 &&
     isFiniteNumber(m.dead_air_seconds) &&
+    m.dead_air_seconds >= 0 &&
     isFiniteNumber(m.interruption_count) &&
-    isFiniteNumber(m.duration_seconds)
+    m.interruption_count >= 0 &&
+    isFiniteNumber(m.duration_seconds) &&
+    m.duration_seconds >= 0
   );
 }
 
@@ -429,9 +441,22 @@ const EMIT_SCORE_TOOL: Anthropic.Tool = {
   },
 };
 
-function buildSystemPrompt(rubric: RubricContent, offerElements: OfferElement[]): string {
-  const salesLines = rubric.sales.map(d => `- ${d.name} (${d.key}, max ${d.weight}): ${d.instructions}`).join('\n');
-  const hospitalityLines = rubric.hospitality.map(d => `- ${d.name} (${d.key}, max ${d.weight}): ${d.instructions}`).join('\n');
+// Exported for tests: the "max N" the prompt states for each dim must always
+// come from the pinned SALES_DIM_MAX/HOSPITALITY_DIM_MAX constants, never
+// from the editable rubric.weight -- otherwise a Settings edit to a
+// dimension's weight tells the model a cap the validator (isRawDim, above)
+// does not actually enforce, and the call either gets its score rejected or
+// the edit is silently inert. The `?? d.weight` fallback only matters for a
+// non-standard dim key outside the pinned five, which the emit_score tool
+// schema (built from SALES_DIM_KEYS/HOSPITALITY_DIM_KEYS, not from the
+// rubric) never actually scores anyway.
+export function buildSystemPrompt(rubric: RubricContent, offerElements: OfferElement[]): string {
+  const salesLines = rubric.sales
+    .map(d => `- ${d.name} (${d.key}, max ${SALES_DIM_MAX[d.key as SalesDimKey] ?? d.weight}): ${d.instructions}`)
+    .join('\n');
+  const hospitalityLines = rubric.hospitality
+    .map(d => `- ${d.name} (${d.key}, max ${HOSPITALITY_DIM_MAX[d.key as HospitalityDimKey] ?? d.weight}): ${d.instructions}`)
+    .join('\n');
   const offerLines = offerElements
     .map(
       o =>
@@ -548,7 +573,7 @@ export async function scoreCall(input: ScoreCallInput): Promise<CallScoreContent
       // computed; fall back to the model's own validated estimate only when
       // utterances were unavailable to compute one from in the first place.
       const hardMetrics = input.utterancesAvailable ? input.hardMetrics : checked.score.hard_metrics_estimate;
-      return assembleCallScore(checked.score, hardMetrics, !input.utterancesAvailable);
+      return assembleCallScore(checked.score, hardMetrics, !input.utterancesAvailable, input.rubric.weighting);
     }
     lastError = checked.error;
 

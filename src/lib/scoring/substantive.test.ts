@@ -36,4 +36,14 @@ describe('isSubstantiveTranscript', () => {
   it('accepts a real exchange even when utterances is null but raw_text passes the junk-adjacent length/shape floor', () => {
     expect(isSubstantiveTranscript({ raw_text: REAL_CALL_TEXT, utterances: undefined })).toBe(true);
   });
+
+  // Fix 7: speaker is number | string (the diarizer writes numeric ids at
+  // runtime) -- the junk check must still work with numeric speakers.
+  it('accepts a real two-speaker conversation using numeric diarizer speaker ids', () => {
+    const utterances: Utterance[] = [
+      { speaker: 0, start: 0, end: 5, text: 'Hey it is Jake, just following up on your quote request.' },
+      { speaker: 1, start: 6, end: 30, text: 'Thanks for calling back, I did want to ask about the permanent lighting option.' },
+    ];
+    expect(isSubstantiveTranscript({ raw_text: REAL_CALL_TEXT, utterances })).toBe(true);
+  });
 });

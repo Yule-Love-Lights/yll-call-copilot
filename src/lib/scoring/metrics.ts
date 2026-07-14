@@ -5,7 +5,11 @@
 // null-utterances fallback). No Claude call here; this is the "code, not
 // model" half of hard_metrics.
 
-export type Utterance = { speaker: string; start: number; end: number; text: string };
+// speaker is `number | string` because the diarizer that populates this
+// column at runtime writes numeric speaker ids (e.g. 0/1), not just the
+// string labels ('A'/'B'/'Rep') used by tests and the manual-log path --
+// `string` alone was dishonest about what actually lands here.
+export type Utterance = { speaker: number | string; start: number; end: number; text: string };
 
 export type HardMetrics = {
   rep_talk_ratio: number; // 0-1
@@ -36,7 +40,7 @@ const ZERO_METRICS: HardMetrics = {
 // consistent with the phone standard's own opening step ("branded warm
 // greeting" -- the rep speaks first): the first speaker to talk is the rep.
 // Swap this for an explicit role field the moment one exists upstream.
-export function identifyRepSpeaker(utterances: Utterance[]): string | null {
+export function identifyRepSpeaker(utterances: Utterance[]): number | string | null {
   return utterances.length > 0 ? utterances[0].speaker : null;
 }
 
@@ -55,7 +59,7 @@ function sentences(text: string): string[] {
     .filter(Boolean);
 }
 
-function countQuestions(utterances: Utterance[], repSpeaker: string | null): number {
+function countQuestions(utterances: Utterance[], repSpeaker: number | string | null): number {
   if (!repSpeaker) return 0;
   let count = 0;
   for (const u of utterances) {
@@ -71,7 +75,11 @@ export function computeHardMetrics(utterances: Utterance[]): HardMetrics {
   if (utterances.length === 0) return { ...ZERO_METRICS };
 
   const ordered = [...utterances].sort((a, b) => a.start - b.start);
-  const repSpeaker = identifyRepSpeaker(utterances);
+  // Fix: identify the rep from the start-sorted array, not the array's
+  // storage order -- a non-chronologically-stored utterances array used to
+  // silently swap rep and customer, since every timing computation below
+  // already uses `ordered`.
+  const repSpeaker = identifyRepSpeaker(ordered);
 
   let repDuration = 0;
   let totalDuration = 0;

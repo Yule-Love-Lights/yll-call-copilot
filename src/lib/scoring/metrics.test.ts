@@ -23,6 +23,13 @@ describe('identifyRepSpeaker', () => {
   it('returns null for an empty call', () => {
     expect(identifyRepSpeaker([])).toBeNull();
   });
+
+  // Fix 7: speaker is honestly typed number | string because the diarizer
+  // writes numeric speaker ids at runtime.
+  it('accepts a numeric speaker id', () => {
+    const utterances: Utterance[] = [{ speaker: 0, start: 0, end: 5, text: 'hi' }];
+    expect(identifyRepSpeaker(utterances)).toBe(0);
+  });
 });
 
 describe('computeHardMetrics', () => {
@@ -83,5 +90,32 @@ describe('computeHardMetrics', () => {
 
   it('computes duration as the span from the first start to the last end', () => {
     expect(computeHardMetrics(CALL).duration_seconds).toBe(25);
+  });
+
+  // Fix 5: identifyRepSpeaker used to key off the UNSORTED array's first
+  // element while every timing computation above uses the start-sorted
+  // order -- a non-chronologically-stored utterances array silently swapped
+  // rep and customer.
+  it('identifies the rep from the chronologically-first utterance, not the first element in storage order', () => {
+    // Stored out of order: B's utterance (start 6) is listed before A's
+    // (start 0), even though A actually spoke first chronologically.
+    const storedOutOfOrder: Utterance[] = [
+      { speaker: 'B', start: 6, end: 10, text: "I'm doing okay." },
+      { speaker: 'A', start: 0, end: 5, text: 'Hi, this is Jake with Yule Love Lights, how are you today?' },
+    ];
+    // A's duration is 5, B's is 4, total 9. If the rep were wrongly
+    // resolved as 'B' (storage-order first), rep_talk_ratio would be 4/9.
+    expect(computeHardMetrics(storedOutOfOrder).rep_talk_ratio).toBeCloseTo(5 / 9, 5);
+  });
+
+  // Fix 7: numeric speaker ids (what the diarizer actually writes) must work
+  // end to end, not just string labels.
+  it('computes correctly with numeric speaker ids', () => {
+    const utterances: Utterance[] = [
+      { speaker: 0, start: 0, end: 5, text: 'Hi, this is Jake, how can I help?' },
+      { speaker: 1, start: 6, end: 10, text: 'Just calling about a quote.' },
+    ];
+    expect(identifyRepSpeaker(utterances)).toBe(0);
+    expect(computeHardMetrics(utterances).rep_talk_ratio).toBeCloseTo(5 / 9, 5);
   });
 });

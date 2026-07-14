@@ -3,6 +3,7 @@ import {
   assembleCallScore,
   buildHospitalityScorecard,
   buildSalesScorecard,
+  buildSystemPrompt,
   computeExperienceScore,
   computeOverall,
   DEFAULT_WEIGHTING,
@@ -10,6 +11,8 @@ import {
   type RawModelScore,
 } from './score';
 import type { HardMetrics } from './metrics';
+import { SALES_DIM_MAX, DEFAULT_OFFER_ELEMENTS, type RubricContent } from './types';
+import { SEEDED_RUBRIC } from './rubric';
 
 function rawDim(score: number, notes = 'notes'): { score: number; notes: string } {
   return { score, notes };
@@ -181,6 +184,27 @@ describe('validateScore', () => {
     const result = validateScore(validRawScore({ win: 123 as never }));
     expect(result.valid).toBe(false);
   });
+
+  // Fix 6: isHardMetricsEstimate used to only check isFiniteNumber, so a
+  // negative question_count (etc.) passed validation and got stored.
+  const negativeRejectedFields = ['question_count', 'dead_air_seconds', 'interruption_count', 'duration_seconds'] as const;
+  it.each(negativeRejectedFields)('rejects a negative %s in hard_metrics_estimate', field => {
+    const raw = validRawScore();
+    const result = validateScore({
+      ...raw,
+      hard_metrics_estimate: { ...raw.hard_metrics_estimate, [field]: -3 },
+    });
+    expect(result.valid).toBe(false);
+  });
+
+  it('still accepts zero for each hard_metrics_estimate count/seconds field', () => {
+    const raw = validRawScore();
+    const result = validateScore({
+      ...raw,
+      hard_metrics_estimate: { rep_talk_ratio: 0, question_count: 0, dead_air_seconds: 0, interruption_count: 0, duration_seconds: 0 },
+    });
+    expect(result.valid).toBe(true);
+  });
 });
 
 describe('assembleCallScore', () => {
@@ -211,5 +235,64 @@ describe('assembleCallScore', () => {
     const assembled = assembleCallScore(raw, deterministicMetrics, false);
     expect(assembled.experience_score).toBeCloseTo(9, 5);
     expect(assembled.overall).toBeCloseTo(computeOverall(9, assembled.sales.total, assembled.hospitality.total), 5);
+  });
+
+  // Fix 3(a): assembleCallScore used to call computeOverall with no
+  // weighting argument at all, so a Settings edit to rubric.weighting never
+  // changed the stored overall. It must now thread a custom weighting
+  // through to computeOverall exactly like the default does.
+  it('threads a custom weighting through to the stored overall (a Settings edit must take effect)', () => {
+    const raw = validRawScore();
+    const customWeighting = { experience: 0.5, sales: 0.3, hospitality: 0.2 };
+
+    const withDefault = assembleCallScore(raw, deterministicMetrics, false);
+    const withCustom = assembleCallScore(raw, deterministicMetrics, false, customWeighting);
+
+    expect(withCustom.overall).toBeCloseTo(
+      computeOverall(withCustom.experience_score, withCustom.sales.total, withCustom.hospitality.total, customWeighting),
+      5,
+    );
+    expect(withCustom.overall).not.toBeCloseTo(withDefault.overall, 1);
+  });
+
+  it('defaults to the pinned 0.40/0.35/0.25 weighting when the caller passes none', () => {
+    const raw = validRawScore();
+    const assembled = assembleCallScore(raw, deterministicMetrics, false);
+    expect(assembled.overall).toBeCloseTo(
+      computeOverall(assembled.experience_score, assembled.sales.total, assembled.hospitality.total, DEFAULT_WEIGHTING),
+      5,
+    );
+  });
+});
+
+// Fix 3(b): the system prompt used to tell the model "max ${d.weight}" from
+// the editable rubric dims, while the emit_score validator (isRawDim, in
+// this file) enforces the pinned SALES_DIM_MAX/HOSPITALITY_DIM_MAX. An
+// edited dim weight made the model return scores the validator then
+// rejected. The prompt must always state the pinned max, never the
+// editable weight.
+describe('buildSystemPrompt — dimension maxes must match the pinned validator maxes', () => {
+  it('states the pinned SALES_DIM_MAX for a sales dim even when rubric.weight has been edited away from it', () => {
+    const editedRubric: RubricContent = {
+      ...SEEDED_RUBRIC,
+      sales: SEEDED_RUBRIC.sales.map(d => (d.key === 'opening' ? { ...d, weight: 999 } : d)),
+    };
+
+    const prompt = buildSystemPrompt(editedRubric, DEFAULT_OFFER_ELEMENTS);
+
+    expect(prompt).toContain(`opening, max ${SALES_DIM_MAX.opening}`);
+    expect(prompt).not.toContain('max 999');
+  });
+
+  it('states the pinned HOSPITALITY_DIM_MAX for a hospitality dim even when rubric.weight has been edited', () => {
+    const editedRubric: RubricContent = {
+      ...SEEDED_RUBRIC,
+      hospitality: SEEDED_RUBRIC.hospitality.map(d => (d.key === 'dead_air' ? { ...d, weight: 1 } : d)),
+    };
+
+    const prompt = buildSystemPrompt(editedRubric, DEFAULT_OFFER_ELEMENTS);
+
+    expect(prompt).toContain('dead_air, max 20');
+    expect(prompt).not.toContain('dead_air, max 1)');
   });
 });

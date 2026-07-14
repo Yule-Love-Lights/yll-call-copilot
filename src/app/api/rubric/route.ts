@@ -1,13 +1,18 @@
 // GET /api/rubric — the active rubric (or a specific ?version=N) plus its
-// version history. POST /api/rubric — validates and saves a full
-// RubricContent as the next version (source: edited); also how "restore this
-// version" works (the UI resends an older version's content here, landing
-// as a brand new edited version — history is never rewritten). Same shape
-// as GET/PUT /api/verticals/[id] and PUT /api/verticals/[id]/playbook, just
-// without a per-vertical id since the rubric is a single global document.
+// version history; open to all signed-in staff. POST /api/rubric —
+// validates and saves a full RubricContent as the next version (source:
+// edited); also how "restore this version" works (the UI resends an older
+// version's content here, landing as a brand new edited version — history
+// is never rewritten). Role-gated to non-rep staff (owner/admin) -- a rep
+// redefining the team's own scoring standard is the same class of gap GET
+// /api/scores closes for reading team-wide scores. Same shape as GET/PUT
+// /api/verticals/[id] and PUT /api/verticals/[id]/playbook, just without a
+// per-vertical id since the rubric is a single global document.
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
+import { getSessionEmail } from '@/lib/auth/session';
+import { resolveStaffRole } from '@/lib/auth/role';
 import { getActiveRubric, saveRubricEdit } from '@/lib/scoring/rubric';
 import type { RubricVersionRow } from '@/lib/scoring/types';
 
@@ -79,8 +84,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ configured: false, saved: false, reason: 'Supabase not configured.' });
   }
 
-  const body = await request.json().catch(() => null);
   const supabase = getSupabaseServerClient()!;
+
+  const sessionEmail = await getSessionEmail();
+  const role = await resolveStaffRole(supabase, sessionEmail);
+  if (role === 'rep') {
+    return NextResponse.json(
+      { configured: true, saved: false, reason: 'Only owners/admins can edit the rubric.' },
+      { status: 403 },
+    );
+  }
+
+  const body = await request.json().catch(() => null);
 
   const result = await saveRubricEdit(supabase, body);
   if (!result.ok) {
