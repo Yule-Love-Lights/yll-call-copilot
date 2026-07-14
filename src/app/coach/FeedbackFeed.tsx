@@ -9,6 +9,7 @@
 // POST /api/feedback/[id]/seen.
 
 import { useEffect, useState } from 'react';
+import { feelingTier, type FeelingTier } from '@/lib/feedback/card';
 
 type DimensionScore = { score: number; max: number; notes: string };
 
@@ -17,8 +18,8 @@ type CardFix = { label: string; timestamp: string | null; sayThis: string; fromT
 type CardDetail = {
   overall: number;
   experienceScore: number;
-  experience: { caredFor: boolean; atEase: boolean; excited: boolean; notes: string };
-  emotional: { state: string; namedBack: boolean; matchedTrack: boolean; grade: string; notes: string };
+  experience: { caredFor: number; atEase: number; excited: number; notes: string };
+  emotional: { state: string; namedBack: boolean; matchedTrack: boolean; grade: number; notes: string };
   sales: { opening: DimensionScore; discovery: DimensionScore; value: DimensionScore; objections: DimensionScore; close: DimensionScore; total: number };
   hospitality: {
     greeting: DimensionScore;
@@ -62,6 +63,16 @@ function pct(score: number, max: number): string {
   return max > 0 ? `${Math.round((score / max) * 100)}%` : '—';
 }
 
+const feelingClass: Record<FeelingTier, string> = {
+  positive: 'text-emerald-700 dark:text-emerald-400',
+  neutral: 'text-amber-700 dark:text-amber-400',
+  muted: 'text-zinc-400',
+};
+
+function Feeling({ label, value }: { label: string; value: number }) {
+  return <span className={feelingClass[feelingTier(value)]}>{label} {value}/10</span>;
+}
+
 function DimensionRow({ label, dim }: { label: string; dim: DimensionScore }) {
   return (
     <div className="flex items-start justify-between gap-3 py-1 text-sm">
@@ -91,9 +102,9 @@ function CardDetails({ detail }: { detail: CardDetail }) {
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">The signature feeling</p>
         <div className="mt-1 flex flex-wrap gap-2 text-xs">
-          <span className={detail.experience.caredFor ? 'text-emerald-700 dark:text-emerald-400' : 'text-zinc-400'}>Cared for</span>
-          <span className={detail.experience.atEase ? 'text-emerald-700 dark:text-emerald-400' : 'text-zinc-400'}>At ease</span>
-          <span className={detail.experience.excited ? 'text-emerald-700 dark:text-emerald-400' : 'text-zinc-400'}>Excited</span>
+          <Feeling label="Cared for" value={detail.experience.caredFor} />
+          <Feeling label="At ease" value={detail.experience.atEase} />
+          <Feeling label="Excited" value={detail.experience.excited} />
         </div>
         {detail.experience.notes && <p className="mt-1 text-xs text-zinc-500">{detail.experience.notes}</p>}
       </div>

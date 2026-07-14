@@ -21,6 +21,11 @@
 // detail: every dimension score/note, the hard metrics, the three
 // experience feelings, and the overall/experience numbers -- this is the
 // ONLY place the score number lives.
+//
+// The three experience feelings and emotional.grade are 0-10 numbers (see
+// types.ts) -- an adversarial review caught the UI truthiness-rendering them
+// as if they were booleans, so a 2/10 call showed the same solid chip as a
+// 10/10. feelingTier() below is the fix: a real threshold, not a truthy check.
 
 import type { CallScoreRow } from './types';
 
@@ -35,8 +40,8 @@ export type CardFix = {
 export type CardDetail = {
   overall: number;
   experienceScore: number;
-  experience: { caredFor: boolean; atEase: boolean; excited: boolean; notes: string };
-  emotional: { state: string; namedBack: boolean; matchedTrack: boolean; grade: string; notes: string };
+  experience: { caredFor: number; atEase: number; excited: number; notes: string };
+  emotional: { state: string; namedBack: boolean; matchedTrack: boolean; grade: number; notes: string };
   sales: CallScoreRow['sales'];
   hospitality: {
     greeting: CallScoreRow['hospitality']['greeting'];
@@ -77,6 +82,20 @@ export function formatTimestamp(totalSeconds: number): string {
 // praise_only strictly equals fix === null. Never derived from overall.
 export function isPraiseOnly(score: Pick<CallScoreRow, 'fix'>): boolean {
   return score.fix === null;
+}
+
+export type FeelingTier = 'positive' | 'neutral' | 'muted';
+
+// Threshold styling for the three signature-feeling scores (0-10 each,
+// experience.cared_for/at_ease/excited). >= 7 is a real landed feeling and
+// gets the positive accent; 4-6 is a mixed/neutral read; below 4 never gets
+// positive styling. This replaces the old truthiness render (any non-zero
+// number showed the same solid green chip as a 10/10 -- the HIGH finding
+// this file's header now documents) with an actual graded read.
+export function feelingTier(value: number): FeelingTier {
+  if (value >= 7) return 'positive';
+  if (value >= 4) return 'neutral';
+  return 'muted';
 }
 
 export function deriveCard(score: CallScoreRow): CardContent {

@@ -5,13 +5,16 @@ import type { CardContent } from './card';
 // CallScoreRow mirrors the `call_scores` table the sibling rep-scoring
 // workstream ships in migration 0008 -- this is the exact contract this
 // workstream builds against (see docs/SALES-EXCELLENCE-PLAN.md, "Coaching
-// mechanics locked" + section 4). Some nested fields (emotional.state,
-// emotional.grade, guarantees) are typed loosely (string / unknown) rather
-// than as a pinned enum: the contract names the shape of these objects but
-// not every value's exact enum, and deriveCard only ever passes them through
-// into the card's detail section unchanged -- it never branches on a
-// specific value -- so a loose type is enough and doesn't guess at a
-// contract this workstream doesn't own.
+// mechanics locked" + section 4). `guarantees` is still typed loosely
+// (unknown) since deriveCard only ever passes it through into the card's
+// detail section unchanged -- it never branches on a specific value -- and
+// this workstream doesn't own that contract's exact keys.
+//
+// experience.cared_for/at_ease/excited and emotional.grade are NUMBERS
+// (0-10), not booleans/strings -- fixed after an adversarial review found
+// this file had them wrong (booleans/'hit'-style string) while the scorer
+// (src/lib/scoring/types.ts on naldo/scoring-engine) always writes numbers.
+// The old types let the UI truthiness-render a 2/10 identically to a 10/10.
 //
 // FeedbackCardRow mirrors supabase/migrations/0009_feedback.sql, this
 // workstream's own table. Same convention as leads/types.ts and
@@ -50,14 +53,14 @@ export type EmotionalDiagnosis = {
   state: string;
   named_back: boolean;
   matched_track: boolean;
-  grade: string;
+  grade: number; // 0-10
   notes: string;
 };
 
 export type ExperienceRatings = {
-  cared_for: boolean;
-  at_ease: boolean;
-  excited: boolean;
+  cared_for: number; // 0-10
+  at_ease: number; // 0-10
+  excited: number; // 0-10
   notes: string;
 };
 

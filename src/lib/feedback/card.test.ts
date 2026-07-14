@@ -5,7 +5,7 @@
 // criticism on a real praise-only call.
 
 import { describe, it, expect } from 'vitest';
-import { deriveCard, formatTimestamp, isPraiseOnly } from './card';
+import { deriveCard, formatTimestamp, isPraiseOnly, feelingTier } from './card';
 import type { CallScoreRow } from './types';
 
 function baseScore(overrides: Partial<CallScoreRow> = {}): CallScoreRow {
@@ -20,7 +20,7 @@ function baseScore(overrides: Partial<CallScoreRow> = {}): CallScoreRow {
       state: 'excited',
       named_back: true,
       matched_track: true,
-      grade: 'hit',
+      grade: 9,
       notes: 'Named the excitement back in the first thirty seconds.',
     },
     sales: {
@@ -47,9 +47,9 @@ function baseScore(overrides: Partial<CallScoreRow> = {}): CallScoreRow {
       duration_seconds: 540,
     },
     experience: {
-      cared_for: true,
-      at_ease: true,
-      excited: true,
+      cared_for: 9,
+      at_ease: 8,
+      excited: 9,
       notes: 'All three signature feelings landed.',
     },
     experience_score: 95,
@@ -81,6 +81,34 @@ describe('formatTimestamp', () => {
 
   it('floors fractional seconds', () => {
     expect(formatTimestamp(65.9)).toBe('1:05');
+  });
+});
+
+describe('feelingTier', () => {
+  it('grades the real 2/1/3 low-trio finding as muted, never positive', () => {
+    // The HIGH finding: a call graded cared_for=2, at_ease=1, excited=3 must
+    // never render with the same positive styling as a 10/10 call.
+    expect(feelingTier(2)).toBe('muted');
+    expect(feelingTier(1)).toBe('muted');
+    expect(feelingTier(3)).toBe('muted');
+    expect(feelingTier(2)).not.toBe('positive');
+    expect(feelingTier(1)).not.toBe('positive');
+    expect(feelingTier(3)).not.toBe('positive');
+  });
+
+  it('is positive at 7 and above', () => {
+    expect(feelingTier(7)).toBe('positive');
+    expect(feelingTier(10)).toBe('positive');
+  });
+
+  it('is neutral from 4 through 6', () => {
+    expect(feelingTier(4)).toBe('neutral');
+    expect(feelingTier(6)).toBe('neutral');
+  });
+
+  it('is muted below 4', () => {
+    expect(feelingTier(0)).toBe('muted');
+    expect(feelingTier(3.9)).toBe('muted');
   });
 });
 
@@ -151,12 +179,12 @@ describe('deriveCard', () => {
     const card = deriveCard(score);
     expect(card.detail.overall).toBe(87);
     expect(card.detail.experienceScore).toBe(95);
-    expect(card.detail.experience).toEqual({ caredFor: true, atEase: true, excited: true, notes: score.experience.notes });
+    expect(card.detail.experience).toEqual({ caredFor: 9, atEase: 8, excited: 9, notes: score.experience.notes });
     expect(card.detail.emotional).toEqual({
       state: 'excited',
       namedBack: true,
       matchedTrack: true,
-      grade: 'hit',
+      grade: 9,
       notes: score.emotional.notes,
     });
     expect(card.detail.sales).toEqual(score.sales);

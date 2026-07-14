@@ -17,7 +17,7 @@ function score(id: string, overrides: Partial<CallScoreRow> = {}): CallScoreRow 
     rep_email: 'jason@example.com',
     vertical_slug: 'holiday',
     called_at: '2026-07-10T18:00:00.000Z',
-    emotional: { state: 'excited', named_back: true, matched_track: true, grade: 'hit', notes: '' },
+    emotional: { state: 'excited', named_back: true, matched_track: true, grade: 9, notes: '' },
     sales: {
       opening: { score: 14, max: 15, notes: '' },
       discovery: { score: 20, max: 25, notes: '' },
@@ -41,7 +41,7 @@ function score(id: string, overrides: Partial<CallScoreRow> = {}): CallScoreRow 
       interruption_count: 0,
       duration_seconds: 540,
     },
-    experience: { cared_for: true, at_ease: true, excited: true, notes: '' },
+    experience: { cared_for: 9, at_ease: 8, excited: 9, notes: '' },
     experience_score: 95,
     guarantees: {},
     overall: 87,
