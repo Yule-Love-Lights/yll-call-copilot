@@ -64,7 +64,7 @@ describe('computeRebookRate', () => {
     expect(result).toEqual({ priorSeasonCustomers: 1, rebookedCustomers: 1, rate: 100 });
   });
 
-  it('matches on email when phone is missing from one of the two quotes', () => {
+  it('matches a phone-less pair on email when neither quote has a phone', () => {
     const rows = [
       q({ phone: null, email: 'jane@example.com', approvedAt: '2025-11-01T00:00:00.000Z' }),
       q({ phone: null, email: 'JANE@EXAMPLE.COM', approvedAt: '2026-06-01T00:00:00.000Z' }),
@@ -82,8 +82,40 @@ describe('computeRebookRate', () => {
     expect(result.priorSeasonCustomers).toBe(1);
   });
 
+  it('dedupes multiple quotes from one phone in one season under the same primary key, even reformatted and even with a different email on file', () => {
+    const rows = [
+      q({ phone: '(516) 555-1234', email: 'jane@example.com', approvedAt: '2025-10-01T00:00:00.000Z' }),
+      q({ phone: '516.555.1234', email: 'jane-updated@example.com', approvedAt: '2025-11-15T00:00:00.000Z' }),
+    ];
+    const result = computeRebookRate(rows, ASOF);
+    expect(result.priorSeasonCustomers).toBe(1);
+  });
+
+  it('the spouses case: two different customers sharing one household email are counted as two, not merged into one', () => {
+    // Regression for the fixed bug: transitive union-find used to merge any
+    // two rows sharing ONE contact field into a single identity. Phone P +
+    // shared email, and phone Q + the SAME shared email, must stay distinct
+    // because the phones differ — phone is the primary key, so a shared
+    // email never unions them.
+    const rows = [
+      q({ phone: '516-555-0001', email: 'household@example.com', approvedAt: '2025-11-01T00:00:00.000Z' }),
+      q({ phone: '516-555-0002', email: 'household@example.com', approvedAt: '2025-11-02T00:00:00.000Z' }),
+    ];
+    const result = computeRebookRate(rows, ASOF);
+    expect(result.priorSeasonCustomers).toBe(2);
+  });
+
   it('a prior-season customer who did not return this season is not counted as rebooked', () => {
     const rows = [q({ approvedAt: '2025-11-01T00:00:00.000Z' })];
+    const result = computeRebookRate(rows, ASOF);
+    expect(result).toEqual({ priorSeasonCustomers: 1, rebookedCustomers: 0, rate: 0 });
+  });
+
+  it('does NOT match a customer who had a phone last season but only an email (no phone) this season — documented under-count, not a bug', () => {
+    const rows = [
+      q({ phone: '516-555-1234', email: 'jane@example.com', approvedAt: '2025-11-01T00:00:00.000Z' }),
+      q({ phone: null, email: 'jane@example.com', approvedAt: '2026-06-01T00:00:00.000Z' }),
+    ];
     const result = computeRebookRate(rows, ASOF);
     expect(result).toEqual({ priorSeasonCustomers: 1, rebookedCustomers: 0, rate: 0 });
   });

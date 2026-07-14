@@ -31,12 +31,27 @@ export function normalizeEmail(raw: string | null | undefined): string | null {
 
 // ─── Rebook rate ────────────────────────────────────────────────────────
 // Holiday only (the plan's rebook mechanic is a holiday-season concept — "62
-// to 70% of holiday clients rebook when offered early"). A customer is
-// identified by normalized phone OR normalized email — either match counts,
-// since a returning customer may re-enter their info differently between
-// seasons. Season windows are ambiguous in the Quote Tool schema (no season
-// column), so — same fallback as quoteToClose's season-to-date — this uses
-// calendar years of customer_approved_at.
+// to 70% of holiday clients rebook when offered early"). Season windows are
+// ambiguous in the Quote Tool schema (no season column), so — same fallback
+// as quoteToClose's season-to-date — this uses calendar years of
+// customer_approved_at.
+//
+// Identity: normalized PHONE is the primary key. Email is used ONLY when a
+// row has no phone at all — no transitive "phone OR email, either match
+// unions the rows" behavior. That was tried first and had a real bug: two
+// DIFFERENT customers who happen to share one contact field (most commonly
+// spouses sharing a household email address — routine for a residential
+// lighting company) would fuse into a single identity, distorting both the
+// numerator and the denominator of a headline wall metric. Phone is the
+// more reliable one-to-one identifier, so it wins whenever present, and a
+// shared email never merges two rows that carry different phones.
+//
+// Accepted trade-off (documented, not a bug): a customer who quoted with a
+// phone number one season and only an email address (no phone at all) the
+// next season will NOT be counted as a rebook — the two rows key
+// differently (`p:...` vs `e:...`) and nothing unions across that
+// boundary. That's an honest under-count. A leading KPI should under-claim
+// rather than over-claim by merging two different households into one.
 
 export type RebookQuoteRow = {
   phone: string | null;
@@ -45,48 +60,29 @@ export type RebookQuoteRow = {
   isTest: boolean;
 };
 
-function identityKeys(row: RebookQuoteRow): string[] {
-  const keys: string[] = [];
+// The single identity key for a row: phone when present, else email, else
+// null (unmatchable, e.g. neither field parses). No cross-row unioning —
+// two rows share an identity only when this returns the same string for
+// both, which also means this key is the primary key used to dedupe a
+// customer's multiple quotes within one season (see seasonIdentitySet).
+function identityKey(row: RebookQuoteRow): string | null {
   const phone = normalizePhone(row.phone);
+  if (phone) return `p:${phone}`;
   const email = normalizeEmail(row.email);
-  if (phone) keys.push(`p:${phone}`);
-  if (email) keys.push(`e:${email}`);
-  return keys;
+  return email ? `e:${email}` : null;
 }
 
-// One customer can carry two identity keys (phone + email); this groups
-// keys into an unrolled union so "does this customer appear in season Y" is
-// answerable even when the two seasons' quotes used different contact
-// fields. Naive union-find over string keys — fine at YLL's data volume.
 function seasonIdentitySet(rows: RebookQuoteRow[], year: number): Set<string> {
-  // Build a key -> representative map (first key seen for a row becomes the
-  // representative every other key on that row aliases to), then collect the
-  // set of representatives touched this season.
-  const parent = new Map<string, string>();
-  function find(k: string): string {
-    let root = k;
-    while (parent.has(root) && parent.get(root) !== root) root = parent.get(root)!;
-    return root;
-  }
-  function union(a: string, b: string) {
-    const ra = find(a);
-    const rb = find(b);
-    if (ra !== rb) parent.set(rb, ra);
-  }
-
-  const seasonRepresentatives = new Set<string>();
+  const keys = new Set<string>();
   for (const row of rows) {
     if (row.isTest) continue;
-    const approvedYear = new Date(row.approvedAt).getUTCFullYear();
-    const keys = identityKeys(row);
-    if (keys.length === 0) continue;
-    for (const k of keys) if (!parent.has(k)) parent.set(k, k);
-    for (let i = 1; i < keys.length; i++) union(keys[0], keys[i]);
-    if (approvedYear === year) {
-      for (const k of keys) seasonRepresentatives.add(find(k));
-    }
+    if (new Date(row.approvedAt).getUTCFullYear() !== year) continue;
+    const key = identityKey(row);
+    // The Set naturally dedupes multiple quotes from the same customer
+    // (same primary key) within this one season.
+    if (key) keys.add(key);
   }
-  return seasonRepresentatives;
+  return keys;
 }
 
 export type RebookRateResult = {
