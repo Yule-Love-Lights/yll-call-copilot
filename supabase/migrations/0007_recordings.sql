@@ -14,6 +14,13 @@
 -- (src/lib/transcripts/process.ts, extract.ts) processes a GHL recording
 -- exactly like an uploaded transcript. File only -- not applied anywhere
 -- yet, same convention as 0001-0006.
+--
+-- Claim lifecycle: a row moves pending -> processing (claimed by a
+-- compare-and-swap update stamping processing_at, so the nightly cron and a
+-- staff-triggered batch can never both process the same row) -> transcribed
+-- / skipped / failed, and a processing row whose processing_at is older
+-- than 15 minutes is treated as abandoned (a crashed invocation) and is
+-- reclaimed by the next run.
 
 create table call_recordings (
   id uuid primary key default gen_random_uuid(),
@@ -24,10 +31,11 @@ create table call_recordings (
   direction text,
   called_at timestamptz,
   duration_seconds int,
-  status text not null default 'pending' check (status in ('pending', 'transcribed', 'skipped', 'failed')),
+  status text not null default 'pending' check (status in ('pending', 'processing', 'transcribed', 'skipped', 'failed')),
   skip_reason text,
   transcript_id uuid references transcripts(id) on delete set null,
   detail jsonb,
+  processing_at timestamptz,
   created_at timestamptz default now()
 );
 

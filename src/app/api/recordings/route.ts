@@ -18,7 +18,7 @@ type CallRecordingRow = {
   created_at: string;
 };
 
-const STATUS_KEYS = ['pending', 'transcribed', 'skipped', 'failed'] as const;
+const STATUS_KEYS = ['pending', 'processing', 'transcribed', 'skipped', 'failed'] as const;
 
 export async function GET() {
   if (!isSupabaseConfigured()) {
@@ -38,7 +38,7 @@ export async function GET() {
     const { data: statusRows, error: statusError } = await supabase.from('call_recordings').select('status');
     if (statusError) throw statusError;
 
-    const counts = { pending: 0, transcribed: 0, skipped: 0, failed: 0 };
+    const counts = { pending: 0, processing: 0, transcribed: 0, skipped: 0, failed: 0 };
     for (const row of (statusRows ?? []) as { status: string }[]) {
       if ((STATUS_KEYS as readonly string[]).includes(row.status)) {
         counts[row.status as keyof typeof counts]++;

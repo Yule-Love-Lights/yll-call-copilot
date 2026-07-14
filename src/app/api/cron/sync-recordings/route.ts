@@ -42,6 +42,14 @@ export async function GET() {
     const lastSyncedAt = (stateData as { last_synced_at: string | null } | null)?.last_synced_at ?? null;
     const since = resolveSyncWindowStart(lastSyncedAt);
 
+    // Captured BEFORE the GHL fetch, not after: if a call's dateAdded lands
+    // during the fetch (the fetch takes a few seconds, GHL keeps logging
+    // calls the whole time), stamping a post-fetch time would push the next
+    // run's `since` past that call, permanently skipping it. The
+    // ghl_message_id unique constraint below already dedupes the resulting
+    // small overlap between runs, so re-seeing a few of the same messages
+    // next time is free.
+    const runStartedAt = new Date().toISOString();
     const messages = await listRecentCallRecordings(since);
 
     let inserted = 0;
@@ -73,7 +81,7 @@ export async function GET() {
 
     await supabase.from('recording_sync_state').upsert({
       id: 1,
-      last_synced_at: new Date().toISOString(),
+      last_synced_at: runStartedAt,
       detail: { messages_seen: messages.length, inserted },
     });
 

@@ -41,7 +41,7 @@ vi.mock('./outcomes', () => ({
   matchRecordingOutcome: (...args: unknown[]) => matchRecordingOutcomeMock(...args),
 }));
 
-import { processOneRecording, processPendingRecordings } from './pipeline';
+import { claimRecording, processOneRecording, processPendingRecordings } from './pipeline';
 
 const sampleLearnings = {
   objections: [],
@@ -53,6 +53,8 @@ const sampleLearnings = {
   summary: 'summary',
 };
 
+type RowState = { status: string; processing_at: string | null };
+
 type Row = {
   id: string;
   ghl_message_id: string | null;
@@ -61,6 +63,8 @@ type Row = {
   direction: string | null;
   called_at: string | null;
   duration_seconds: number | null;
+  status: string;
+  processing_at: string | null;
 };
 
 function baseRow(overrides: Partial<Row> = {}): Row {
@@ -72,41 +76,91 @@ function baseRow(overrides: Partial<Row> = {}): Row {
     direction: 'inbound',
     called_at: '2026-07-10T12:00:00.000Z',
     duration_seconds: 120,
+    status: 'pending',
+    processing_at: null,
     ...overrides,
   };
 }
 
 // Fake Supabase client covering the tables pipeline.ts touches:
-// call_recordings (select for the batch, update for status writes),
-// verticals (the holiday vertical lookup), transcripts (insert), and
-// learnings (upsert).
+// call_recordings (select for the batch, update for status writes and for
+// the claim compare-and-swap), verticals (the holiday vertical lookup),
+// transcripts (insert), and learnings (upsert).
+//
+// `rowState` is an OPTIONAL shared, mutable map standing in for the real
+// row's live status/processing_at in the database. When two fakeSupabase
+// clients are given the SAME rowState map (see the concurrent-claim tests
+// below), a claim performed through one client is visible to the other,
+// modeling the real compare-and-swap race. When omitted (every existing
+// test that predates the claim step), every claim attempt trivially
+// succeeds so those tests are unaffected by the new claim-before-process
+// step.
 function fakeSupabase(
   opts: {
     pendingRows?: Row[];
     vertical?: { id: string; name: string } | null;
     transcriptInsertError?: { message: string } | null;
+    rowState?: Map<string, RowState>;
+    insertCallsSink?: Record<string, unknown>[];
   } = {},
 ) {
   const updateCalls: { id: string; patch: Record<string, unknown> }[] = [];
-  const insertCalls: Record<string, unknown>[] = [];
+  const insertCalls = opts.insertCallsSink ?? [];
   const upsertCalls: { row: Record<string, unknown>; options?: Record<string, unknown> }[] = [];
 
   const from = vi.fn((table: string) => {
     if (table === 'call_recordings') {
       return {
         select: () => ({
-          eq: () => ({
+          or: () => ({
             order: () => ({
               limit: async () => ({ data: opts.pendingRows ?? [], error: null }),
             }),
           }),
         }),
-        update: (patch: Record<string, unknown>) => ({
-          eq: async (_column: string, value: string) => {
-            updateCalls.push({ id: value, patch });
-            return { error: null };
-          },
-        }),
+        update: (patch: Record<string, unknown>) => {
+          const filters: { id?: string; status?: string; processingAtLt?: string } = {};
+          const builder = {
+            eq(column: string, value: string) {
+              if (column === 'id') filters.id = value;
+              if (column === 'status') filters.status = value;
+              return builder;
+            },
+            lt(column: string, value: string) {
+              if (column === 'processing_at') filters.processingAtLt = value;
+              return builder;
+            },
+            // The claimRecording() shape: two .eq()s (or one .eq() + one
+            // .lt()) then .select() -- resolved as a genuine compare-and-
+            // swap against rowState when one was provided.
+            select: async () => {
+              const id = filters.id!;
+              updateCalls.push({ id, patch });
+              if (!opts.rowState) return { data: [{ id }], error: null };
+              const current = opts.rowState.get(id);
+              let matches = !!current;
+              if (matches && filters.status !== undefined) matches = current!.status === filters.status;
+              if (matches && filters.processingAtLt !== undefined) {
+                matches = current!.processing_at != null && current!.processing_at < filters.processingAtLt;
+              }
+              if (matches) opts.rowState.set(id, { ...current!, ...(patch as Partial<RowState>) });
+              return matches ? { data: [{ id }], error: null } : { data: [], error: null };
+            },
+            // The markRow() shape: a single .eq('id', id) awaited directly,
+            // no status filter, no .select() -- always applies (the row is
+            // already owned by this invocation by the time markRow runs).
+            then(resolve: (v: { error: null }) => void) {
+              const id = filters.id!;
+              updateCalls.push({ id, patch });
+              if (opts.rowState) {
+                const current = opts.rowState.get(id) ?? { status: 'pending', processing_at: null };
+                opts.rowState.set(id, { ...current, ...(patch as Partial<RowState>) });
+              }
+              resolve({ error: null });
+            },
+          };
+          return builder;
+        },
       };
     }
     if (table === 'verticals') {
@@ -310,5 +364,102 @@ describe('processPendingRecordings', () => {
     const result = await processPendingRecordings(client, 6);
 
     expect(result).toEqual({ done: 1, skipped: 0, failed: 1 });
+  });
+
+  it('a second concurrent batch skips a row the first already claimed, and never double-transcribes it', async () => {
+    downloadRecordingAudioMock.mockResolvedValue(Buffer.from('audio'));
+    transcribeRecordingMock.mockResolvedValue({
+      rawText: 'Speaker 0: hello and welcome to yule love lights how can I help you today with your display.\n\nSpeaker 1: I would like a quote for my house please.',
+      utterances: [
+        { speaker: 0, start: 0, end: 3, text: 'hello and welcome to yule love lights how can I help you today with your display' },
+        { speaker: 1, start: 3, end: 6, text: 'I would like a quote for my house please' },
+      ],
+      durationSeconds: 90,
+    });
+
+    // Both "batches" (the nightly cron racing a staff click, or two staff
+    // clicks) select the SAME pending row before either has claimed it --
+    // rowState is the one thing they share, standing in for the real table.
+    const rows: Row[] = [baseRow({ id: 'r1' })];
+    const rowState = new Map<string, RowState>([['r1', { status: 'pending', processing_at: null }]]);
+    const sharedInsertCalls: Record<string, unknown>[] = [];
+
+    const clientA = fakeSupabase({ pendingRows: rows, rowState, insertCallsSink: sharedInsertCalls }).client;
+    const clientB = fakeSupabase({ pendingRows: rows, rowState, insertCallsSink: sharedInsertCalls }).client;
+
+    const [resultA, resultB] = await Promise.all([processPendingRecordings(clientA, 6), processPendingRecordings(clientB, 6)]);
+
+    // Exactly one batch wins the claim and transcribes the row; the other
+    // finds it already claimed and skips it without counting it any way --
+    // never both (double spend) and never neither (row starved).
+    expect(resultA.done + resultB.done).toBe(1);
+    expect(resultA.skipped + resultB.skipped).toBe(0);
+    expect(resultA.failed + resultB.failed).toBe(0);
+    expect(sharedInsertCalls).toHaveLength(1);
+    expect(rowState.get('r1')?.status).toBe('transcribed');
+  });
+
+  it('reclaims and fully processes a candidate row left abandoned in processing (crashed invocation)', async () => {
+    downloadRecordingAudioMock.mockResolvedValue(Buffer.from('audio'));
+    transcribeRecordingMock.mockResolvedValue({
+      rawText: 'Speaker 0: hello and welcome to yule love lights how can I help you today with your display.\n\nSpeaker 1: I would like a quote for my house please.',
+      utterances: [
+        { speaker: 0, start: 0, end: 3, text: 'hello and welcome to yule love lights how can I help you today with your display' },
+        { speaker: 1, start: 3, end: 6, text: 'I would like a quote for my house please' },
+      ],
+      durationSeconds: 90,
+    });
+
+    const staleRow = baseRow({ id: 'r1', status: 'processing', processing_at: '2026-07-14T11:00:00.000Z' }); // 60 min old
+    const rowState = new Map<string, RowState>([['r1', { status: 'processing', processing_at: '2026-07-14T11:00:00.000Z' }]]);
+    const { client } = fakeSupabase({ pendingRows: [staleRow], rowState });
+
+    const result = await processPendingRecordings(client, 6, new Date('2026-07-14T12:00:00.000Z'));
+
+    expect(result).toEqual({ done: 1, skipped: 0, failed: 0 });
+    expect(rowState.get('r1')?.status).toBe('transcribed');
+  });
+});
+
+describe('claimRecording', () => {
+  it('claims a pending row via compare-and-swap', async () => {
+    const rowState = new Map<string, RowState>([['r1', { status: 'pending', processing_at: null }]]);
+    const { client } = fakeSupabase({ rowState });
+
+    const claimed = await claimRecording(client, { id: 'r1', status: 'pending' }, new Date('2026-07-14T12:00:00.000Z'));
+
+    expect(claimed).toBe(true);
+    expect(rowState.get('r1')).toEqual({ status: 'processing', processing_at: '2026-07-14T12:00:00.000Z' });
+  });
+
+  it('fails to claim a row a concurrent invocation already claimed', async () => {
+    // This caller's `row` snapshot says 'pending' (read before the race),
+    // but the shared table already moved to 'processing' by the time this
+    // claim's compare-and-swap runs -- the same shape as a real DB race.
+    const rowState = new Map<string, RowState>([['r1', { status: 'processing', processing_at: '2026-07-14T11:59:00.000Z' }]]);
+    const { client } = fakeSupabase({ rowState });
+
+    const claimed = await claimRecording(client, { id: 'r1', status: 'pending' }, new Date('2026-07-14T12:00:00.000Z'));
+
+    expect(claimed).toBe(false);
+  });
+
+  it('reclaims a processing row abandoned more than 15 minutes ago', async () => {
+    const rowState = new Map<string, RowState>([['r1', { status: 'processing', processing_at: '2026-07-14T11:40:00.000Z' }]]); // 20 min old
+    const { client } = fakeSupabase({ rowState });
+
+    const claimed = await claimRecording(client, { id: 'r1', status: 'processing' }, new Date('2026-07-14T12:00:00.000Z'));
+
+    expect(claimed).toBe(true);
+    expect(rowState.get('r1')).toEqual({ status: 'processing', processing_at: '2026-07-14T12:00:00.000Z' });
+  });
+
+  it('does not reclaim a processing row still inside the 15-minute staleness window', async () => {
+    const rowState = new Map<string, RowState>([['r1', { status: 'processing', processing_at: '2026-07-14T11:50:00.000Z' }]]); // 10 min old
+    const { client } = fakeSupabase({ rowState });
+
+    const claimed = await claimRecording(client, { id: 'r1', status: 'processing' }, new Date('2026-07-14T12:00:00.000Z'));
+
+    expect(claimed).toBe(false);
   });
 });

@@ -25,6 +25,11 @@ export { RECORDING_BATCH_SIZE };
 
 const HOLIDAY_VERTICAL_SLUG = 'holiday';
 
+// A 'processing' row whose processing_at is older than this is treated as
+// abandoned (the invocation that claimed it crashed or timed out) and is
+// reclaimed by the next run instead of being stuck forever.
+const PROCESSING_STALE_MS = 15 * 60 * 1000;
+
 type CallRecordingRow = {
   id: string;
   ghl_message_id: string | null;
@@ -33,6 +38,8 @@ type CallRecordingRow = {
   direction: string | null;
   called_at: string | null;
   duration_seconds: number | null;
+  status: string;
+  processing_at: string | null;
 };
 
 type HolidayVertical = { id: string; name: string };
@@ -171,16 +178,53 @@ export async function processOneRecording(
   }
 }
 
+// Claims one candidate row for THIS invocation via a compare-and-swap
+// update: the WHERE clause only matches if the row is still in the exact
+// state we read it in (plain 'pending', or a 'processing' row whose
+// processing_at is still older than the stale cutoff). If the nightly cron
+// and a staff click on /api/recordings/continue race on the same row (or
+// two staff clicks land at once — the UI's disabled state is per-tab only),
+// only one update matches a row and the other gets zero rows back. Exported
+// so the race itself is directly testable without driving the whole batch
+// loop.
+export async function claimRecording(
+  supabase: SupabaseClient,
+  row: Pick<CallRecordingRow, 'id' | 'status'>,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const nowIso = now.toISOString();
+  const cutoffIso = new Date(now.getTime() - PROCESSING_STALE_MS).toISOString();
+
+  const base = supabase
+    .from('call_recordings')
+    .update({ status: 'processing', processing_at: nowIso })
+    .eq('id', row.id);
+  const query =
+    row.status === 'processing'
+      ? base.eq('status', 'processing').lt('processing_at', cutoffIso)
+      : base.eq('status', 'pending');
+
+  const { data, error } = await query.select('id');
+  if (error) throw error;
+  return (data ?? []).length > 0;
+}
+
 export type ProcessRecordingsResult = { done: number; skipped: number; failed: number };
 
 export async function processPendingRecordings(
   supabase: SupabaseClient,
   limit: number = RECORDING_BATCH_SIZE,
+  now: Date = new Date(),
 ): Promise<ProcessRecordingsResult> {
+  const cutoffIso = new Date(now.getTime() - PROCESSING_STALE_MS).toISOString();
+  // Candidates are plain-pending rows PLUS abandoned-processing rows (a
+  // crashed invocation left processing_at stale) -- the claim step below is
+  // what actually guards against double-processing a row a concurrent,
+  // still-live invocation is working on.
   const { data, error } = await supabase
     .from('call_recordings')
-    .select('id, ghl_message_id, ghl_contact_id, ghl_user_id, direction, called_at, duration_seconds')
-    .eq('status', 'pending')
+    .select('id, ghl_message_id, ghl_contact_id, ghl_user_id, direction, called_at, duration_seconds, status, processing_at')
+    .or(`status.eq.pending,and(status.eq.processing,processing_at.lt.${cutoffIso})`)
     .order('created_at', { ascending: true })
     .limit(limit);
   if (error) throw error;
@@ -194,6 +238,8 @@ export async function processPendingRecordings(
   let skipped = 0;
   let failed = 0;
   for (const row of rows) {
+    const claimed = await claimRecording(supabase, row, now);
+    if (!claimed) continue; // another invocation claimed this row first -- not double-spent, not counted here
     const outcome = await processOneRecording(supabase, row, vertical);
     if (outcome === 'transcribed') done++;
     else if (outcome === 'skipped') skipped++;

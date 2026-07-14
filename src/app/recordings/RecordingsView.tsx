@@ -13,14 +13,14 @@ type Recording = {
   direction: string | null;
   calledAt: string | null;
   durationSeconds: number | null;
-  status: 'pending' | 'transcribed' | 'skipped' | 'failed';
+  status: 'pending' | 'processing' | 'transcribed' | 'skipped' | 'failed';
   skipReason: string | null;
   transcriptId: string | null;
   outcome: string | null;
   createdAt: string;
 };
 
-type Counts = { pending: number; transcribed: number; skipped: number; failed: number };
+type Counts = { pending: number; processing: number; transcribed: number; skipped: number; failed: number };
 
 type RecordingsResponse = {
   configured: boolean;
@@ -51,6 +51,7 @@ function statusBadgeClass(status: Recording['status']): string {
   if (status === 'transcribed') return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300';
   if (status === 'failed') return 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300';
   if (status === 'skipped') return 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300';
+  if (status === 'processing') return 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300';
   return 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'; // pending
 }
 
@@ -114,7 +115,7 @@ export default function RecordingsView() {
     return <div className={amberBannerClass}>{data.error}</div>;
   }
 
-  const counts = data.counts ?? { pending: 0, transcribed: 0, skipped: 0, failed: 0 };
+  const counts = data.counts ?? { pending: 0, processing: 0, transcribed: 0, skipped: 0, failed: 0 };
   const recordings = data.recordings ?? [];
 
   return (
@@ -136,8 +137,9 @@ export default function RecordingsView() {
         {processMessage && <span className="text-sm text-zinc-500">{processMessage}</span>}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <StatTile label="Pending" value={counts.pending} />
+        <StatTile label="Processing" value={counts.processing} />
         <StatTile label="Transcribed" value={counts.transcribed} />
         <StatTile label="Skipped" value={counts.skipped} />
         <StatTile label="Failed" value={counts.failed} />
