@@ -9,9 +9,29 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isMissingTableError } from '../supabase';
 import { dateRangeToTimestamps } from '../analytics/stats';
-import type { CallScoreRow, EmotionalScore, FixMoment, GuaranteeKey, GuaranteeEntry, HospitalityDim, SalesDim, ScoreMaxNote } from './stats';
+import type { CallScoreRow, GuaranteeKey, GuaranteeEntry, HospitalityDim, SalesDim, ScoreMaxNote } from './stats';
 
 export type LoadCallScoresResult = { ok: true; rows: CallScoreRow[] } | { ok: false; missingTable: boolean };
+
+// The scorer's real jsonb shapes (snake_case columns) for the fix/emotional
+// sub-objects -- distinct from stats.ts's FixMoment/EmotionalScore, which
+// are the camelCase shapes the rest of the digest reads. Was previously
+// passed straight through unmapped, which rendered "NaN:NaN" and a blank
+// quote/better-line in the roughest-moment card (fixtures were camelCase,
+// so the bug never showed up in tests).
+type FixMomentDbRow = {
+  moment: string;
+  timestamp_seconds: number;
+  transcript_quote: string;
+  better_line: string;
+};
+type EmotionalScoreDbRow = {
+  state: string | null;
+  named_back: boolean | null;
+  matched_track: boolean | null;
+  grade: number | null;
+  notes?: string | null;
+};
 
 type CallScoreDbRow = {
   id: string;
@@ -19,22 +39,29 @@ type CallScoreDbRow = {
   overall: number;
   experience_score: number;
   win: string | null;
-  fix: FixMoment | null;
-  emotional: EmotionalScore | null;
+  fix: FixMomentDbRow | null;
+  emotional: EmotionalScoreDbRow | null;
   sales: (Partial<Record<SalesDim, ScoreMaxNote>> & { total?: number }) | null;
   hospitality: (Partial<Record<HospitalityDim, ScoreMaxNote>> & { total?: number }) | null;
   guarantees: Partial<Record<GuaranteeKey, GuaranteeEntry>> | null;
 };
 
-function mapRow(r: CallScoreDbRow): CallScoreRow {
+// Exported for direct unit coverage of the snake_case -> camelCase mapping
+// (see loadCallScores.test.ts); loadCallScoreRows() below is the only real
+// caller.
+export function mapRow(r: CallScoreDbRow): CallScoreRow {
   return {
     id: r.id,
     repEmail: r.rep_email,
     overall: r.overall,
     experienceScore: r.experience_score,
     win: r.win,
-    fix: r.fix,
-    emotional: r.emotional,
+    fix: r.fix
+      ? { moment: r.fix.moment, timestampSeconds: r.fix.timestamp_seconds, transcriptQuote: r.fix.transcript_quote, betterLine: r.fix.better_line }
+      : null,
+    emotional: r.emotional
+      ? { state: r.emotional.state, namedBack: r.emotional.named_back, matchedTrack: r.emotional.matched_track, grade: r.emotional.grade, notes: r.emotional.notes ?? null }
+      : null,
     sales: r.sales,
     hospitality: r.hospitality,
     guarantees: r.guarantees,

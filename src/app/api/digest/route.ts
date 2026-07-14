@@ -3,9 +3,17 @@
 // so the whole table is small forever (roughly 52 rows a year) -- returned
 // in full (with content) rather than paginated, same "small enough, don't
 // bother" reasoning as the rest of this app's list routes.
+//
+// Owner-facing, not rep-facing: the digest names a specific rep's roughest
+// moment with the verbatim transcript quote, which must stay a private
+// coaching conversation, not something every rep can pull for every other
+// rep. proxy.ts only checks the staff allowlist (any signed-in rep passes),
+// so the role check happens here.
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
+import { getSessionEmail } from '@/lib/auth/session';
+import { resolveStaffRole } from '@/lib/auth/role';
 import type { DigestContent } from '@/lib/digest/runDigest';
 
 export async function GET() {
@@ -14,6 +22,11 @@ export async function GET() {
   }
 
   const supabase = getSupabaseServerClient()!;
+  const role = await resolveStaffRole(supabase, await getSessionEmail());
+  if (role === 'rep') {
+    return NextResponse.json({ configured: true, error: "The weekly digest is for the coach's Friday review." }, { status: 403 });
+  }
+
   const { data, error } = await supabase
     .from('weekly_digests')
     .select('id, period_start, period_end, content, created_at')

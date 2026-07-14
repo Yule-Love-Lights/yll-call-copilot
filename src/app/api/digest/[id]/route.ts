@@ -1,9 +1,14 @@
 // GET /api/digest/[id] -- one digest's full content, for a direct link to a
 // past week (the /digest history list links here). Same "404 when the row
 // isn't found" convention as GET /api/leads/[id].
+//
+// Owner-facing, not rep-facing -- same reasoning as GET /api/digest (a
+// specific past digest still names a rep's roughest moment verbatim).
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
+import { getSessionEmail } from '@/lib/auth/session';
+import { resolveStaffRole } from '@/lib/auth/role';
 import type { DigestContent } from '@/lib/digest/runDigest';
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -13,6 +18,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   const supabase = getSupabaseServerClient()!;
+  const role = await resolveStaffRole(supabase, await getSessionEmail());
+  if (role === 'rep') {
+    return NextResponse.json({ configured: true, error: "The weekly digest is for the coach's Friday review." }, { status: 403 });
+  }
 
   const { data, error } = await supabase.from('weekly_digests').select('id, period_start, period_end, content, created_at').eq('id', id).maybeSingle();
   if (error) {

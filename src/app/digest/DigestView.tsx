@@ -242,7 +242,10 @@ function DigestPanel({ digest }: { digest: Digest }) {
 export default function DigestView() {
   const [digests, setDigests] = useState<Digest[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [status, setStatus] = useState<'loading' | 'done' | 'error'>('loading');
+  // 'forbidden' -- the API's 403 for a rep (the digest is owner-facing; see
+  // GET /api/digest's role gate) -- shows a friendly explanation instead of
+  // the digest, rather than falling into the generic 'error' state.
+  const [status, setStatus] = useState<'loading' | 'done' | 'error' | 'forbidden'>('loading');
   const [reason, setReason] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -254,8 +257,12 @@ export default function DigestView() {
   // so the initial mount doesn't need its own synchronous flip.
   function load() {
     fetch('/api/digest')
-      .then(res => res.json())
-      .then(json => {
+      .then(async res => {
+        if (res.status === 403) {
+          setStatus('forbidden');
+          return;
+        }
+        const json = await res.json();
         if (json.reason) setReason(json.reason);
         const list = (json.digests ?? []) as Digest[];
         setDigests(list);
@@ -289,6 +296,13 @@ export default function DigestView() {
 
   const selected = digests.find(d => d.id === selectedId) ?? null;
   const history = digests.filter(d => d.id !== selectedId);
+
+  // A rep gets the friendly explanation, not the digest workspace -- the
+  // digest is the coach's Friday review, and it's not something to blank
+  // out awkwardly or half-render after an API 403.
+  if (status === 'forbidden') {
+    return <div className={amberBannerClass}>The weekly digest is for the coach&apos;s Friday review.</div>;
+  }
 
   return (
     <div className="flex flex-col gap-6">

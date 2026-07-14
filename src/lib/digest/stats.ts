@@ -20,10 +20,14 @@ function mean(values: number[]): number {
 export type ScoreMaxNote = { score: number; max: number; notes?: string | null };
 export type GuaranteeEntry = { applicable: boolean; done: boolean; notes?: string | null };
 export type FixMoment = { moment: string; timestampSeconds: number; transcriptQuote: string; betterLine: string };
+// matchedTrack is a compliance flag ("did the rep run the right track for
+// the diagnosed state"), not the track name itself -- it was typed as
+// string here, which never matched what the scorer actually writes
+// (matched_track: boolean); loadCallScores.ts maps it explicitly now.
 export type EmotionalScore = {
   state: string | null;
   namedBack: boolean | null;
-  matchedTrack: string | null;
+  matchedTrack: boolean | null;
   grade: number | null; // 0-10
   notes?: string | null;
 };

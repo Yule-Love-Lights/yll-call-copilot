@@ -1,20 +1,36 @@
 // POST /api/digest/generate -- the "Generate now" button on /digest. Staff
-// session already gated by src/proxy.ts (this path is not public). Runs
+// session already gated by src/proxy.ts (this path is not public), but that
+// only checks the staff allowlist, not role -- owner-facing, not rep-facing,
+// same reasoning as GET /api/digest (a rep re-generating still gets back
+// every other rep's averages plus a named roughest moment). Runs
 // src/lib/digest/runDigest.ts in 'replace' mode: deletes and reinserts the
 // current week's digest so a rep can re-run it after correcting a call score,
 // mirroring POST /api/verticals/[id]/brain-review's manual re-run button.
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase';
+import { getSessionEmail } from '@/lib/auth/session';
+import { resolveStaffRole } from '@/lib/auth/role';
 import { isClaudeConfigured } from '@/lib/claude';
 import { runWeeklyDigest } from '@/lib/digest/runDigest';
 
-export const maxDuration = 60;
+// 120s, not 60s: this route makes a single large Claude call (the digest
+// narrative + role-play generation over a full week of call_scores) and a
+// slow generation getting killed by the function timeout skips that week's
+// digest until someone notices and retries by hand.
+export const maxDuration = 120;
 
 export async function POST(request: Request) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ configured: false, generated: false, reason: 'Supabase not configured.' });
   }
+
+  const supabase = getSupabaseServerClient()!;
+  const role = await resolveStaffRole(supabase, await getSessionEmail());
+  if (role === 'rep') {
+    return NextResponse.json({ configured: true, generated: false, reason: "The weekly digest is for the coach's Friday review." }, { status: 403 });
+  }
+
   if (!isClaudeConfigured()) {
     return NextResponse.json({ configured: true, generated: false, reason: 'Claude not configured.' });
   }
@@ -22,7 +38,6 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   const periodDays = typeof body?.periodDays === 'number' ? body.periodDays : 7;
 
-  const supabase = getSupabaseServerClient()!;
   const result = await runWeeklyDigest(supabase, { periodDays, mode: 'replace' });
 
   if (!result.ok) {

@@ -25,7 +25,7 @@ function row(overrides: Partial<CallScoreRow> & { id: string }): CallScoreRow {
     experienceScore: 7,
     win: null,
     fix: null,
-    emotional: { state: 'excited', namedBack: true, matchedTrack: 'vision-first', grade: 7, notes: null },
+    emotional: { state: 'excited', namedBack: true, matchedTrack: true, grade: 7, notes: null },
     sales: {
       opening: { score: 12, max: 15 },
       discovery: { score: 20, max: 25 },
@@ -48,8 +48,8 @@ function row(overrides: Partial<CallScoreRow> & { id: string }): CallScoreRow {
 describe('dimensionLeaderboard / lowestDimensions', () => {
   it('averages each dimension as a percent and sorts ascending', () => {
     const rows = [
-      row({ id: '1', emotional: { state: 'busy', namedBack: true, matchedTrack: 'done-for-you', grade: 5, notes: null } }),
-      row({ id: '2', emotional: { state: 'busy', namedBack: true, matchedTrack: 'done-for-you', grade: 9, notes: null } }),
+      row({ id: '1', emotional: { state: 'busy', namedBack: true, matchedTrack: true, grade: 5, notes: null } }),
+      row({ id: '2', emotional: { state: 'busy', namedBack: true, matchedTrack: true, grade: 9, notes: null } }),
     ];
     const board = dimensionLeaderboard(rows);
     const emotional = board.find(d => d.key === 'emotional_match')!;
@@ -66,7 +66,7 @@ describe('dimensionLeaderboard / lowestDimensions', () => {
     // dimension ties -- the whole leaderboard order collapses to alphabetical.
     const flat: CallScoreRow = row({
       id: '1',
-      emotional: { state: 'guarded', namedBack: true, matchedTrack: 'proof-and-guarantees', grade: 5, notes: null },
+      emotional: { state: 'guarded', namedBack: true, matchedTrack: false, grade: 5, notes: null },
       sales: {
         opening: { score: 5, max: 10 },
         discovery: { score: 5, max: 10 },
