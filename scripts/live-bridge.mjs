@@ -129,6 +129,12 @@ function handleTwilioConnection(ws) {
         channels: 1,
         diarize: 'true',
         interim_results: 'true',
+        // Finalize an utterance after 300ms of silence instead of Deepgram's
+        // slower default. We only act on is_final results (below), so without
+        // this the card waited ~1s+ after the customer stopped talking just
+        // for the transcript to settle. 300ms trades a little more
+        // fragmentation for a card that lands while it is still useful.
+        endpointing: 300,
         Authorization: `Token ${DEEPGRAM_API_KEY}`,
       });
       await socket.waitForOpen();
