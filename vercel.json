@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/brain-review",
       "schedule": "0 13 * * 1"
+    },
+    {
+      "path": "/api/cron/score-calls",
+      "schedule": "30 8 * * *"
     }
   ]
 }
