@@ -294,6 +294,40 @@ describe('processOneRecording', () => {
     expect(updateCalls).toEqual([{ id: 'r1', patch: { status: 'transcribed', transcript_id: 'tr1' } }]);
   });
 
+  it('rounds a fractional Deepgram duration to an integer for the transcripts insert', async () => {
+    // Regression: Deepgram reports fractional seconds (96.23994 on the first
+    // live run) and transcripts.duration_seconds is an int column -- the raw
+    // float made Postgres reject the whole insert with 22P02.
+    transcribeRecordingMock.mockResolvedValueOnce({
+      rawText: 'Speaker 0: hi there this is a real conversation about holiday lights for your home this season.\n\nSpeaker 1: great, tell me more about pricing and scheduling please.',
+      utterances: [
+        { speaker: 0, start: 0, end: 3, text: 'hi there this is a real conversation about holiday lights for your home this season' },
+        { speaker: 1, start: 3, end: 6, text: 'great, tell me more about pricing and scheduling please' },
+      ],
+      durationSeconds: 96.23994,
+    });
+    const { client, insertCalls } = fakeSupabase();
+
+    const result = await processOneRecording(client, baseRow(), HOLIDAY_VERTICAL);
+
+    expect(result).toBe('transcribed');
+    expect(insertCalls[0].duration_seconds).toBe(96);
+  });
+
+  it('stores a readable error detail when a thrown failure is a plain object, not an Error', async () => {
+    // Regression: the first live failures stored "[object Object]" because
+    // String() was applied to a thrown Supabase error object.
+    downloadRecordingAudioMock.mockRejectedValueOnce({ code: '22P02', message: 'invalid input syntax for type integer: "96.23994"' });
+    const { client, updateCalls } = fakeSupabase();
+
+    const result = await processOneRecording(client, baseRow(), HOLIDAY_VERTICAL);
+
+    expect(result).toBe('failed');
+    const detail = updateCalls[0].patch.detail as { error: string };
+    expect(detail.error).toContain('22P02');
+    expect(detail.error).not.toBe('[object Object]');
+  });
+
   it('still marks the recording transcribed when learnings extraction fails (best-effort)', async () => {
     extractLearningsMock.mockRejectedValueOnce(new Error('Claude overloaded'));
     const { client, updateCalls } = fakeSupabase();
