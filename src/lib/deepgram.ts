@@ -94,6 +94,9 @@ export async function transcribeRecording(audio: Buffer, mimetype: string): Prom
   return {
     rawText: flattenUtterances(utterances),
     utterances,
-    durationSeconds: response.metadata.duration ?? 0,
+    // Deepgram reports fractional seconds (e.g. 96.23994); the
+    // transcripts.duration_seconds column is an integer, so round here at
+    // the source rather than in every consumer.
+    durationSeconds: Math.round(response.metadata.duration ?? 0),
   };
 }

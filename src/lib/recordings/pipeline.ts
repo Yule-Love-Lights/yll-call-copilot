@@ -132,7 +132,10 @@ export async function processOneRecording(
         ghl_contact_id: row.ghl_contact_id,
         rep_email: repEmail,
         direction: row.direction,
-        duration_seconds: transcribed.durationSeconds || row.duration_seconds,
+        // Math.round both sources: the column is an integer and Deepgram
+        // reports fractional seconds (a raw 96.23994 made Postgres reject
+        // the whole insert with 22P02 on the first live run).
+        duration_seconds: Math.round(transcribed.durationSeconds || row.duration_seconds || 0),
         utterances: transcribed.utterances,
       })
       .select('id')
@@ -172,7 +175,9 @@ export async function processOneRecording(
     console.error(`Failed to process recording ${row.id}:`, err);
     await markRow(supabase, row.id, {
       status: 'failed',
-      detail: { error: err instanceof Error ? err.message : String(err) },
+      // JSON.stringify, not String(): a thrown Supabase/PostgREST error is a
+      // plain object and String() buries the message as "[object Object]".
+      detail: { error: err instanceof Error ? err.message : JSON.stringify(err) },
     }).catch(() => {});
     return 'failed';
   }
