@@ -131,6 +131,9 @@ export default function Home() {
         <Link href="/second-mile" className={quickLinkClass}>
           Second mile →
         </Link>
+        <Link href="/coach/calls" className={quickLinkClass}>
+          Call review →
+        </Link>
       </nav>
 
       <section className="mt-8 rounded-md border border-zinc-200 dark:border-zinc-800">
