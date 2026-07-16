@@ -5,6 +5,10 @@
       "schedule": "0 13 * * 1"
     },
     {
+      "path": "/api/cron/sync-recordings",
+      "schedule": "0 7 * * *"
+    },
+    {
       "path": "/api/cron/score-calls",
       "schedule": "30 8 * * *"
     }
