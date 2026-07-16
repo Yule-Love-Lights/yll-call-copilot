@@ -118,6 +118,8 @@ export default function Home() {
         </Link>
         <Link href="/digest" className={quickLinkClass}>
           Weekly digest →
+        <Link href="/recordings" className={quickLinkClass}>
+          Call recordings →
         </Link>
       </nav>
 
