@@ -48,7 +48,7 @@ function requireConfig(): { apiKey: string; locationId: string } {
   return { apiKey, locationId };
 }
 
-async function ghlFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function ghlFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const { apiKey } = requireConfig();
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,

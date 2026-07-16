@@ -220,10 +220,19 @@ export type JunkReason = 'single_speaker' | 'too_short' | 'automated_speaker';
 // Below this, there's nothing to extract regardless of who's speaking.
 const MIN_WORD_COUNT = 20;
 
-// Returns why a parsed transcript looks like junk (voicemail/IVR noise,
-// never a real rep-customer exchange), or null if it looks real.
+// Any turn shape with a speaker + text -- generic on purpose (speaker can be
+// a RingCentral name OR a Deepgram numeric channel index) so the GHL
+// recordings pipeline (src/lib/recordings/pipeline.ts) can run the exact
+// same junk/voicemail/IVR heuristics on diarized utterances instead of a
+// duplicate copy of this logic.
+export type JunkTurn = { speaker: string | number; text: string };
+
+// Same decision as junkReason below, generalized to any turn list. Derives
+// speakers/wordCount from `turns` alone -- exactly what
+// parseRingCentralTranscript already does internally, so junkReason(parsed)
+// delegating here is behavior-preserving, not a rewrite.
 //
-//   - single_speaker: the whole file is one voice -- either a one-sided IVR
+//   - single_speaker: the whole call is one voice -- either a one-sided IVR
 //     announcement or a parsing artifact. Either way, nothing to extract.
 //   - too_short: fewer than MIN_WORD_COUNT spoken words total.
 //   - automated_speaker: one of the (normally two) speakers said NOTHING
@@ -233,23 +242,33 @@ const MIN_WORD_COUNT = 20;
 //     "voicemail greeting, then the rep leaves a message" pattern, which
 //     easily clears MIN_WORD_COUNT once the rep's message is chatty.
 //
-// Checked per-speaker (not by scanning the whole raw_text for a phrase) so
-// a real, long conversation that happens to OPEN on an auto-attendant line
+// Checked per-speaker (not by scanning all the text for a phrase) so a
+// real, long conversation that happens to OPEN on an auto-attendant line
 // before a human picks up -- e.g. "if you record your name and reason for
 // calling..." followed by dozens of real exchange turns -- is correctly
 // NOT flagged: that speaker's later turns are real speech, so "every turn
 // automated" is false for them.
-export function junkReason(parsed: ParsedRingCentralTranscript): JunkReason | null {
-  if (parsed.speakers.length <= 1) return 'single_speaker';
-  if (parsed.wordCount < MIN_WORD_COUNT) return 'too_short';
+export function junkReasonForTurns(turns: JunkTurn[]): JunkReason | null {
+  const speakers = [...new Set(turns.map(t => t.speaker))];
+  if (speakers.length <= 1) return 'single_speaker';
 
-  for (const speaker of parsed.speakers) {
-    const speakerTurns = parsed.turns.filter(t => t.speaker === speaker && t.text.trim());
+  const wordCount = turns.reduce((sum, t) => sum + wordsIn(t.text), 0);
+  if (wordCount < MIN_WORD_COUNT) return 'too_short';
+
+  for (const speaker of speakers) {
+    const speakerTurns = turns.filter(t => t.speaker === speaker && t.text.trim());
     if (speakerTurns.length > 0 && speakerTurns.every(t => isAutomatedTurn(t.text))) {
       return 'automated_speaker';
     }
   }
   return null;
+}
+
+// Returns why a parsed transcript looks like junk (voicemail/IVR noise,
+// never a real rep-customer exchange), or null if it looks real. See
+// junkReasonForTurns above for what each reason means.
+export function junkReason(parsed: ParsedRingCentralTranscript): JunkReason | null {
+  return junkReasonForTurns(parsed.turns);
 }
 
 export function isLikelyJunk(parsed: ParsedRingCentralTranscript): boolean {
