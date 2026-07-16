@@ -1,15 +1,13 @@
-import path from 'node:path';
 import { defineConfig } from 'vitest/config';
+import { fileURLToPath } from 'node:url';
 
-// '@/*' -> './src/*', same alias tsconfig.json defines for Next's own
-// build. Needed the first time a test imports a route.ts file directly
-// (src/app/api/offer/route.test.ts) -- every route handler in this repo
-// imports its lib helpers via '@/...', and without this alias vitest can't
-// resolve those imports at all, mocked or not.
 export default defineConfig({
   resolve: {
+    // Mirrors tsconfig.json's "@/*" -> "./src/*" path alias so route tests
+    // (which import route.ts files using '@/lib/...') resolve the same way
+    // the app itself does.
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
   test: {
