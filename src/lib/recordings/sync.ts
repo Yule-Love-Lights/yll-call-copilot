@@ -24,6 +24,6 @@ export const RECORDING_BATCH_SIZE = 6;
 // call, a wrong number hung up in seconds, etc. Checked against the
 // duration GHL itself reports for the call message, BEFORE downloading or
 // transcribing, so those calls never spend a Deepgram credit. The
-// post-transcription junk detector (junkReasonForTurns) catches everything
+// post-transcription junk detector (junkReasonFromTurns) catches everything
 // duration alone can't (voicemail/IVR, one-sided calls).
 export const MIN_RECORDING_SECONDS = 20;

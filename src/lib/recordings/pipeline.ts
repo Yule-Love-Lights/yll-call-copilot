@@ -17,7 +17,7 @@ import { downloadRecordingAudio, getGhlUserEmail } from '../ghl/recordings';
 import { isDeepgramConfigured, transcribeRecording } from '../deepgram';
 import { isClaudeConfigured } from '../claude';
 import { extractLearnings } from '../transcripts/extract';
-import { junkReasonForTurns } from '../transcripts/ringcentral';
+import { junkReasonFromTurns } from '../transcripts/junk';
 import { matchRecordingOutcome } from './outcomes';
 import { MIN_RECORDING_SECONDS, RECORDING_BATCH_SIZE } from './sync';
 
@@ -105,7 +105,7 @@ export async function processOneRecording(
     // audio bytes regardless, so this is a hint, not a hard requirement.
     const transcribed = await transcribeRecording(audio, 'audio/mpeg');
 
-    const junk = junkReasonForTurns(transcribed.utterances.map(u => ({ speaker: u.speaker, text: u.text })));
+    const junk = junkReasonFromTurns(transcribed.utterances.map(u => ({ speaker: String(u.speaker), text: u.text })));
     if (junk) {
       await markRow(supabase, row.id, { status: 'skipped', skip_reason: junk });
       return 'skipped';
