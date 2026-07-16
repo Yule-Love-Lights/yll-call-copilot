@@ -34,6 +34,15 @@ import { checkAllowlist, shouldDenyAccess } from '@/lib/auth/allowlist';
 // /api/cron/second-mile is the same shape again: Vercel Cron calls it
 // directly with no browser session (see vercel.json), gated inside the
 // route by CRON_ENABLED (off by default) rather than a session.
+// /api/cron/weekly-digest is the same shape as /api/cron/brain-review:
+// Vercel Cron calls it directly with no browser session, gated inside the
+// route by CRON_ENABLED.
+// /api/cron/score-calls is the same shape again: Vercel Cron calls it
+// directly with no browser session (see vercel.json), gated inside the
+// route by CRON_ENABLED (off by default) rather than a session.
+// /api/cron/sync-recordings is the same shape once more: the nightly
+// recordings sync (Workstream 1), also Vercel-Cron-called with no browser
+// session, also gated by CRON_ENABLED.
 const PUBLIC_PATHS = [
   '/login',
   '/api/health',
@@ -43,6 +52,9 @@ const PUBLIC_PATHS = [
   '/api/live/segment',
   '/api/cron/brain-review',
   '/api/cron/second-mile',
+  '/api/cron/weekly-digest',
+  '/api/cron/score-calls',
+  '/api/cron/sync-recordings',
 ];
 
 export async function proxy(request: NextRequest) {

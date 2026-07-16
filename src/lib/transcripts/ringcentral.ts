@@ -9,6 +9,8 @@
 // files, which pickCustomerName below then uses to pick out the non-rep
 // speaker.
 
+import { junkReasonFromTurns, type JunkReason } from './junk';
+
 const MONTHS: Record<string, number> = {
   jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
   jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
@@ -153,79 +155,19 @@ export function parseRingCentralTranscript(filename: string, text: string): Pars
 }
 
 // ─── Junk (voicemail / IVR) detection ──────────────────────────────────────
-// A "phrase" here is deliberately a short, punctuation-tolerant fragment
-// (e.g. "stay on the line" rather than "please stay on the line") because
-// RingCentral's transcription inserts erratic commas/periods mid-sentence
-// ("Thanks, please. Stay on the line."), which would break a longer literal
-// match. Compiled from what actually recurs across the tiny/short files in
-// the real 1,639-file export (grepped, not guessed) -- best-effort, not
-// exhaustive: a heavily garbled voicemail greeting can still slip through as
-// "kept", which just means it gets a near-empty extraction rather than
-// being excluded outright (graceful degradation, not data corruption).
-const IVR_PHRASES = [
-  'is not available',
-  'not available right now',
-  'not available at the tone',
-  'forwarded to voicemail',
-  'forwarded to an automatic voice',
-  'forwarded to an automated voice',
-  'voice messaging system',
-  'record your message',
-  'record your name and reason for calling',
-  'you may hang up',
-  'press 1',
-  'press pound',
-  'press 0',
-  'the person you are calling is protected',
-  'connect your call',
-  'leave your message',
-  'leave your name',
-  'leave me your name',
-  'leave a message',
-  'leave me a message',
-  'leave a detailed message',
-  'give your message',
-  'give me a message',
-  'mailbox is full',
-  "can't take your call",
-  'cannot take your call',
-  'stay on the line',
-  "didn't get your message",
-  'did not get your message',
-  'were not speaking',
-  'bad connection',
-  'reply after the tone',
-  'at the tone',
-  'get back to you shortly',
-  'back to you shortly',
-  'as soon as possible',
-];
+// The phrase list and per-speaker logic now live in junk.ts (shared with the
+// scoring engine's substantive-call filter, src/lib/scoring/substantive.ts)
+// -- this just adapts a ParsedRingCentralTranscript's turns to that generic
+// helper. Same exported names, same behavior, same tests.
 
-// RingCentral sometimes transcribes an automated "the number you dialed is
-// not available" readout as bare digits with no recognizable phrase at all
-// (e.g. "51, 685 071 66."). A turn that is nothing but digits/punctuation is
-// never real speech, so it counts as automated too.
-const DIGIT_ONLY_TURN = /^[\d\s.,()-]+$/;
-
-function isAutomatedTurn(text: string): boolean {
-  const trimmed = text.trim();
-  if (!trimmed) return false;
-  if (DIGIT_ONLY_TURN.test(trimmed)) return true;
-  const lower = trimmed.toLowerCase();
-  return IVR_PHRASES.some(phrase => lower.includes(phrase));
-}
-
-export type JunkReason = 'single_speaker' | 'too_short' | 'automated_speaker';
-
-// Below this, there's nothing to extract regardless of who's speaking.
-const MIN_WORD_COUNT = 20;
+export type { JunkReason };
 
 // Returns why a parsed transcript looks like junk (voicemail/IVR noise,
 // never a real rep-customer exchange), or null if it looks real.
 //
 //   - single_speaker: the whole file is one voice -- either a one-sided IVR
 //     announcement or a parsing artifact. Either way, nothing to extract.
-//   - too_short: fewer than MIN_WORD_COUNT spoken words total.
+//   - too_short: fewer than MIN_WORD_COUNT spoken words total (junk.ts).
 //   - automated_speaker: one of the (normally two) speakers said NOTHING
 //     but automated/IVR-shaped text across every one of their turns -- i.e.
 //     that "speaker" was a phone-system recording, not a customer who
@@ -240,16 +182,7 @@ const MIN_WORD_COUNT = 20;
 // NOT flagged: that speaker's later turns are real speech, so "every turn
 // automated" is false for them.
 export function junkReason(parsed: ParsedRingCentralTranscript): JunkReason | null {
-  if (parsed.speakers.length <= 1) return 'single_speaker';
-  if (parsed.wordCount < MIN_WORD_COUNT) return 'too_short';
-
-  for (const speaker of parsed.speakers) {
-    const speakerTurns = parsed.turns.filter(t => t.speaker === speaker && t.text.trim());
-    if (speakerTurns.length > 0 && speakerTurns.every(t => isAutomatedTurn(t.text))) {
-      return 'automated_speaker';
-    }
-  }
-  return null;
+  return junkReasonFromTurns(parsed.turns);
 }
 
 export function isLikelyJunk(parsed: ParsedRingCentralTranscript): boolean {
