@@ -122,6 +122,9 @@ export default function Home() {
         <Link href="/digest" className={quickLinkClass}>
           Weekly digest →
         </Link>
+        <Link href="/scoreboard" className={quickLinkClass}>
+          Scoreboard →
+        </Link>
       </nav>
 
       <section className="mt-8 rounded-md border border-zinc-200 dark:border-zinc-800">
