@@ -8,10 +8,10 @@
    * The brand-* values below are copied VERBATIM from the AI Quote
    * Tool's src/app/globals.css so the two apps read as one family. Do
    * not tweak a value here without checking that file too.
-   * These are additive only, no existing --background/--foreground
-   * consumer is touched, and color-scheme stays unpinned globally
-   * (other screens still use Tailwind `dark:` classes; the nav/home
-   * shell PR decides whether the rest of the app follows). */
+   * PR 1 kept these additive and left color-scheme unpinned; PR 2 (the
+   * nav/home shell, below) is the one that pins the whole app to light
+   * and repoints <body> at the op-* tokens instead of --background /
+   * --foreground. */
   --brand-cream: #f4ecd8;
   --brand-cream-2: #e0d7c1;
   --brand-cream-dim: #a89f87;
@@ -46,6 +46,13 @@
   --shadow-1: 0 1px 2px rgba(11, 20, 15, 0.04), 0 4px 16px rgba(11, 20, 15, 0.05);
   --shadow-2: 0 2px 4px rgba(11, 20, 15, 0.05), 0 16px 44px rgba(11, 20, 15, 0.1);
   --gold-glow: 0 0 0 1px rgba(232, 184, 98, 0.55), 0 6px 28px rgba(232, 184, 98, 0.3);
+
+  /* This is a light-themed app: the shell nav and every screen use white
+     cards on a cream background. Pin the color scheme to light so the OS's
+     dark mode can't flip default text to near-white on our white surfaces
+     (which made text unreadable) -- same one-liner the quote tool's own
+     globals.css uses. */
+  color-scheme: light;
 }
 
 @theme inline {
@@ -62,16 +69,30 @@
   }
 }
 
+/* App-wide light surface (PR 2 of 3, the nav/home shell): the mockup's
+ * cream base + the same two soft radial washes .coach-surface already used
+ * for /coach alone, now the default for every page. --background and
+ * --foreground (and the dark-mode flip on them above) are no longer read
+ * here on purpose -- this pins the whole app to the light design regardless
+ * of OS theme, so any remaining Tailwind `dark:` class on an older screen
+ * has nothing left to flip (noted in the PR body, not touched page by
+ * page in this PR). */
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background:
+    radial-gradient(900px 420px at 15% -120px, rgba(232, 184, 98, 0.14), transparent 60%),
+    radial-gradient(1100px 500px at 90% -160px, rgba(46, 61, 52, 0.08), transparent 55%),
+    var(--op-bg);
+  color: var(--op-text);
   font-family: Arial, Helvetica, sans-serif;
 }
 
 /* ─── /coach: rep feedback card (PR 1 of 3) ──────────────────────────────
- * Scoped to the /coach feedback screen ONLY via these .coach-* classes.
- * No other route's body/background changes in this PR. The nav/home shell
- * and the TV scoreboard get their own matching pass in the next two PRs. */
+ * Scoped to the /coach feedback screen via these .coach-* classes. As of
+ * PR 2, <body> itself (above) carries the same cream + radial-wash surface
+ * app-wide, so .coach-surface below is now redundant on /coach specifically
+ * (harmless -- same gradient painted twice) rather than the only place
+ * this background exists. Left as-is rather than touched in this PR. The
+ * TV scoreboard gets its own matching pass in PR 3. */
 
 .coach-surface {
   min-height: 100vh;

@@ -1,183 +1,216 @@
-'use client';
-
-// Dashboard: this-week stat row + the compounding brain's latest one-liner
-// (GET /api/dashboard/summary), quick links, and the connection health panel
-// from Phase 0. Kept light per the brief — no new state beyond what those
-// two fetches need.
+// Home: the daily dashboard (PR 2 of 3, the mockup's Mock 1). Server
+// component so the greeting, the new-cards count, the month trend, and the
+// queue counts can all be read straight from the signed-in session and
+// Supabase without a client-side fetch waterfall -- same "server component
+// for the config/session-aware parts" pattern as /coach and /contacts.
+//
+// The rest of what this page rendered before (connection health, the
+// this-week stat row + brain-review link, sign-out) is unchanged in
+// function and lives in HomeConnectionPanel.tsx, below the new dashboard --
+// it still needs the browser (fetch-on-mount, a click handler), so it
+// couldn't move into this server component too. The old flat quick-link
+// nav list is gone; CoachNav.tsx (in layout.tsx) replaces it everywhere.
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
-import InboundPop from './InboundPop';
+import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
+import { getSessionEmail } from '@/lib/auth/session';
+import { loadCallScores } from '@/lib/scoreboard/loader';
+import { buildRepStat, type CallScoreRow } from '@/lib/scoreboard/stats';
+import { summarizeHomeTrend } from '@/lib/scoreboard/homeTrendSummary';
+import HomeConnectionPanel from './HomeConnectionPanel';
 
-type Health = { ghl: boolean; supabase: boolean; claude: boolean; version: string };
+// Config + session are read per-request, not baked at build time -- same
+// reasoning as /login and /contacts.
+export const dynamic = 'force-dynamic';
 
-type Summary = {
-  configured: boolean;
-  calls?: number;
-  interested?: number;
-  queueDepth?: number;
-  inboundPops?: number;
-  latestBrainReview?: { verticalName: string; narrative: string; createdAt: string } | null;
-};
-
-function StatusDot({ ok }: { ok: boolean }) {
-  return (
-    <span
-      className={`inline-block h-2.5 w-2.5 rounded-full ${ok ? 'bg-green-500' : 'bg-red-500'}`}
-    />
-  );
+function timeOfDayGreeting(now: Date): 'Morning' | 'Afternoon' | 'Evening' {
+  const hour = now.getHours();
+  if (hour < 12) return 'Morning';
+  if (hour < 18) return 'Afternoon';
+  return 'Evening';
 }
 
-function StatTile({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex flex-col gap-1 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-      <span className="text-xs font-medium uppercase text-zinc-500">{label}</span>
-      <span className="text-2xl font-semibold">{value}</span>
-    </div>
-  );
+// "jamie.smith+test@yulelovelights.com" -> "Jamie". Falls back to null (the
+// caller renders a plain "Morning." greeting) for anything that doesn't
+// leave a usable word before the @.
+function firstNameFromEmail(email: string | null): string | null {
+  if (!email) return null;
+  const local = email.split('@')[0] ?? '';
+  const first = local.split(/[._+-]+/).find(part => part.length > 0);
+  if (!first) return null;
+  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
 }
 
-const quickLinkClass = 'text-sm font-medium text-blue-600 hover:underline dark:text-blue-400';
+export default async function Home() {
+  const configured = isSupabaseConfigured();
+  const repEmail = configured ? await getSessionEmail() : null;
+  const firstName = firstNameFromEmail(repEmail);
+  const greeting = timeOfDayGreeting(new Date());
 
-export default function Home() {
-  const router = useRouter();
-  const [health, setHealth] = useState<Health | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [summary, setSummary] = useState<Summary | null>(null);
+  let unseenCount = 0;
+  let scoreRows: CallScoreRow[] = [];
+  let inboxQueueCount = 0;
+  let secondMileQueueCount = 0;
+  let recordingsQueueCount = 0;
 
-  useEffect(() => {
-    fetch('/api/health')
-      .then(res => res.json())
-      .then(setHealth)
-      .catch(() => setFailed(true));
-  }, []);
+  if (configured && repEmail) {
+    const supabase = getSupabaseServerClient()!;
 
-  useEffect(() => {
-    fetch('/api/dashboard/summary')
-      .then(res => res.json())
-      .then(setSummary)
-      .catch(() => {});
-  }, []);
+    const { count: feedbackCount, error: feedbackError } = await supabase
+      .from('feedback_cards')
+      .select('id', { count: 'exact', head: true })
+      .eq('rep_email', repEmail)
+      .is('seen_at', null);
+    if (feedbackError && !isMissingTableError(feedbackError)) {
+      console.error('Load unseen coaching card count for home failed:', feedbackError);
+    }
+    unseenCount = feedbackCount ?? 0;
 
-  async function handleSignOut() {
-    const supabase = getSupabaseBrowserClient();
-    if (supabase) await supabase.auth.signOut();
-    router.push('/login');
-    router.refresh();
+    const scoresResult = await loadCallScores(supabase, { repEmail });
+    if (scoresResult.ok) scoreRows = scoresResult.rows;
+
+    const { count: inboxCount, error: inboxError } = await supabase
+      .from('inbound_emails')
+      .select('id', { count: 'exact', head: true })
+      .in('status', ['new', 'drafted']);
+    if (inboxError && !isMissingTableError(inboxError)) {
+      console.error('Load inbox queue count for home failed:', inboxError);
+    }
+    inboxQueueCount = inboxCount ?? 0;
+
+    const { count: secondMileCount, error: secondMileError } = await supabase
+      .from('second_mile_touches')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending');
+    if (secondMileError && !isMissingTableError(secondMileError)) {
+      console.error('Load second-mile queue count for home failed:', secondMileError);
+    }
+    secondMileQueueCount = secondMileCount ?? 0;
+
+    const { count: recordingsCount, error: recordingsError } = await supabase
+      .from('call_recordings')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending');
+    if (recordingsError && !isMissingTableError(recordingsError)) {
+      console.error('Load recordings queue count for home failed:', recordingsError);
+    }
+    recordingsQueueCount = recordingsCount ?? 0;
   }
 
+  // buildRepStat is pure -- calling it with an empty repEmail/rows (the
+  // degraded/no-session case) still returns a well-formed 4-point trend
+  // (every week null), so the sparkline always renders 4 bars instead of
+  // needing its own separate empty-state branch here.
+  const repStat = buildRepStat(repEmail ?? '', scoreRows, new Date());
+  const trendSummary = summarizeHomeTrend(repStat.trend);
+
+  const totalQueued = inboxQueueCount + secondMileQueueCount + recordingsQueueCount;
+  const queuesLine =
+    totalQueued === 0
+      ? "Nothing time-sensitive is waiting."
+      : inboxQueueCount > 0
+        ? 'New email waiting in the inbox.'
+        : secondMileQueueCount > 0
+          ? 'Second-mile touches are ready to send.'
+          : 'Recordings are still finishing up.';
+
   return (
-    <main className="mx-auto w-full max-w-2xl px-6 py-12">
-      <div className="flex items-start justify-between">
-        <h1 className="text-2xl font-semibold">YLL Call Copilot</h1>
-        <button
-          type="button"
-          onClick={handleSignOut}
-          className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
-        >
-          Sign out
-        </button>
+    <main className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-[28px] font-extrabold leading-tight tracking-[-.02em] text-[var(--op-text)]">
+          {firstName ? (
+            <>
+              {greeting},{' '}
+              <span className="bg-gradient-to-r from-[var(--brand-gold-deep)] to-[var(--brand-gold)] bg-clip-text text-transparent">
+                {firstName}
+              </span>
+              .
+            </>
+          ) : (
+            `${greeting}.`
+          )}
+        </h1>
+        <p className="text-[15px] text-[var(--op-dim)]">
+          {unseenCount > 0
+            ? `${unseenCount} new coaching card${unseenCount === 1 ? '' : 's'} waiting.`
+            : "You're all caught up on coaching cards."}
+        </p>
       </div>
-      <p className="mt-1 text-sm text-zinc-500">
-        Copilot for inbound and warm outbound calls at Yule Love Lights.
-      </p>
 
-      {summary?.configured && (
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatTile label="Calls this week" value={summary.calls ?? 0} />
-          <StatTile label="Interested" value={summary.interested ?? 0} />
-          <StatTile label="Queue depth" value={summary.queueDepth ?? 0} />
-          <StatTile label="Inbound pops" value={summary.inboundPops ?? 0} />
-        </div>
-      )}
-
-      {summary?.latestBrainReview && (
-        <Link
-          href="/analytics"
-          className="mt-4 block truncate rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900"
-          title={summary.latestBrainReview.narrative}
+      <div className="mt-5 grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+        <div
+          className={`flex flex-col gap-2 rounded-2xl border p-[18px] shadow-[var(--shadow-1)] transition-transform hover:-translate-y-0.5 hover:shadow-[var(--shadow-2)] ${
+            unseenCount > 0
+              ? 'border-transparent bg-gradient-to-br from-[#FFF7E4] to-[var(--op-raised)] shadow-[var(--gold-glow)]'
+              : 'border-[var(--op-border)] bg-[var(--op-raised)]'
+          }`}
         >
-          🧠 {summary.latestBrainReview.verticalName}: {summary.latestBrainReview.narrative}
-        </Link>
-      )}
+          <span className="text-[10.5px] font-extrabold uppercase tracking-[.2em] text-[var(--op-dim)]">
+            New coaching cards
+          </span>
+          <span className="text-[34px] font-extrabold leading-none tracking-[-.02em] tabular-nums text-[var(--op-text)]">
+            {unseenCount}
+          </span>
+          <span className="text-[13.5px] text-[var(--op-dim)]">
+            {unseenCount > 0 ? '30 seconds each. Worth the read.' : 'All caught up.'}
+          </span>
+          <Link
+            href="/coach"
+            className="mt-1 inline-flex w-fit items-center rounded-[10px] bg-[var(--brand-evergreen)] px-4 py-2 text-[13.5px] font-bold text-[var(--brand-cream)] shadow-[0_4px_14px_rgba(11,20,15,0.28)] transition-transform hover:-translate-y-px"
+          >
+            Read them
+          </Link>
+        </div>
 
-      <nav className="mt-6 flex flex-wrap gap-4">
-        <Link href="/contacts" className={quickLinkClass}>
-          Contacts →
-        </Link>
-        <Link href="/queue" className={quickLinkClass}>
-          Call queue →
-        </Link>
-        <Link href="/inbox" className={quickLinkClass}>
-          Email inbox →
-        </Link>
-        <Link href="/verticals" className={quickLinkClass}>
-          Verticals →
-        </Link>
-        <Link href="/analytics" className={quickLinkClass}>
-          Analytics →
-        </Link>
-        <Link href="/recordings" className={quickLinkClass}>
-          Call recordings →
-        </Link>
-        <Link href="/digest" className={quickLinkClass}>
-          Weekly digest →
-        </Link>
-        <Link href="/scoreboard" className={quickLinkClass}>
-          Scoreboard →
-        </Link>
-        <Link href="/second-mile" className={quickLinkClass}>
-          Second mile →
-        </Link>
-        <Link href="/coach/calls" className={quickLinkClass}>
-          Call review →
-        </Link>
-      </nav>
+        <div className="flex flex-col gap-2 rounded-2xl border border-[var(--op-border)] bg-[var(--op-raised)] p-[18px] shadow-[var(--shadow-1)] transition-transform hover:-translate-y-0.5 hover:shadow-[var(--shadow-2)]">
+          <span className="text-[10.5px] font-extrabold uppercase tracking-[.2em] text-[var(--op-dim)]">Your month</span>
+          <div className="mt-0.5 flex h-12 items-end gap-1">
+            {trendSummary.bars.map((bar, i) => (
+              <span
+                key={i}
+                className={`max-w-[18px] min-w-0 flex-1 rounded-t-[5px] rounded-b-[2px] ${
+                  i === trendSummary.bars.length - 1 && bar.hasData
+                    ? 'bg-gradient-to-b from-[var(--brand-gold-bright)] to-[var(--brand-gold)] shadow-[0_2px_10px_rgba(232,184,98,0.5)]'
+                    : 'bg-gradient-to-b from-[#4A5C50] to-[var(--brand-evergreen-3)] opacity-45'
+                }`}
+                style={{ height: `${bar.heightPct}%` }}
+              />
+            ))}
+          </div>
+          <span className="text-[13.5px] text-[var(--op-dim)]">{trendSummary.headline}</span>
+        </div>
 
-      <section className="mt-8 rounded-md border border-zinc-200 dark:border-zinc-800">
-        <h2 className="border-b border-zinc-200 px-4 py-3 text-sm font-semibold dark:border-zinc-800">
-          Connection health
-        </h2>
-        {failed ? (
-          <p className="px-4 py-3 text-sm text-red-600 dark:text-red-400">
-            Could not reach /api/health.
-          </p>
-        ) : !health ? (
-          <p className="px-4 py-3 text-sm text-zinc-500">Checking…</p>
-        ) : (
-          <ul className="divide-y divide-zinc-200 text-sm dark:divide-zinc-800">
-            <li className="flex items-center justify-between px-4 py-3">
-              <span>GoHighLevel</span>
-              <span className="flex items-center gap-2 text-zinc-500">
-                <StatusDot ok={health.ghl} />
-                {health.ghl ? 'configured' : 'not configured'}
-              </span>
-            </li>
-            <li className="flex items-center justify-between px-4 py-3">
-              <span>Supabase</span>
-              <span className="flex items-center gap-2 text-zinc-500">
-                <StatusDot ok={health.supabase} />
-                {health.supabase ? 'configured' : 'not configured'}
-              </span>
-            </li>
-            <li className="flex items-center justify-between px-4 py-3">
-              <span>Claude</span>
-              <span className="flex items-center gap-2 text-zinc-500">
-                <StatusDot ok={health.claude} />
-                {health.claude ? 'configured' : 'not configured'}
-              </span>
-            </li>
-            <li className="flex items-center justify-between px-4 py-3">
-              <span>App version</span>
-              <span className="text-zinc-500">{health.version}</span>
-            </li>
-          </ul>
-        )}
-      </section>
+        <div className="flex flex-col gap-2 rounded-2xl border border-[var(--op-border)] bg-[var(--op-raised)] p-[18px] shadow-[var(--shadow-1)] transition-transform hover:-translate-y-0.5 hover:shadow-[var(--shadow-2)]">
+          <span className="text-[10.5px] font-extrabold uppercase tracking-[.2em] text-[var(--op-dim)]">
+            Today&apos;s queues
+          </span>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/inbox"
+              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--op-border-mid)] bg-white/70 px-3.5 py-1.5 text-[13px] font-semibold text-[var(--op-text-2)]"
+            >
+              Inbox <b className="tabular-nums text-[var(--op-text)]">{inboxQueueCount}</b>
+            </Link>
+            <Link
+              href="/second-mile"
+              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--op-border-mid)] bg-white/70 px-3.5 py-1.5 text-[13px] font-semibold text-[var(--op-text-2)]"
+            >
+              Second mile <b className="tabular-nums text-[var(--op-text)]">{secondMileQueueCount}</b>
+            </Link>
+            <Link
+              href="/recordings"
+              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--op-border-mid)] bg-white/70 px-3.5 py-1.5 text-[13px] font-semibold text-[var(--op-text-2)]"
+            >
+              Recordings <b className="tabular-nums text-[var(--op-text)]">{recordingsQueueCount}</b>
+            </Link>
+          </div>
+          <span className="text-[13.5px] text-[var(--op-dim)]">{queuesLine}</span>
+        </div>
+      </div>
 
-      <InboundPop />
+      <div className="mt-10">
+        <HomeConnectionPanel />
+      </div>
     </main>
   );
 }
