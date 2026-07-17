@@ -151,6 +151,7 @@ describe('rebookRateMetric', () => {
     expect(metric.status).toBe('connected');
     if (metric.status === 'connected') {
       expect(metric.value).toBe(100);
+      expect(metric.unit).toBe('percent');
       expect(metric.detail).toContain('1 of 1');
     }
   });

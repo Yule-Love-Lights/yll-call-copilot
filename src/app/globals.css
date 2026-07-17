@@ -163,3 +163,38 @@ body {
     filter: brightness(1.12);
   }
 }
+
+/* ─── /scoreboard TV mode (PR 3 of 3) ────────────────────────────────────
+ * The shop-wall board at /scoreboard?tv=1 -- the portal's evergreen skin
+ * taken to a "stage light" extreme, per the approved mockup's Mock 3.
+ * `.tv-stage` is `position: fixed` + a high z-index so it fills the
+ * viewport and sits above CoachNav (rendered once in layout.tsx, above
+ * every page -- this page can't remove it, so it covers it instead, per
+ * the PR brief). No motion lives in this block on purpose: every value
+ * here is a static color/shadow, so there's nothing that needs a
+ * prefers-reduced-motion guard. */
+.tv-stage {
+  color: var(--brand-cream);
+  background: radial-gradient(1000px 380px at 50% -120px, #223129, var(--brand-evergreen) 65%);
+}
+
+.tv-tile {
+  background: rgba(24, 34, 28, 0.9);
+  border: 1px solid rgba(244, 236, 216, 0.07);
+}
+
+.tv-fly-tile {
+  background: rgba(46, 61, 52, 0.55);
+  border: 1px solid rgba(244, 236, 216, 0.08);
+}
+
+.tv-improved {
+  background: linear-gradient(115deg, var(--brand-gold), var(--brand-gold-bright));
+  color: var(--brand-evergreen);
+  box-shadow: 0 8px 34px rgba(232, 184, 98, 0.35);
+}
+
+.tv-bar {
+  background: linear-gradient(90deg, var(--brand-gold-deep), var(--brand-gold) 55%, var(--brand-gold-bright));
+  box-shadow: 0 2px 12px rgba(232, 184, 98, 0.35);
+}

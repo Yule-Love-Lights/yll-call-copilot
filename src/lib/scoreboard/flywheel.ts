@@ -112,8 +112,14 @@ export function computeRebookRate(rows: RebookQuoteRow[], asOf: Date): RebookRat
 // Neither is wired today. Every not-connected tile states exactly what
 // connection it needs — never a faked number.
 
+// `unit` drives how the board renders a connected value: 'percent' gets a
+// '%' suffix, 'count' renders the bare number. Pre-launch audit finding:
+// the board used to hardcode a '%' suffix on every connected tile, which
+// is correct for rebook rate but wrong the moment referral volume or
+// 5-star reviews (both plain counts) get wired up. Required on the
+// 'connected' variant so a future caller can't forget it.
 export type FlywheelSubMetric =
-  | { status: 'connected'; label: string; value: number; detail?: string }
+  | { status: 'connected'; label: string; value: number; unit: 'percent' | 'count'; detail?: string }
   | { status: 'not_connected'; label: string; reason: string };
 
 // Referral volume needs more than the current GHL client offers: contacts
@@ -156,6 +162,7 @@ export function rebookRateMetric(rows: RebookQuoteRow[], asOf: Date): FlywheelSu
     status: 'connected',
     label: 'Rebook rate',
     value: result.rate,
+    unit: 'percent',
     detail: `${result.rebookedCustomers} of ${result.priorSeasonCustomers} prior-season customers`,
   };
 }
