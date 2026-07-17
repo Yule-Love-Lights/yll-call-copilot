@@ -3,6 +3,49 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* ─── Brand tokens (PR 1 of 3: coach theme match) ────────────────────
+   * The brand-* values below are copied VERBATIM from the AI Quote
+   * Tool's src/app/globals.css so the two apps read as one family. Do
+   * not tweak a value here without checking that file too.
+   * These are additive only, no existing --background/--foreground
+   * consumer is touched, and color-scheme stays unpinned globally
+   * (other screens still use Tailwind `dark:` classes; the nav/home
+   * shell PR decides whether the rest of the app follows). */
+  --brand-cream: #f4ecd8;
+  --brand-cream-2: #e0d7c1;
+  --brand-cream-dim: #a89f87;
+  --brand-evergreen: #0b140f;
+  --brand-evergreen-2: #18221c;
+  --brand-evergreen-3: #2e3d34;
+  --brand-gold: #e8b862;
+  --brand-gold-bright: #f5cc7a;
+  --brand-gold-deep: #7a5e20;
+  --brand-red: #c8313d;
+  --brand-red-deep: #8f1d26;
+
+  /* ─── Operator surface tokens (this app's own naming) ────────────────
+   * Semantic surface layer built on the brand colors above, named to
+   * match the approved mockup. Values are identical to the quote
+   * tool's own operator surface (--op-bg, --op-border, --op-text; the
+   * quote tool's --op-bg-raised/--op-text-dim are the same idea under
+   * different short names here). */
+  --op-bg: #faf6ec;
+  --op-raised: #ffffff;
+  --op-border: rgba(11, 20, 15, 0.08);
+  --op-border-mid: rgba(11, 20, 15, 0.16);
+  --op-text: var(--brand-evergreen);
+  --op-text-2: var(--brand-evergreen-3);
+  --op-dim: #5b6b5f;
+
+  /* ─── Coach polish layer (new for this "modern cut") ─────────────────
+   * The two shadow levels and the gold-glow are NOT in the quote tool's
+   * globals.css; they're the coach app's own depth system, lifted
+   * straight from the approved mockup's :root so the built cards match
+   * it exactly. */
+  --shadow-1: 0 1px 2px rgba(11, 20, 15, 0.04), 0 4px 16px rgba(11, 20, 15, 0.05);
+  --shadow-2: 0 2px 4px rgba(11, 20, 15, 0.05), 0 16px 44px rgba(11, 20, 15, 0.1);
+  --gold-glow: 0 0 0 1px rgba(232, 184, 98, 0.55), 0 6px 28px rgba(232, 184, 98, 0.3);
 }
 
 @theme inline {
@@ -23,4 +66,79 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ─── /coach: rep feedback card (PR 1 of 3) ──────────────────────────────
+ * Scoped to the /coach feedback screen ONLY via these .coach-* classes.
+ * No other route's body/background changes in this PR. The nav/home shell
+ * and the TV scoreboard get their own matching pass in the next two PRs. */
+
+.coach-surface {
+  min-height: 100vh;
+  background:
+    radial-gradient(900px 420px at 15% -120px, rgba(232, 184, 98, 0.14), transparent 60%),
+    radial-gradient(1100px 500px at 90% -160px, rgba(46, 61, 52, 0.08), transparent 55%),
+    var(--op-bg);
+  color: var(--op-text);
+}
+
+/* The feedback card itself: white, 18px radius, shadow-1, 18px padding,
+ * per the mockup's Mock 2 .card rule. */
+.coach-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid var(--op-border);
+  background: var(--op-raised);
+  box-shadow: var(--shadow-1);
+}
+
+/* Praise-only cards earn the gold treatment: no fix to give, so the card
+ * itself is the reward. */
+.coach-card--gold {
+  border-color: transparent;
+  box-shadow: var(--gold-glow);
+  background: linear-gradient(160deg, #fff4db, var(--op-raised) 75%);
+}
+
+/* The "cue" block: the fix's blush card with a thin brand-red left spine
+ * (the ::before bar), matching the mockup's .cue rule. */
+.coach-cue {
+  position: relative;
+  border-radius: 14px;
+  padding: 13px 15px;
+  background: linear-gradient(150deg, #fbeded, #fdf7f4);
+  border: 1px solid rgba(200, 49, 61, 0.28);
+}
+
+.coach-cue::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--brand-red);
+}
+
+/* The "Nothing to fix" gold pill: gentle shimmer, but only when motion
+ * is welcome. */
+@media (prefers-reduced-motion: no-preference) {
+  .coach-praise-pill {
+    animation: coach-shimmer 3.4s ease-in-out infinite;
+  }
+}
+
+@keyframes coach-shimmer {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.12);
+  }
 }
