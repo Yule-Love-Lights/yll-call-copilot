@@ -17,7 +17,10 @@ const WEEK_MS = 7 * DAY_MS;
 export type DimScore = { score: number; max: number };
 
 export type CallScoreRow = {
-  repEmail: string;
+  // Nullable for real: historical imports and calls whose GHL user had no
+  // email are scored with rep_email null. They count in team averages but
+  // can never be a board row (see buildScoreboard).
+  repEmail: string | null;
   overall: number; // 0-100
   experienceScore: number; // 0-10
   sales: {
@@ -216,8 +219,12 @@ export function buildRepStat(repEmail: string, rows: CallScoreRow[], asOf: Date)
 // out). A rep with literally zero rows ever simply isn't knowable from this
 // input; the route is responsible for deciding whether to also merge in a
 // roster of reps who have never been scored at all.
+// Rows with rep_email null (unattributed historical calls) stay in the
+// team averages below but never become a board row — a null here crashed
+// the whole endpoint on first contact with real data (localeCompare on
+// null in the sorters).
 export function buildScoreboard(rows: CallScoreRow[], asOf: Date): ScoreboardData {
-  const repEmails = [...new Set(rows.map(r => r.repEmail))].sort();
+  const repEmails = [...new Set(rows.map(r => r.repEmail).filter((e): e is string => e !== null))].sort();
   const repStats = repEmails.map(email => buildRepStat(email, rows, asOf));
 
   const mostImproved = [...repStats].sort((a, b) => {

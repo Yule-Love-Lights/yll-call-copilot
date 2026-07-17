@@ -156,6 +156,15 @@ describe('repAverages (week-over-week deltas)', () => {
     ];
     expect(repAverages(thisWeek, []).map(r => r.repEmail)).toEqual(['a@yll.com', 'z@yll.com']);
   });
+
+  it('drops unattributed (null rep) calls from rep rows without crashing', () => {
+    // Regression: a null rep_email crashed the sort via localeCompare(null).
+    const thisWeek = [
+      row({ id: '1', repEmail: 'a@yll.com' }),
+      row({ id: '2', repEmail: null }),
+    ];
+    expect(repAverages(thisWeek, []).map(r => r.repEmail)).toEqual(['a@yll.com']);
+  });
 });
 
 describe('guaranteeSayRates', () => {
