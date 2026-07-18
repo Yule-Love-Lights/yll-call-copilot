@@ -29,20 +29,25 @@ import { checkAllowlist, shouldDenyAccess } from '@/lib/auth/allowlist';
 //
 // /api/cron/brain-review is the same shape again: Vercel Cron calls it
 // directly with no browser session (see vercel.json), gated inside the
-// route by CRON_ENABLED (off by default) rather than a session.
+// route by CRON_ENABLED (off by default) rather than a session, plus an
+// optional CRON_SECRET bearer check (src/lib/cronAuth.ts) once that env var
+// is set.
 //
 // /api/cron/second-mile is the same shape again: Vercel Cron calls it
 // directly with no browser session (see vercel.json), gated inside the
-// route by CRON_ENABLED (off by default) rather than a session.
+// route by CRON_ENABLED (off by default) rather than a session, plus the
+// same optional CRON_SECRET bearer check.
 // /api/cron/weekly-digest is the same shape as /api/cron/brain-review:
 // Vercel Cron calls it directly with no browser session, gated inside the
-// route by CRON_ENABLED.
+// route by CRON_ENABLED, plus the same optional CRON_SECRET bearer check.
 // /api/cron/score-calls is the same shape again: Vercel Cron calls it
 // directly with no browser session (see vercel.json), gated inside the
-// route by CRON_ENABLED (off by default) rather than a session.
+// route by CRON_ENABLED (off by default) rather than a session, plus the
+// same optional CRON_SECRET bearer check.
 // /api/cron/sync-recordings is the same shape once more: the nightly
 // recordings sync (Workstream 1), also Vercel-Cron-called with no browser
-// session, also gated by CRON_ENABLED.
+// session, also gated by CRON_ENABLED, plus the same optional CRON_SECRET
+// bearer check.
 //
 // /forgot-password and /reset-password are auth pages like /login: a
 // signed-out visitor must be able to reach them to recover their account,

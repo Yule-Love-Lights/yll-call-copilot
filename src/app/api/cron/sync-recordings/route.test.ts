@@ -89,7 +89,7 @@ describe('GET /api/cron/sync-recordings', () => {
       return [];
     });
 
-    const res = await GET();
+    const res = await GET(new Request('https://example.com/api/cron/sync-recordings'));
     const json = await res.json();
 
     expect(json.ran).toBe(true);

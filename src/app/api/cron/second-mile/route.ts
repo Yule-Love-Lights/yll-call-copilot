@@ -9,7 +9,9 @@
 // the configured path (see vercel.json at the repo root) — this route is
 // listed public in src/proxy.ts (no browser session exists for a
 // cron-triggered request) with CRON_ENABLED as its own gate, same shape as
-// the other public-but-self-gated routes.
+// the other public-but-self-gated routes. If CRON_SECRET is also set, the
+// request must additionally carry the matching bearer token (see
+// src/lib/cronAuth.ts) before CRON_ENABLED is even checked.
 //
 // Nothing here ever sends a message to a customer or crew member — every
 // insert this run makes is a 'pending' checklist/draft row a human works
@@ -21,10 +23,14 @@ import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
 import { isClaudeConfigured } from '@/lib/claude';
 import { runSecondMileCron } from '@/lib/secondMile/cron';
+import { isCronRequestAuthorized } from '@/lib/cronAuth';
 
 export const maxDuration = 120;
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!isCronRequestAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   if (process.env.CRON_ENABLED !== 'true') {
     return NextResponse.json({ ran: false, reason: 'CRON_ENABLED is not set.' });
   }

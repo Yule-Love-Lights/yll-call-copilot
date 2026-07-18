@@ -8,12 +8,15 @@
 // the configured path (see vercel.json) -- this route is listed public in
 // src/proxy.ts (no browser session exists for a cron-triggered request)
 // with CRON_ENABLED as its own gate, same shape as
-// /api/cron/brain-review.
+// /api/cron/brain-review. If CRON_SECRET is also set, the request must
+// additionally carry the matching bearer token (see src/lib/cronAuth.ts)
+// before CRON_ENABLED is even checked.
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
 import { isClaudeConfigured } from '@/lib/claude';
 import { scoreNextBatch } from '@/lib/scoring/batch';
+import { isCronRequestAuthorized } from '@/lib/cronAuth';
 
 export const maxDuration = 300;
 
@@ -21,7 +24,10 @@ export const maxDuration = 300;
 // bounded work even if a batch hits a slow model response.
 const BATCH_LIMIT = 8;
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!isCronRequestAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   if (process.env.CRON_ENABLED !== 'true') {
     return NextResponse.json({ ran: false, reason: 'CRON_ENABLED is not set.' });
   }

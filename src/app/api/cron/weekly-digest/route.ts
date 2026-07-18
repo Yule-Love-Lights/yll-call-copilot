@@ -9,16 +9,22 @@
 // GET, not POST, because Vercel Cron Jobs only ever issue GET requests to
 // the configured path (see vercel.json). Public in src/proxy.ts (no browser
 // session exists for a cron-triggered request), same shape as
-// /api/cron/brain-review.
+// /api/cron/brain-review. If CRON_SECRET is also set, the request must
+// additionally carry the matching bearer token (see src/lib/cronAuth.ts)
+// before CRON_ENABLED is even checked.
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase';
 import { isClaudeConfigured } from '@/lib/claude';
 import { runWeeklyDigest } from '@/lib/digest/runDigest';
+import { isCronRequestAuthorized } from '@/lib/cronAuth';
 
 export const maxDuration = 60;
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!isCronRequestAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   if (process.env.CRON_ENABLED !== 'true') {
     return NextResponse.json({ ran: false, reason: 'CRON_ENABLED is not set.' });
   }

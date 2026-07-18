@@ -14,17 +14,23 @@
 // /api/twilio/voice, /api/live/segment). CRON_ENABLED is a soft kill switch,
 // not a secret — deliberately proportionate to what this route does
 // (compiles stats into a narrative + proposes playbook edits, nothing
-// destructive), same risk posture as GHL_SEND_ENABLED.
+// destructive), same risk posture as GHL_SEND_ENABLED. If CRON_SECRET is
+// also set, the request must additionally carry the matching bearer token
+// (see src/lib/cronAuth.ts) before CRON_ENABLED is even checked.
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase';
 import { isClaudeConfigured } from '@/lib/claude';
 import { runBrainReview } from '@/lib/analytics/runBrainReview';
+import { isCronRequestAuthorized } from '@/lib/cronAuth';
 import type { VerticalRow } from '@/lib/playbook/types';
 
 export const maxDuration = 60;
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!isCronRequestAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   if (process.env.CRON_ENABLED !== 'true') {
     return NextResponse.json({ ran: false, reason: 'CRON_ENABLED is not set.' });
   }

@@ -8,7 +8,9 @@
 // invocation. Same shape as /api/cron/brain-review: GET only (Vercel Cron
 // only ever issues GET), listed public in src/proxy.ts (no browser session
 // on a cron-triggered request), gated by CRON_ENABLED (off by default) —
-// same soft-kill-switch posture as the other cron/self-gated routes.
+// same soft-kill-switch posture as the other cron/self-gated routes. If
+// CRON_SECRET is also set, the request must additionally carry the matching
+// bearer token (see src/lib/cronAuth.ts) before CRON_ENABLED is even checked.
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
@@ -16,10 +18,14 @@ import { isHighLevelConfigured } from '@/lib/ghl/client';
 import { listRecentCallRecordings } from '@/lib/ghl/recordings';
 import { processPendingRecordings } from '@/lib/recordings/pipeline';
 import { RECORDING_BATCH_SIZE, resolveSyncWindowStart } from '@/lib/recordings/sync';
+import { isCronRequestAuthorized } from '@/lib/cronAuth';
 
 export const maxDuration = 300;
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!isCronRequestAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   if (process.env.CRON_ENABLED !== 'true') {
     return NextResponse.json({ ran: false, reason: 'CRON_ENABLED is not set.' });
   }
