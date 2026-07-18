@@ -1,10 +1,11 @@
 'use client';
 
 // The signed-in shell nav, rendered once from layout.tsx above every page
-// (PR 2 of 3, the mockup's Mock 1 glass nav). Hidden on /login only -- the
-// proxy already redirects a signed-out visitor there before this ever
-// mounts for real, so the pathname check just keeps the sign-in screen
-// itself nav-free.
+// (PR 2 of 3, the mockup's Mock 1 glass nav). Hidden on the auth pages
+// (/login plus the password reset pair, which are public via PUBLIC_PATHS
+// in proxy.ts) -- the proxy redirects signed-out visitors away from every
+// other route before this ever mounts for real, so the check just keeps
+// the auth screens nav-free.
 //
 // Active route is a pill (usePathname), grouped under tiny uppercase
 // labels matching the mockup. /coach is an EXACT match for "My cards" so
@@ -96,7 +97,7 @@ export default function CoachNav() {
     };
   }, []);
 
-  if (pathname === '/login') return null;
+  if (pathname === '/login' || pathname === '/forgot-password' || pathname === '/reset-password') return null;
 
   const countFor = (badge?: 'feedback') => (badge === 'feedback' ? feedbackCount : 0);
 
