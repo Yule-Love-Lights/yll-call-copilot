@@ -6,11 +6,11 @@
     },
     {
       "path": "/api/cron/sync-recordings",
-      "schedule": "0 7 * * *"
+      "schedule": "5 * * * *"
     },
     {
       "path": "/api/cron/score-calls",
-      "schedule": "30 8 * * *"
+      "schedule": "35 * * * *"
     },
     {
       "path": "/api/cron/weekly-digest",
