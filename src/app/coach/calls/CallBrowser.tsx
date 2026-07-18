@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { splitRawTextIntoTurns } from '@/lib/coachCalls/turns';
+import { buildCursor } from '@/lib/coachCalls/cursor';
 
 type CallListItem = {
   id: string;
@@ -70,6 +71,7 @@ type CallDetailResponse = {
   error?: string;
   call?: CallDetail;
   transcript?: TranscriptDetail | null;
+  has_recording?: boolean;
 };
 
 const LIST_LIMIT = 50;
@@ -324,7 +326,8 @@ export default function CallBrowser() {
     if (calls.length === 0) return;
     setLoadingMore(true);
     try {
-      await loadCalls(calls[calls.length - 1].scored_at);
+      const last = calls[calls.length - 1];
+      await loadCalls(buildCursor(last.scored_at, last.id));
     } finally {
       setLoadingMore(false);
     }
@@ -383,9 +386,16 @@ export default function CallBrowser() {
         {selectedId && detailStatus === 'error' && <p className="text-sm text-red-600 dark:text-red-400">{detail?.error ?? 'Could not load this call.'}</p>}
 
         {selectedId && detailStatus === 'done' && detail?.call && (
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <TranscriptPane rawText={detail.transcript?.raw_text ?? ''} />
-            <Scorecard call={detail.call} />
+          <div className="flex flex-col gap-4">
+            {detail.has_recording && (
+              <audio key={detail.call.id} controls preload="none" className="w-full" src={`/api/coach/calls/${detail.call.id}/audio`}>
+                Your browser does not support the audio element.
+              </audio>
+            )}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <TranscriptPane rawText={detail.transcript?.raw_text ?? ''} />
+              <Scorecard call={detail.call} />
+            </div>
           </div>
         )}
       </div>

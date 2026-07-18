@@ -25,12 +25,19 @@ vi.mock('@/lib/supabase', async () => {
 
 import { GET } from './route';
 
-// A thenable query-builder stub: `.lt()` returns the same object (so a
+// A thenable query-builder stub: `.or()` returns the same object (so a
 // caller can chain it or not) and `await`-ing it resolves to {data, error},
-// matching how the real supabase-js builder behaves at every step.
+// matching how the real supabase-js builder behaves at every step. `.or()`
+// also records the filter string it was called with, so the pair-cursor
+// tests can assert on it without reaching into supabase-js internals.
+let lastOrFilter: string | undefined;
+
 function scoresQueryResult(data: unknown, error: unknown) {
-  const builder: { lt: () => typeof builder; then: (resolve: (v: { data: unknown; error: unknown }) => unknown) => unknown } = {
-    lt: () => builder,
+  const builder: { or: (filter: string) => typeof builder; then: (resolve: (v: { data: unknown; error: unknown }) => unknown) => unknown } = {
+    or: (filter: string) => {
+      lastOrFilter = filter;
+      return builder;
+    },
     then: resolve => Promise.resolve({ data, error }).then(resolve),
   };
   return builder;
@@ -42,7 +49,7 @@ function fakeSupabase(role: string | null, scoreRows: Record<string, unknown>[] 
       return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: role ? { role } : null, error: null }) }) }) };
     }
     if (table === 'call_scores') {
-      return { select: () => ({ order: () => ({ limit: () => scoresQueryResult(scoreRows, null) }) }) };
+      return { select: () => ({ order: () => ({ order: () => ({ limit: () => scoresQueryResult(scoreRows, null) }) }) }) };
     }
     if (table === 'transcripts') {
       return { select: () => ({ in: async () => ({ data: transcriptRows, error: null }) }) };
@@ -55,6 +62,7 @@ function fakeSupabase(role: string | null, scoreRows: Record<string, unknown>[] 
 describe('GET /api/coach/calls -- role gate', () => {
   beforeEach(() => {
     getSessionEmailMock.mockReset();
+    lastOrFilter = undefined;
   });
 
   it('403s a rep and never queries call_scores or transcripts', async () => {
@@ -130,7 +138,11 @@ describe('GET /api/coach/calls -- role gate', () => {
         return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { role: 'owner' }, error: null }) }) }) };
       }
       if (table === 'call_scores') {
-        return { select: () => ({ order: () => ({ limit: () => scoresQueryResult(null, { code: 'PGRST205', message: 'missing' }) }) }) };
+        return {
+          select: () => ({
+            order: () => ({ order: () => ({ limit: () => scoresQueryResult(null, { code: 'PGRST205', message: 'missing' }) }) }),
+          }),
+        };
       }
       throw new Error(`Unexpected table in test: ${table}`);
     });
@@ -142,5 +154,25 @@ describe('GET /api/coach/calls -- role gate', () => {
     const json = await res.json();
     expect(json.migrated).toBe(false);
     expect(json.calls).toEqual([]);
+  });
+
+  it('applies the scoredAt~id pair cursor as an .or() filter on ?before=', async () => {
+    getSessionEmailMock.mockResolvedValue('naldo@yulelovelights.com');
+    fakeClient = fakeSupabase('owner', []);
+
+    const res = await GET(new Request('http://localhost/api/coach/calls?before=2026-07-10T12%3A05%3A00Z~c1'));
+
+    expect(res.status).toBe(200);
+    expect(lastOrFilter).toBe('scored_at.lt.2026-07-10T12:05:00Z,and(scored_at.eq.2026-07-10T12:05:00Z,id.lt.c1)');
+  });
+
+  it('still accepts a bare timestamp cursor for backward compatibility', async () => {
+    getSessionEmailMock.mockResolvedValue('naldo@yulelovelights.com');
+    fakeClient = fakeSupabase('owner', []);
+
+    const res = await GET(new Request('http://localhost/api/coach/calls?before=2026-07-10T12%3A05%3A00Z'));
+
+    expect(res.status).toBe(200);
+    expect(lastOrFilter).toBe('scored_at.lt.2026-07-10T12:05:00Z');
   });
 });
