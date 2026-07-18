@@ -42,6 +42,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Call review', href: '/coach/calls', isActive: p => p.startsWith('/coach/calls') },
       { label: 'Digest', href: '/digest', isActive: p => p.startsWith('/digest') },
       { label: 'Board', href: '/scoreboard', isActive: p => p.startsWith('/scoreboard') },
+      { label: 'Brain', href: '/brain', isActive: p => p.startsWith('/brain') },
     ],
   },
   {
