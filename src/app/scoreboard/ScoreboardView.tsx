@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { FlywheelSubMetric } from '@/lib/scoreboard/flywheel';
+import { formatOverallExact, formatOverallGlance } from '@/lib/formatScore';
 
 type TrendPoint = { weekStart: string; weekEnd: string; avgOverall: number | null; calls: number };
 type DimensionAverage = { key: string; avgScore: number; avgMax: number };
@@ -136,7 +137,7 @@ function RepRow({ rep, showDelta }: { rep: RepStat; showDelta: boolean }) {
     <tr className="border-t border-[var(--op-border)] align-top">
       <td className="py-2 pr-4 font-medium text-[var(--op-text)]">{rep.repEmail}</td>
       <td className="py-2 pr-4 text-[var(--op-text-2)]">{rep.callsScored}</td>
-      <td className="py-2 pr-4 text-[var(--op-text-2)]">{rep.avgOverall ?? '—'}</td>
+      <td className="py-2 pr-4 text-[var(--op-text-2)]">{rep.avgOverall === null ? '—' : formatOverallGlance(rep.avgOverall)}</td>
       <td className="py-2 pr-4 text-[var(--op-text-2)]">{rep.avgExperience ?? '—'}</td>
       {showDelta && (
         <td className="py-2 pr-4">
@@ -436,7 +437,9 @@ export default function ScoreboardView({ tv = false }: { tv?: boolean }) {
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-xs uppercase text-[var(--op-dim)]">Avg overall</span>
-              <span className="text-xl font-bold text-[var(--op-text)]">{data.own.avgOverall ?? '—'}</span>
+              <span className="text-xl font-bold text-[var(--op-text)]">
+                {data.own.avgOverall === null ? '—' : formatOverallExact(data.own.avgOverall)}
+              </span>
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-xs uppercase text-[var(--op-dim)]">Avg experience</span>
@@ -512,7 +515,9 @@ export default function ScoreboardView({ tv = false }: { tv?: boolean }) {
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-xs uppercase text-[var(--op-dim)]">Avg overall</span>
-                <span className="text-xl font-bold text-[var(--op-text)]">{data.board.teamAverages.avgOverall ?? '—'}</span>
+                <span className="text-xl font-bold text-[var(--op-text)]">
+                  {data.board.teamAverages.avgOverall === null ? '—' : formatOverallGlance(data.board.teamAverages.avgOverall)}
+                </span>
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-xs uppercase text-[var(--op-dim)]">Avg experience</span>
