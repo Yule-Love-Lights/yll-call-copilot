@@ -3,8 +3,15 @@
 // full scorecard to prep a one-on-one. Reps never see this list -- same
 // role gate as GET /api/digest (copied exactly): a rep gets a friendly 403
 // before any call_scores/transcripts query runs. ?limit= (default 50, max
-// 200) and ?before= (a scored_at cursor, from the last row's scored_at) page
-// through the history.
+// 200) and ?before= page through the history.
+//
+// ?before= is a "scoredAt~id" pair cursor (see lib/coachCalls/cursor.ts):
+// ordering purely on scored_at broke when batch scoring wrote two or more
+// rows with the exact same timestamp -- a plain scored_at.lt filter could
+// silently skip a tied row once it fell on a page boundary. Rows are now
+// ordered (scored_at desc, id desc) and the cursor carries both fields so
+// ties break on id instead of vanishing. A bare timestamp cursor (no "~",
+// the pre-fix shape) is still accepted for backward compatibility.
 //
 // Two queries, not a join -- call_scores and transcripts are separate
 // tables (0007/0008 migrations); loading the small page of call_scores rows
@@ -16,6 +23,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
 import { getSessionEmail } from '@/lib/auth/session';
 import { resolveStaffRole } from '@/lib/auth/role';
+import { buildBeforeFilter, parseCursor } from '@/lib/coachCalls/cursor';
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -67,8 +75,9 @@ export async function GET(request: Request) {
     .from('call_scores')
     .select('id, transcript_id, rep_email, vertical_slug, called_at, scored_at, overall, experience_score, fix')
     .order('scored_at', { ascending: false })
+    .order('id', { ascending: false })
     .limit(limit);
-  if (before) query = query.lt('scored_at', before);
+  if (before) query = query.or(buildBeforeFilter(parseCursor(before)));
 
   const { data, error } = await query;
   if (error) {

@@ -3,6 +3,13 @@
 // route (copied from GET /api/digest): a rep gets the friendly 403 before
 // any query runs. 404 when the call_scores row doesn't exist, same
 // convention as GET /api/leads/[id] and GET /api/digest/[id].
+//
+// has_recording tells the client whether GET /api/coach/calls/[id]/audio
+// will actually return audio, so it can show/hide the <audio> player
+// without a failed request -- one extra cheap query on call_recordings.
+// Best-effort: a lookup failure just leaves has_recording false rather
+// than failing the whole detail load (the transcript/scorecard are the
+// primary content; the player is an enhancement).
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
@@ -55,5 +62,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ configured: true, error: 'Could not load this call.' }, { status: 500 });
   }
 
-  return NextResponse.json({ configured: true, call, transcript: transcriptRow ?? null });
+  let hasRecording = false;
+  const { data: recordingRow, error: recordingError } = await supabase
+    .from('call_recordings')
+    .select('ghl_message_id')
+    .eq('transcript_id', call.transcript_id)
+    .eq('status', 'transcribed')
+    .maybeSingle();
+  if (recordingError) {
+    console.error('Load call recording flag for call review failed:', recordingError);
+  } else {
+    hasRecording = !!(recordingRow as { ghl_message_id: string | null } | null)?.ghl_message_id;
+  }
+
+  return NextResponse.json({ configured: true, call, transcript: transcriptRow ?? null, has_recording: hasRecording });
 }
