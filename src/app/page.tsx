@@ -49,7 +49,6 @@ export default async function Home() {
 
   let unseenCount = 0;
   let scoreRows: CallScoreRow[] = [];
-  let inboxQueueCount = 0;
   let secondMileQueueCount = 0;
   let recordingsQueueCount = 0;
 
@@ -68,15 +67,6 @@ export default async function Home() {
 
     const scoresResult = await loadCallScores(supabase, { repEmail });
     if (scoresResult.ok) scoreRows = scoresResult.rows;
-
-    const { count: inboxCount, error: inboxError } = await supabase
-      .from('inbound_emails')
-      .select('id', { count: 'exact', head: true })
-      .in('status', ['new', 'drafted']);
-    if (inboxError && !isMissingTableError(inboxError)) {
-      console.error('Load inbox queue count for home failed:', inboxError);
-    }
-    inboxQueueCount = inboxCount ?? 0;
 
     const { count: secondMileCount, error: secondMileError } = await supabase
       .from('second_mile_touches')
@@ -104,15 +94,13 @@ export default async function Home() {
   const repStat = buildRepStat(repEmail ?? '', scoreRows, new Date());
   const trendSummary = summarizeHomeTrend(repStat.trend);
 
-  const totalQueued = inboxQueueCount + secondMileQueueCount + recordingsQueueCount;
+  const totalQueued = secondMileQueueCount + recordingsQueueCount;
   const queuesLine =
     totalQueued === 0
       ? "Nothing time-sensitive is waiting."
-      : inboxQueueCount > 0
-        ? 'New email waiting in the inbox.'
-        : secondMileQueueCount > 0
-          ? 'Second-mile touches are ready to send.'
-          : 'Recordings are still finishing up.';
+      : secondMileQueueCount > 0
+        ? 'Second-mile touches are ready to send.'
+        : 'Recordings are still finishing up.';
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
@@ -185,12 +173,6 @@ export default async function Home() {
             Today&apos;s queues
           </span>
           <div className="flex flex-wrap gap-2">
-            <Link
-              href="/inbox"
-              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--op-border-mid)] bg-white/70 px-3.5 py-1.5 text-[13px] font-semibold text-[var(--op-text-2)]"
-            >
-              Inbox <b className="tabular-nums text-[var(--op-text)]">{inboxQueueCount}</b>
-            </Link>
             <Link
               href="/second-mile"
               className="inline-flex items-center gap-1.5 rounded-full border border-[var(--op-border-mid)] bg-white/70 px-3.5 py-1.5 text-[13px] font-semibold text-[var(--op-text-2)]"

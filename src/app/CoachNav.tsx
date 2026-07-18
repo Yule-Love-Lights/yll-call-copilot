@@ -11,15 +11,26 @@
 // that visiting /coach/calls, /coach/rubric, or /coach/offer -- each its
 // own nav item -- doesn't also light up "My cards".
 //
-// The two gold count badges (My cards, Inbox) fetch once on mount and never
-// poll -- a stale-by-a-few-minutes badge is fine for a nav, and polling
-// every page load would be wasted reads on the two unseen-count routes.
+// The one gold count badge (My cards) fetches once on mount and never
+// polls -- a stale-by-a-few-minutes badge is fine for a nav, and polling
+// every page load would be wasted reads on the unseen-count route.
+//
+// Inbox is a plain external link to the AI Quote Tool's own inbox (email
+// handling lives there now, not in this app) -- no badge, no active-pill
+// state, just target="_blank" so staff don't lose their place in the coach
+// app.
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-type NavItem = { label: string; href: string; isActive: (pathname: string) => boolean; badge?: 'feedback' | 'inbox' };
+type NavItem = {
+  label: string;
+  href: string;
+  isActive: (pathname: string) => boolean;
+  badge?: 'feedback';
+  external?: boolean;
+};
 type NavGroup = { label: string; items: NavItem[] };
 
 const NAV_GROUPS: NavGroup[] = [
@@ -35,7 +46,12 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Queues',
     items: [
-      { label: 'Inbox', href: '/inbox', isActive: p => p.startsWith('/inbox'), badge: 'inbox' },
+      {
+        label: 'Inbox',
+        href: 'https://quote.yulelovelights.com/inbox',
+        isActive: () => false,
+        external: true,
+      },
       { label: 'Second mile', href: '/second-mile', isActive: p => p.startsWith('/second-mile') },
       { label: 'Recordings', href: '/recordings', isActive: p => p.startsWith('/recordings') },
     ],
@@ -66,7 +82,6 @@ function CountBadge({ count }: { count: number }) {
 export default function CoachNav() {
   const pathname = usePathname();
   const [feedbackCount, setFeedbackCount] = useState(0);
-  const [inboxCount, setInboxCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,12 +91,6 @@ export default function CoachNav() {
         if (!cancelled) setFeedbackCount(json.count ?? 0);
       })
       .catch(() => {});
-    fetch('/api/inbox/unseen-count')
-      .then(res => res.json())
-      .then(json => {
-        if (!cancelled) setInboxCount(json.count ?? 0);
-      })
-      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -89,11 +98,7 @@ export default function CoachNav() {
 
   if (pathname === '/login') return null;
 
-  const countFor = (badge?: 'feedback' | 'inbox') => {
-    if (badge === 'feedback') return feedbackCount;
-    if (badge === 'inbox') return inboxCount;
-    return 0;
-  };
+  const countFor = (badge?: 'feedback') => (badge === 'feedback' ? feedbackCount : 0);
 
   return (
     <nav className="flex flex-wrap items-center gap-x-5 gap-y-2 overflow-x-auto border-b border-[var(--op-border)] bg-white/80 px-5 py-3 text-[13.5px] backdrop-blur-md [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -105,16 +110,28 @@ export default function CoachNav() {
           <b className="mr-0.5 text-[10px] font-extrabold uppercase tracking-[.18em] text-[var(--brand-cream-dim)]">
             {group.label}
           </b>
-          {group.items.map(item => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={item.isActive(pathname) ? activePillClass : inactivePillClass}
-            >
-              {item.label}
-              <CountBadge count={countFor(item.badge)} />
-            </Link>
-          ))}
+          {group.items.map(item =>
+            item.external ? (
+              <a
+                key={item.href}
+                href={item.href}
+                target="_blank"
+                rel="noopener"
+                className={inactivePillClass}
+              >
+                {item.label}
+              </a>
+            ) : (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={item.isActive(pathname) ? activePillClass : inactivePillClass}
+              >
+                {item.label}
+                <CountBadge count={countFor(item.badge)} />
+              </Link>
+            ),
+          )}
         </div>
       ))}
     </nav>
