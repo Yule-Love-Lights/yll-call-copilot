@@ -52,7 +52,9 @@ export type HospitalityDim = 'greeting' | 'listening' | 'courtesy' | 'dead_air' 
 // left off this narrower type rather than carried through unused).
 export type CallScoreRow = {
   id: string;
-  repEmail: string;
+  // Nullable for real: historical imports score with rep_email null. They
+  // count in team totals; groupByRep drops them from per-rep rows.
+  repEmail: string | null;
   overall: number; // 0-100
   experienceScore: number; // 0-10
   win: string | null;
@@ -171,6 +173,10 @@ export type RepAverage = {
 function groupByRep(rows: CallScoreRow[]): Map<string, CallScoreRow[]> {
   const groups = new Map<string, CallScoreRow[]>();
   for (const row of rows) {
+    // Unattributed calls (rep_email null on historical imports) stay in the
+    // team totals but never form a rep row -- a null key crashed the
+    // localeCompare sort below on first contact with real data.
+    if (row.repEmail === null) continue;
     const list = groups.get(row.repEmail) ?? [];
     list.push(row);
     groups.set(row.repEmail, list);
@@ -237,7 +243,7 @@ export type RoughestMoment = { id: string; repEmail: string; overall: number; fi
 export function bestCall(rows: CallScoreRow[]): BestCall | null {
   if (rows.length === 0) return null;
   const top = [...rows].sort((a, b) => b.overall - a.overall || a.id.localeCompare(b.id))[0];
-  return { id: top.id, repEmail: top.repEmail, overall: top.overall, win: top.win };
+  return { id: top.id, repEmail: top.repEmail ?? 'unattributed', overall: top.overall, win: top.win };
 }
 
 // Lowest overall among calls that actually recorded a fix moment -- a low
@@ -247,7 +253,7 @@ export function roughestMoment(rows: CallScoreRow[]): RoughestMoment | null {
   const withFix = rows.filter((r): r is CallScoreRow & { fix: FixMoment } => r.fix !== null);
   if (withFix.length === 0) return null;
   const worst = [...withFix].sort((a, b) => a.overall - b.overall || a.id.localeCompare(b.id))[0];
-  return { id: worst.id, repEmail: worst.repEmail, overall: worst.overall, fix: worst.fix };
+  return { id: worst.id, repEmail: worst.repEmail ?? 'unattributed', overall: worst.overall, fix: worst.fix };
 }
 
 // ─── Full digest stats (pure) ───────────────────────────────────────────────

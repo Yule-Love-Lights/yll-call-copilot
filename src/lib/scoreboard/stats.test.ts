@@ -148,6 +148,20 @@ describe('buildScoreboard', () => {
     expect(board.teamAverages).toEqual({ avgOverall: null, avgExperience: null, callsScored: 0 });
   });
 
+  it('keeps unattributed (null rep) calls in team averages but off the board', () => {
+    // Regression: a null rep_email (historical imports) crashed the whole
+    // endpoint via localeCompare(null) on first contact with real data.
+    const rows = [
+      row({ repEmail: 'jamie@example.com', calledAt: isoAt(0), overall: 80 }),
+      row({ repEmail: null, calledAt: isoAt(0), overall: 40 }),
+    ];
+    const board = buildScoreboard(rows, ASOF);
+    expect(board.topScore.map(r => r.repEmail)).toEqual(['jamie@example.com']);
+    expect(board.mostImproved.map(r => r.repEmail)).toEqual(['jamie@example.com']);
+    expect(board.teamAverages.callsScored).toBe(2);
+    expect(board.teamAverages.avgOverall).toBe(60);
+  });
+
   it('ranks most-improved by delta descending, then alphabetically', () => {
     const rows = [
       // jason: +20
