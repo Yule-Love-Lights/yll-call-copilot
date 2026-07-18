@@ -43,8 +43,15 @@ import { checkAllowlist, shouldDenyAccess } from '@/lib/auth/allowlist';
 // /api/cron/sync-recordings is the same shape once more: the nightly
 // recordings sync (Workstream 1), also Vercel-Cron-called with no browser
 // session, also gated by CRON_ENABLED.
+//
+// /forgot-password and /reset-password are auth pages like /login: a
+// signed-out visitor must be able to reach them to recover their account,
+// so they're exempted here the same way rather than redirected to /login
+// in a loop.
 const PUBLIC_PATHS = [
   '/login',
+  '/forgot-password',
+  '/reset-password',
   '/api/health',
   '/api/webhooks/ghl',
   '/api/twilio/voice',

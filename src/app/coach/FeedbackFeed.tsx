@@ -16,6 +16,7 @@
 
 import { useEffect, useState } from 'react';
 import { feelingTier, type FeelingTier } from '@/lib/feedback/card';
+import { formatOverallExact } from '@/lib/formatScore';
 
 type DimensionScore = { score: number; max: number; notes: string };
 
@@ -153,7 +154,7 @@ function CardDetails({ detail }: { detail: CardDetail }) {
       <div className="flex flex-wrap gap-4">
         <div>
           <MicroLabel>Overall</MicroLabel>
-          <div className="text-lg font-bold tabular-nums text-[var(--op-text)]">{detail.overall}</div>
+          <div className="text-lg font-bold tabular-nums text-[var(--op-text)]">{formatOverallExact(detail.overall)}</div>
         </div>
         <div>
           <MicroLabel>Experience</MicroLabel>

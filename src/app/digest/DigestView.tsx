@@ -9,6 +9,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { formatOverallGlance, formatOverallExact } from '@/lib/formatScore';
 
 type RepAverage = {
   repEmail: string;
@@ -21,7 +22,11 @@ type RepAverage = {
 type DimensionStat = { key: string; label: string; avgRatio: number; calls: number };
 type GuaranteeRate = { key: string; label: string; done: number; applicable: number; rate: number | null };
 type BestCall = { id: string; repEmail: string; overall: number; win: string | null };
-type FixMoment = { moment: string; timestampSeconds: number; transcriptQuote: string; betterLine: string };
+// timestampSeconds is nullable -- the scorer doesn't always pin a fix moment
+// to a spot in the transcript (see src/lib/scoring/types.ts's Fix). CallBrowser
+// and the feedback card already guard this the same way; the digest didn't,
+// which rendered a misleading "0:00" chip.
+type FixMoment = { moment: string; timestampSeconds: number | null; transcriptQuote: string; betterLine: string };
 type RoughestMoment = { id: string; repEmail: string; overall: number; fix: FixMoment };
 type Proposal = {
   id: string;
@@ -62,6 +67,7 @@ const primaryButtonClass =
   'rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300';
 const amberBannerClass =
   'rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200';
+const errorTextClass = 'text-sm text-red-600 dark:text-red-400';
 
 function formatTimestamp(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -100,7 +106,7 @@ function DigestPanel({ digest }: { digest: Digest }) {
           </div>
           <div className="flex flex-col gap-1 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
             <span className="text-xs font-medium uppercase text-zinc-500">Avg overall</span>
-            <span className="text-2xl font-semibold">{stats.team.avgOverall ?? '—'}</span>
+            <span className="text-2xl font-semibold">{stats.team.avgOverall !== null ? formatOverallGlance(stats.team.avgOverall) : '—'}</span>
           </div>
           <div className="flex flex-col gap-1 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
             <span className="text-xs font-medium uppercase text-zinc-500">Avg experience</span>
@@ -124,7 +130,7 @@ function DigestPanel({ digest }: { digest: Digest }) {
                   <tr key={r.repEmail} className="border-t border-zinc-100 dark:border-zinc-900">
                     <td className="py-1 pr-4">{r.repEmail}</td>
                     <td className="py-1 pr-4">{r.calls}</td>
-                    <td className="py-1 pr-4">{r.avgOverall}</td>
+                    <td className="py-1 pr-4">{formatOverallGlance(r.avgOverall)}</td>
                     <td className="py-1 pr-4">{formatDelta(r.deltaOverall)}</td>
                     <td className="py-1">{r.avgExperience}</td>
                   </tr>
@@ -156,7 +162,7 @@ function DigestPanel({ digest }: { digest: Digest }) {
         <div className={cardClass}>
           <h2 className="text-sm font-semibold">🏆 Best call this week</h2>
           <p className="text-sm text-zinc-500">
-            {content.bestCall.repEmail} · overall {content.bestCall.overall}
+            {content.bestCall.repEmail} · overall {formatOverallExact(content.bestCall.overall)}
           </p>
           {content.bestCall.win && <p className="text-sm italic">&quot;{content.bestCall.win}&quot;</p>}
         </div>
@@ -167,7 +173,8 @@ function DigestPanel({ digest }: { digest: Digest }) {
           <h2 className="text-sm font-semibold">Worth a private 1:1</h2>
           <p className="text-xs text-zinc-500">Coach one-on-one, never a public callout.</p>
           <p className="text-sm text-zinc-500">
-            {content.roughestMoment.repEmail} · overall {content.roughestMoment.overall} · at {formatTimestamp(content.roughestMoment.fix.timestampSeconds)}
+            {content.roughestMoment.repEmail} · overall {formatOverallExact(content.roughestMoment.overall)}
+            {content.roughestMoment.fix.timestampSeconds !== null && <> · at {formatTimestamp(content.roughestMoment.fix.timestampSeconds)}</>}
           </p>
           <p className="text-sm">{content.roughestMoment.fix.moment}</p>
           <p className="text-sm italic">&quot;{content.roughestMoment.fix.transcriptQuote}&quot;</p>
@@ -249,6 +256,7 @@ export default function DigestView() {
   const [reason, setReason] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   // Not called synchronously on mount from within the effect body's own
   // scope (react-hooks/set-state-in-effect) -- load() only ever sets state
@@ -279,6 +287,7 @@ export default function DigestView() {
   async function onGenerate() {
     setGenerating(true);
     setMessage(null);
+    setGenerateError(null);
     try {
       const res = await fetch('/api/digest/generate', { method: 'POST' });
       const json = await res.json();
@@ -289,6 +298,8 @@ export default function DigestView() {
       setMessage('Digest generated.');
       load();
       setSelectedId(json.digest.id);
+    } catch {
+      setGenerateError('Could not generate the digest. Try again.');
     } finally {
       setGenerating(false);
     }
@@ -310,9 +321,10 @@ export default function DigestView() {
         {generating ? 'Generating…' : 'Generate now'}
       </button>
       {message && <p className="text-sm text-zinc-500">{message}</p>}
+      {generateError && <p className={errorTextClass}>{generateError}</p>}
 
       {status === 'loading' && <p className="text-sm text-zinc-500">Loading…</p>}
-      {status === 'error' && <p className="text-sm text-red-600 dark:text-red-400">Could not load digests.</p>}
+      {status === 'error' && <p className={errorTextClass}>Could not load digests.</p>}
       {reason && <div className={amberBannerClass}>{reason}</div>}
 
       {status === 'done' && digests.length === 0 && !reason && (

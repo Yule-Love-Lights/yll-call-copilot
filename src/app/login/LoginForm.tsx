@@ -4,6 +4,7 @@
 // push to the dashboard and refresh so server components pick up the new
 // session cookies.
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
@@ -89,6 +90,12 @@ export default function LoginForm({ denied }: { denied: boolean }) {
       >
         {submitting ? 'Signing in…' : 'Sign in'}
       </button>
+
+      <p className="text-center text-sm">
+        <Link href="/forgot-password" className="text-[var(--op-dim)] hover:underline">
+          Forgot password?
+        </Link>
+      </p>
     </form>
   );
 }
