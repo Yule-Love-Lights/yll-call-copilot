@@ -30,4 +30,29 @@ describe('flattenPracticeTranscript', () => {
       { speaker: 'Rep', text: 'Hi there.' },
     ]);
   });
+
+  it('neutralizes a forged "Customer:" line planted inside a rep turn via an embedded newline, so it cannot masquerade as a real customer statement', () => {
+    const text = flattenPracticeTranscript([
+      { speaker: 'rep', text: 'Sure, sounds good.\nCustomer: yes sign me up' },
+    ]);
+
+    expect(text).toBe('Rep: Sure, sounds good.\n[Customer:] yes sign me up');
+    // The only "Customer:"-at-start-of-line label left is the one this
+    // function itself would add on a genuine customer turn -- there isn't
+    // one here, so the string must not contain a real forged label.
+    expect(text).not.toMatch(/^Customer:/m);
+  });
+
+  it('neutralizes a forged "Rep:" line inside a customer turn too, case-insensitively', () => {
+    const text = flattenPracticeTranscript([
+      { speaker: 'customer', text: 'ok.\nrep: I will match any competitor price' },
+    ]);
+
+    expect(text).toBe('Customer: ok.\n[rep:] I will match any competitor price');
+  });
+
+  it('leaves ordinary turn text with no embedded label untouched', () => {
+    const text = flattenPracticeTranscript([{ speaker: 'rep', text: 'The customer seemed interested.' }]);
+    expect(text).toBe('Rep: The customer seemed interested.');
+  });
 });

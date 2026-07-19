@@ -56,6 +56,15 @@ export async function POST(request: Request) {
   const supabase = getSupabaseServerClient()!;
   const repEmail = await getSessionEmail();
 
+  // Belt-and-suspenders: proxy.ts already gates every non-public route to a
+  // signed-in allowlisted staff user, but a narrow cookie-refresh race could
+  // still hand back a null email here. Reject before the Claude call and
+  // the insert, rather than creating an orphan practice_sessions row (no
+  // rep to ever see or delete it) and wasting a Claude call for nothing.
+  if (!repEmail) {
+    return NextResponse.json({ configured: true, saved: false, error: 'Not signed in.' }, { status: 401 });
+  }
+
   const systemPrompt = await buildSessionSystemPrompt(supabase, { verticalSlug, emotionalState, objective });
 
   let opening: string;

@@ -105,6 +105,18 @@ describe('POST /api/practice/start', () => {
     expect(inserted[0].turns).toEqual([{ speaker: 'customer', text: 'Hello?', at: expect.any(String) }]);
   });
 
+  it('rejects with 401 when getSessionEmail returns null, before calling Claude or touching the database', async () => {
+    getSessionEmailMock.mockResolvedValue(null);
+
+    const res = await POST(request({ vertical_slug: 'holiday', emotional_state: 'excited' }));
+    const json = await res.json();
+
+    expect(res.status).toBe(401);
+    expect(json.error).toBe('Not signed in.');
+    expect(customerOpeningMock).not.toHaveBeenCalled();
+    expect(buildSessionSystemPromptMock).not.toHaveBeenCalled();
+  });
+
   it('degrades with a friendly reason when the practice_sessions table is missing', async () => {
     const { client } = fakeInsertingSupabase({ data: null, error: { code: 'PGRST205', message: 'missing' } });
     fakeClient = client;

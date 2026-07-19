@@ -26,7 +26,7 @@ vi.mock('@/lib/practice/context', () => ({
   buildSessionSystemPrompt: (...args: unknown[]) => buildSessionSystemPromptMock(...args),
 }));
 
-import { POST } from './route';
+import { POST, MAX_REP_TURNS, MAX_TURN_TEXT_LENGTH } from './route';
 import type { PracticeSessionRow } from '@/lib/practice/types';
 
 function request(body: unknown) {
@@ -53,23 +53,55 @@ function baseSession(overrides: Partial<PracticeSessionRow> = {}): PracticeSessi
   };
 }
 
+// A fake `practice_sessions` table: select().eq().maybeSingle() reads the
+// LIVE row, and update(patch).eq('id',...).eq('status','active').select()
+// is a real compare-and-swap -- it only applies (and returns a row) when
+// the live status still matches the filter. The returned `row` reference is
+// exposed (not just a snapshot) so a test can mutate it mid-request -- e.g.
+// from inside customerReplyMock's implementation -- to model a concurrent
+// /end claiming the session while this /turn was awaiting Claude.
 function fakeSupabase(session: PracticeSessionRow | null, sessionError: unknown = null) {
+  const row: PracticeSessionRow | null = session ? { ...session } : null;
   const updates: Record<string, unknown>[] = [];
+
+  function makeUpdateBuilder(patch: Record<string, unknown>) {
+    const filters: Record<string, unknown> = {};
+    function resolve() {
+      if (!row) return Promise.resolve({ data: [], error: null });
+      if ('status' in filters && filters.status !== row.status) {
+        return Promise.resolve({ data: [], error: null });
+      }
+      Object.assign(row, patch);
+      updates.push({ ...patch });
+      return Promise.resolve({ data: [{ id: row.id }], error: null });
+    }
+    const builder = {
+      eq(field: string, value: unknown) {
+        filters[field] = value;
+        return builder;
+      },
+      select() {
+        return resolve();
+      },
+      then(onFulfilled: (v: { data: unknown; error: null }) => unknown, onRejected?: (e: unknown) => unknown) {
+        return resolve().then(onFulfilled, onRejected);
+      },
+    };
+    return builder;
+  }
+
   const from = vi.fn((table: string) => {
     if (table !== 'practice_sessions') throw new Error(`Unexpected table in test: ${table}`);
     return {
       select: () => ({
         eq: () => ({
-          maybeSingle: () => Promise.resolve({ data: session, error: sessionError }),
+          maybeSingle: () => Promise.resolve({ data: row ? { ...row } : null, error: sessionError }),
         }),
       }),
-      update: (row: Record<string, unknown>) => {
-        updates.push(row);
-        return { eq: () => Promise.resolve({ error: null }) };
-      },
+      update: (patch: Record<string, unknown>) => makeUpdateBuilder(patch),
     };
   });
-  return { client: { from } as unknown as SupabaseClient, updates };
+  return { client: { from } as unknown as SupabaseClient, updates, row };
 }
 
 describe('POST /api/practice/[id]/turn', () => {
@@ -147,5 +179,51 @@ describe('POST /api/practice/[id]/turn', () => {
 
     expect(json.saved).toBe(false);
     expect(updates).toHaveLength(0);
+  });
+
+  it('returns 409 at the turn cap without calling Claude', async () => {
+    const cappedTurns = Array.from({ length: MAX_REP_TURNS }, (_, i) => ({
+      speaker: 'rep' as const,
+      text: `rep turn ${i}`,
+      at: '2026-01-01T00:00:00.000Z',
+    }));
+    const { client } = fakeSupabase(baseSession({ turns: cappedTurns }));
+    fakeClient = client;
+
+    const res = await POST(request({ text: 'One more thing' }), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json.error).toMatch(/length limit/);
+    expect(customerReplyMock).not.toHaveBeenCalled();
+    expect(buildSessionSystemPromptMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when a concurrent /end claims the session while this turn is in flight, and does not save the turn', async () => {
+    const { client, row, updates } = fakeSupabase(baseSession());
+    fakeClient = client;
+    // The AI reply comes back fine, but by the time we go to save the turn
+    // another request has already ended the session (same shape as a real
+    // race: /end's claim commits while this /turn is awaiting Claude).
+    customerReplyMock.mockImplementation(async () => {
+      row!.status = 'ended';
+      return 'That sounds nice.';
+    });
+
+    const res = await POST(request({ text: 'Hi there' }), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json.error).toBe('This practice call has ended.');
+    expect(updates).toHaveLength(0);
+  });
+
+  it('rejects turn text longer than 4000 characters with 400, before touching Claude', async () => {
+    const res = await POST(request({ text: 'a'.repeat(MAX_TURN_TEXT_LENGTH + 1) }), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json.error).toMatch(/too long/);
+    expect(customerReplyMock).not.toHaveBeenCalled();
   });
 });

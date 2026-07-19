@@ -84,23 +84,58 @@ const SAMPLE_SCORE: CallScoreContent = {
   fix: null,
 };
 
+// A fake `practice_sessions` table: select().eq().maybeSingle() reads the
+// LIVE row (not a frozen snapshot), and
+// update(patch).eq('id',...).eq('status','active').select() is a real
+// compare-and-swap -- it only applies (and returns a row) when the live
+// status still matches the filter, same atomicity as the second-mile send
+// route's claim-before-send. update(patch).eq('id',...) with no status
+// filter (the final `.update({ score })` write once claimed) always
+// applies. Reusing the SAME `client` across two POST calls in one test
+// models a genuine double-/end race: the second call's claim reads
+// whatever the first call already wrote.
 function fakeSupabase(session: PracticeSessionRow | null, sessionError: unknown = null) {
+  const row: PracticeSessionRow | null = session ? { ...session } : null;
   const updates: Record<string, unknown>[] = [];
+
+  function makeUpdateBuilder(patch: Record<string, unknown>) {
+    const filters: Record<string, unknown> = {};
+    function resolve() {
+      if (!row) return Promise.resolve({ data: [], error: null });
+      if ('status' in filters && filters.status !== row.status) {
+        return Promise.resolve({ data: [], error: null });
+      }
+      Object.assign(row, patch);
+      updates.push({ ...patch });
+      return Promise.resolve({ data: [{ id: row.id }], error: null });
+    }
+    const builder = {
+      eq(field: string, value: unknown) {
+        filters[field] = value;
+        return builder;
+      },
+      select() {
+        return resolve();
+      },
+      then(onFulfilled: (v: { data: unknown; error: null }) => unknown, onRejected?: (e: unknown) => unknown) {
+        return resolve().then(onFulfilled, onRejected);
+      },
+    };
+    return builder;
+  }
+
   const from = vi.fn((table: string) => {
     if (table !== 'practice_sessions') throw new Error(`Unexpected table in test: ${table}`);
     return {
       select: () => ({
         eq: () => ({
-          maybeSingle: () => Promise.resolve({ data: session, error: sessionError }),
+          maybeSingle: () => Promise.resolve({ data: row ? { ...row } : null, error: sessionError }),
         }),
       }),
-      update: (row: Record<string, unknown>) => {
-        updates.push(row);
-        return { eq: () => Promise.resolve({ error: null }) };
-      },
+      update: (patch: Record<string, unknown>) => makeUpdateBuilder(patch),
     };
   });
-  return { client: { from } as unknown as SupabaseClient, updates };
+  return { client: { from } as unknown as SupabaseClient, updates, getRow: () => row };
 }
 
 describe('POST /api/practice/[id]/end', () => {
@@ -144,9 +179,12 @@ describe('POST /api/practice/[id]/end', () => {
         utterancesAvailable: false,
       }),
     );
-    expect(updates).toHaveLength(1);
+    // Two writes now: the claim (status/ended_at) and the score write --
+    // the claim never re-sends status/ended_at a second time.
+    expect(updates).toHaveLength(2);
     expect(updates[0].status).toBe('ended');
-    expect(updates[0].score).toEqual(SAMPLE_SCORE);
+    expect(updates[0].score).toBeUndefined();
+    expect(updates[1].score).toEqual(SAMPLE_SCORE);
   });
 
   it('never writes to call_scores or any other table', async () => {
@@ -184,7 +222,7 @@ describe('POST /api/practice/[id]/end', () => {
     expect(json.saved).toBe(true);
     expect(json.scored).toBe(false);
     expect(updates[0].status).toBe('ended');
-    expect(updates[0].score).toBeNull();
+    expect(updates[1].score).toBeNull();
   });
 
   it('is idempotent: calling end again on an already-ended session returns the stored score without re-scoring', async () => {
@@ -197,5 +235,24 @@ describe('POST /api/practice/[id]/end', () => {
     expect(json.alreadyEnded).toBe(true);
     expect(json.score).toEqual(SAMPLE_SCORE);
     expect(scoreCallMock).not.toHaveBeenCalled();
+  });
+
+  it('CAS: a second /end racing against the first loses the claim, never scores twice, and returns the winner\'s stored score', async () => {
+    const { client } = fakeSupabase(baseSession());
+    fakeClient = client;
+
+    const first = await POST(new Request('http://localhost/api/practice/sess-1/end', { method: 'POST' }), params());
+    const firstJson = await first.json();
+    expect(firstJson.scored).toBe(true);
+    expect(firstJson.score).toEqual(SAMPLE_SCORE);
+
+    // Same session, same underlying row -- the "second click" arriving
+    // after the first request already claimed and scored it.
+    const second = await POST(new Request('http://localhost/api/practice/sess-1/end', { method: 'POST' }), params());
+    const secondJson = await second.json();
+
+    expect(secondJson.alreadyEnded).toBe(true);
+    expect(secondJson.score).toEqual(SAMPLE_SCORE);
+    expect(scoreCallMock).toHaveBeenCalledTimes(1);
   });
 });

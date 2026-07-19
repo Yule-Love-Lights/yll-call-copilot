@@ -17,6 +17,7 @@ import { getActiveRubric } from '@/lib/scoring/rubric';
 import { getOfferElements } from '@/lib/scoring/batch';
 import { scoreCall } from '@/lib/scoring/score';
 import type { PracticeSessionRow } from '@/lib/practice/types';
+import type { CallScoreContent } from '@/lib/scoring/types';
 
 function isOwnSession(repEmail: string | null, session: PracticeSessionRow): boolean {
   return !!repEmail && !!session.rep_email && repEmail.toLowerCase() === session.rep_email.toLowerCase();
@@ -60,18 +61,45 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ configured: true, saved: false, error: 'Practice session not found.' }, { status: 404 });
   }
 
-  if (session.status === 'ended') {
-    return NextResponse.json({ configured: true, saved: true, alreadyEnded: true, scored: session.score !== null, score: session.score });
+  // CLAIM-BEFORE-SCORE compare-and-swap: the status flip from 'active' to
+  // 'ended' only APPLIES when the row is still 'active' at write time (a
+  // real UPDATE...WHERE, same atomicity as the second-mile send route's
+  // claim). Two /end calls racing (double click, retry) can both pass the
+  // ownership check above, but only one gets a non-empty `claimedRows` back
+  // -- that request is the sole owner of this session for the rest of the
+  // handler and the only one that may ever call scoreCall. The loser never
+  // scores; it just reads back whatever the winner stored.
+  const { data: claimedRows, error: claimError } = await supabase
+    .from('practice_sessions')
+    .update({ status: 'ended', ended_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('status', 'active')
+    .select();
+  if (claimError) {
+    console.error('Claim practice session for end failed:', claimError);
+    return NextResponse.json({ configured: true, saved: false, error: 'Could not end this practice session.' }, { status: 500 });
+  }
+
+  if (!claimedRows || claimedRows.length === 0) {
+    // Already ended (a prior /end call, whether that was moments ago or is
+    // this same race) -- fetch the stored score and hand it back. Never a
+    // second scoreCall for the same session.
+    const { data: currentData, error: currentError } = await supabase
+      .from('practice_sessions')
+      .select('score')
+      .eq('id', id)
+      .maybeSingle();
+    if (currentError) {
+      console.error('Load already-ended practice session failed:', currentError);
+      return NextResponse.json({ configured: true, saved: false, error: 'Could not load the practice result.' }, { status: 500 });
+    }
+    const score = (currentData as { score: CallScoreContent | null } | null)?.score ?? null;
+    return NextResponse.json({ configured: true, saved: true, alreadyEnded: true, scored: score !== null, score });
   }
 
   const transcript = flattenPracticeTranscript(session.turns);
 
   if (!isClaudeConfigured()) {
-    const { error: endError } = await supabase
-      .from('practice_sessions')
-      .update({ status: 'ended', ended_at: new Date().toISOString() })
-      .eq('id', id);
-    if (endError) console.error('Mark practice session ended failed:', endError);
     return NextResponse.json({
       configured: true,
       saved: true,
@@ -108,7 +136,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   const { error: updateError } = await supabase
     .from('practice_sessions')
-    .update({ status: 'ended', ended_at: new Date().toISOString(), score: scoreContent })
+    .update({ score: scoreContent })
     .eq('id', id);
   if (updateError) {
     console.error('Save practice score failed:', updateError);

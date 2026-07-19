@@ -19,6 +19,16 @@ function isOwnSession(repEmail: string | null, session: PracticeSessionRow): boo
   return !!repEmail && !!session.rep_email && repEmail.toLowerCase() === session.rep_email.toLowerCase();
 }
 
+// Caps the metered Claude cost of a single practice call. Without this, a
+// rep (or a stuck client auto-retrying) could keep the call open
+// indefinitely, racking up one customerReply call per turn forever.
+export const MAX_REP_TURNS = 30;
+
+// A generous cap on one turn's typed/transcribed text -- long enough for a
+// few sentences, short enough to keep a single turn from ballooning the
+// Claude prompt (and the eventual scored transcript) with a wall of text.
+export const MAX_TURN_TEXT_LENGTH = 4000;
+
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ configured: false, saved: false, reason: 'Supabase not configured.' });
@@ -29,6 +39,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const text = typeof (body as Record<string, unknown> | null)?.text === 'string' ? ((body as Record<string, unknown>).text as string).trim() : '';
   if (!text) {
     return NextResponse.json({ configured: true, saved: false, error: 'text is required.' }, { status: 400 });
+  }
+  if (text.length > MAX_TURN_TEXT_LENGTH) {
+    return NextResponse.json({ configured: true, saved: false, error: 'That turn is too long. Keep it to a couple of sentences.' }, { status: 400 });
   }
 
   const supabase = getSupabaseServerClient()!;
@@ -61,6 +74,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ configured: true, saved: false, error: 'This practice call already ended.' }, { status: 409 });
   }
 
+  const repTurnCount = session.turns.filter(turn => turn.speaker === 'rep').length;
+  if (repTurnCount >= MAX_REP_TURNS) {
+    return NextResponse.json(
+      { configured: true, saved: false, error: 'This practice call reached its length limit. End it and get your score.' },
+      { status: 409 },
+    );
+  }
+
   if (!isClaudeConfigured()) {
     return NextResponse.json({ configured: true, saved: false, reason: 'Claude not configured. Set ANTHROPIC_API_KEY in .env.local.' });
   }
@@ -85,10 +106,27 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const customerTurn: PracticeTurn = { speaker: 'customer', text: reply, at: new Date().toISOString() };
   const turns = [...turnsWithRep, customerTurn];
 
-  const { error: updateError } = await supabase.from('practice_sessions').update({ turns }).eq('id', id);
+  // Status-guarded write: only applies while the session is still 'active',
+  // so a /turn that was in flight when /end claimed the session can never
+  // resurrect a turn onto an already-ended, already-scored call. This closes
+  // the turn-vs-end race. The remaining same-rep turn-vs-turn race (two
+  // rapid submits both reading the same `session.turns` and each appending
+  // their own tail, one clobbering the other's turn) is left as is -- the
+  // client already disables the input while a turn is pending, and adding
+  // array-level optimistic locking here would be over-engineering for a
+  // single-user practice session.
+  const { data: updatedRows, error: updateError } = await supabase
+    .from('practice_sessions')
+    .update({ turns })
+    .eq('id', id)
+    .eq('status', 'active')
+    .select();
   if (updateError) {
     console.error('Save practice turn failed:', updateError);
     return NextResponse.json({ configured: true, saved: false, error: 'Could not save the turn.' }, { status: 500 });
+  }
+  if (!updatedRows || updatedRows.length === 0) {
+    return NextResponse.json({ configured: true, saved: false, error: 'This practice call has ended.' }, { status: 409 });
   }
 
   return NextResponse.json({ configured: true, saved: true, reply });
