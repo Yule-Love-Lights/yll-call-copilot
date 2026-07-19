@@ -40,6 +40,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'My cards', href: '/coach', isActive: p => p === '/coach', badge: 'feedback' },
       { label: 'Call review', href: '/coach/calls', isActive: p => p.startsWith('/coach/calls') },
+      { label: 'Practice', href: '/practice', isActive: p => p.startsWith('/practice') },
       { label: 'Digest', href: '/digest', isActive: p => p.startsWith('/digest') },
       { label: 'Board', href: '/scoreboard', isActive: p => p.startsWith('/scoreboard') },
       { label: 'Brain', href: '/brain', isActive: p => p.startsWith('/brain') },
