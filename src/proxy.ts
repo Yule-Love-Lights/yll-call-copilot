@@ -2,13 +2,13 @@
 // convention to proxy (and with the src/ layout it lives here, next to app/).
 // Flow: refresh the Supabase session from cookies, require a signed-in user,
 // then require that user's email to be in app_users (the staff allowlist).
-// Pages redirect to /login; API routes get JSON errors. Missing Supabase env
-// lets everything through — dev degradation, same philosophy as the rest of
-// the app.
+// Pages redirect to /login; API routes get JSON errors. Missing or invalid
+// Supabase configuration fails closed for every protected or machine request.
 
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { checkAllowlist, shouldDenyAccess } from '@/lib/auth/allowlist';
+import { resolveServerAuthConfiguration } from '@/lib/auth/config';
 
 // /api/webhooks/ghl has no user session (GoHighLevel calls it directly) —
 // it authenticates itself with a shared-secret query param instead (see
@@ -48,11 +48,14 @@ import { checkAllowlist, shouldDenyAccess } from '@/lib/auth/allowlist';
 // signed-out visitor must be able to reach them to recover their account,
 // so they're exempted here the same way rather than redirected to /login
 // in a loop.
-const PUBLIC_PATHS = [
+const PUBLIC_AUTH_PATHS = [
   '/login',
   '/forgot-password',
   '/reset-password',
   '/api/health',
+];
+
+const MACHINE_PATHS = [
   '/api/webhooks/ghl',
   '/api/twilio/voice',
   '/api/twilio/whisper',
@@ -64,75 +67,150 @@ const PUBLIC_PATHS = [
   '/api/cron/sync-recordings',
 ];
 
+function matchesPath(pathname: string, paths: readonly string[]): boolean {
+  const normalizedPath = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
+  return paths.includes(normalizedPath);
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(`${p}/`))) {
+  if (matchesPath(pathname, PUBLIC_AUTH_PATHS)) {
     return NextResponse.next();
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) return NextResponse.next();
+  const isApi = pathname.startsWith('/api/');
+  const authConfiguration = resolveServerAuthConfiguration();
+  if (!authConfiguration.ok) return authenticationUnavailable(isApi);
+
+  // Machine callers do not have staff cookies, but configuration must be
+  // valid before their route-specific authentication and persistence runs.
+  if (matchesPath(pathname, MACHINE_PATHS)) return NextResponse.next();
 
   // Standard @supabase/ssr pattern: mirror refreshed auth cookies onto both
   // the forwarded request and the response.
   let response = NextResponse.next({ request });
-  const supabase = createServerClient(url, anonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
+  let userEmail: string | null | undefined;
+  let hasUser = false;
+  try {
+    const supabase = createServerClient(authConfiguration.url, authConfiguration.anonKey, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          response = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options),
+          );
+        },
       },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options),
-        );
-      },
-    },
-  });
+    });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const isApi = pathname.startsWith('/api/');
-
-  if (!user) {
-    if (isApi) {
-      return NextResponse.json({ error: 'Not signed in' }, { status: 401 });
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+    if (error && !isSignedOutAuthError(error)) {
+      return authenticationUnavailable(isApi, response);
     }
-    return NextResponse.redirect(new URL('/login', request.url));
+    hasUser = !!user;
+    userEmail = user?.email;
+  } catch (error) {
+    if (isSignedOutAuthError(error)) {
+      hasUser = false;
+    } else {
+      return authenticationUnavailable(isApi, response);
+    }
   }
 
-  const decision = await checkAllowlist(user.email);
-  // Both an explicit denial AND an unusable allowlist check (service-role
-  // key missing/wrong, or the query itself errored) must deny — see
-  // shouldDenyAccess's own comment for why 'unconfigured' can't mean "let
-  // them through" at this point in the flow.
-  if (shouldDenyAccess(decision)) {
+  if (!hasUser) {
     if (isApi) {
-      return NextResponse.json(
-        { error: decision === 'unconfigured' ? 'Staff allowlist is not configured.' : 'Not on the staff list' },
-        { status: 403 },
+      return privateResponse(
+        NextResponse.json({ error: 'Not signed in' }, { status: 401 }),
+        response,
+      );
+    }
+    return privateResponse(
+      NextResponse.redirect(new URL('/login', request.url)),
+      response,
+    );
+  }
+
+  let decision: Awaited<ReturnType<typeof checkAllowlist>>;
+  try {
+    decision = await checkAllowlist(userEmail);
+  } catch {
+    return authenticationUnavailable(isApi, response);
+  }
+  // Both an explicit denial and an unavailable allowlist dependency must
+  // deny; the latter receives a generic service-unavailable response.
+  if (shouldDenyAccess(decision)) {
+    if (decision === 'unconfigured') return authenticationUnavailable(isApi, response);
+    if (isApi) {
+      return privateResponse(
+        NextResponse.json({ error: 'Not on the staff list' }, { status: 403 }),
+        response,
       );
     }
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('denied', '1');
-    return NextResponse.redirect(loginUrl);
+    return privateResponse(NextResponse.redirect(loginUrl), response);
   }
 
   return response;
 }
 
+function privateResponse(target: NextResponse, cookieSource?: NextResponse): NextResponse {
+  cookieSource?.cookies.getAll().forEach(cookie => target.cookies.set(cookie));
+  target.headers.set('Cache-Control', 'no-store');
+  target.headers.set('Vary', 'Cookie');
+  return target;
+}
+
+const SIGNED_OUT_AUTH_ERROR_CODES = new Set([
+  'bad_jwt',
+  'refresh_token_already_used',
+  'refresh_token_not_found',
+  'session_expired',
+  'session_not_found',
+]);
+
+function isSignedOutAuthError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const authError = error as { name?: unknown; code?: unknown };
+  return (
+    authError.name === 'AuthSessionMissingError' ||
+    (typeof authError.code === 'string' && SIGNED_OUT_AUTH_ERROR_CODES.has(authError.code))
+  );
+}
+
+function authenticationUnavailable(
+  isApi: boolean,
+  cookieSource?: NextResponse,
+): NextResponse {
+  const response = isApi
+    ? NextResponse.json(
+        {
+          error: {
+            code: 'AUTH_SERVICE_UNAVAILABLE',
+            message: 'Authentication is temporarily unavailable.',
+          },
+        },
+        { status: 503 },
+      )
+    : new NextResponse('Authentication is temporarily unavailable.', {
+        status: 503,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      });
+  response.headers.set('Retry-After', '60');
+  return privateResponse(response, cookieSource);
+}
+
 export const config = {
-  // Everything except Next internals and known static assets: favicon.ico
-  // and a conservative image/font extension allowlist anchored to the END
-  // of the path. NOT "any path containing a dot anywhere" — that excluded
-  // every dynamic-id route (/call/[leadId], /api/leads/[id], etc.) from auth
-  // entirely whenever the id itself happened to contain a dot, since a dot
-  // can appear inside a route param, not just a file extension. /login and
-  // /api/health are exempted in code above so this stays one simple pattern,
-  // the same shape as the official @supabase/ssr Next.js middleware example.
-  matcher: ['/((?!_next/|favicon\\.ico$|.*\\.(?:ico|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|eot)$).*)'],
+  // Exclude only Next internals and the one known public asset. A dynamic API
+  // or page identifier ending in an image/font extension must still cross the
+  // authorization boundary.
+  matcher: ['/((?!_next/|favicon\\.ico$).*)'],
 };

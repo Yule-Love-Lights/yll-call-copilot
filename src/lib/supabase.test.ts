@@ -5,8 +5,25 @@
 // with code PGRST205, not Postgres's own 42P01, so the original
 // 42P01-only check never matched a real missing-table response.
 
-import { describe, it, expect } from 'vitest';
-import { isMissingTableError } from './supabase';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { isMissingTableError, isSupabaseConfigured } from './supabase';
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+describe('isSupabaseConfigured', () => {
+  it('uses the strict server auth configuration resolver', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'service-role-key');
+    expect(isSupabaseConfigured()).toBe(true);
+
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', '   ');
+    expect(isSupabaseConfigured()).toBe(false);
+  });
+});
 
 describe('isMissingTableError', () => {
   it('matches PostgREST\'s "not in the schema cache" error (PGRST205)', () => {

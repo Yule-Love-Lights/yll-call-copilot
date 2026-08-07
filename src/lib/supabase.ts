@@ -1,11 +1,10 @@
-// Server-side Supabase client factories. isSupabaseConfigured() lets the rest
-// of the app degrade gracefully (health panel goes red, features no-op)
-// instead of crashing when env vars are missing — same convention as the
-// GHL client's isHighLevelConfigured().
+// Server-side Supabase client factories. Configuration is validated by the
+// same strict request-time resolver used by the root proxy.
 
 import { createServerClient } from '@supabase/ssr';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { resolveServerAuthConfiguration } from './auth/config';
 
 // True when a Postgres/PostgREST error means "this table doesn't exist yet"
 // — a migration may not be applied in every environment while its phase's
@@ -28,21 +27,16 @@ export function isMissingTableError(error: unknown): boolean {
 }
 
 export function isSupabaseConfigured(): boolean {
-  return !!(
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
+  return resolveServerAuthConfiguration().ok;
 }
 
 // Server-only client using the service role key — full access, never expose
 // to the browser. Returns null when not configured so callers can no-op
 // instead of throwing.
 export function getSupabaseServerClient(): SupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceRoleKey) return null;
-  return createClient(url, serviceRoleKey, {
+  const configuration = resolveServerAuthConfiguration();
+  if (!configuration.ok) return null;
+  return createClient(configuration.url, configuration.serviceRoleKey, {
     auth: { persistSession: false },
   });
 }
@@ -52,11 +46,10 @@ export function getSupabaseServerClient(): SupabaseClient | null {
 // Data access keeps going through getSupabaseServerClient(); this one is for
 // auth. cookies() is async in Next 16, hence the await.
 export async function getSupabaseAuthServerClient(): Promise<SupabaseClient | null> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) return null;
+  const configuration = resolveServerAuthConfiguration();
+  if (!configuration.ok) return null;
   const cookieStore = await cookies();
-  return createServerClient(url, anonKey, {
+  return createServerClient(configuration.url, configuration.anonKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
