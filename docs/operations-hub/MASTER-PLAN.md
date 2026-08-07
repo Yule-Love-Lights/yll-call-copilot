@@ -378,8 +378,10 @@ clean weeks.
       `2fc10d33bf592b79d38741e8f40bdc1abcf52c2233d3be89521807211bbafa4a`)
       and `OPERATIONS-HUB-SPEC.md` requires the Hub to consume canonical Quote
       Tool time/pay facts rather than calculate them.
-- [ ] Quote Tool owner/Claude reviews the self-contained v1.3 clarification;
-      both paired PRs are human-merged before implementation consumes it.
+- [x] Naldo approved and human-merged the self-contained v1.3 clarification in
+      Quote Tool PR #716 (`5d56ebb62e23b2fe592cdc1912359b1ddf137270`);
+      Hub PR #37 is byte-verified against that merged canonical source before
+      implementation consumes it.
 - [x] Naldo: `I approve MASTER-PLAN 1.3-review-1 as the implementation plan.`
       Signed 2026-08-07.
 - [x] Naldo authorizes Phase 0 to start. Each implementation PR still requires

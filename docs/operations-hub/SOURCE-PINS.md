@@ -6,7 +6,8 @@ Prepared: 2026-08-07
 |---|---|---|---|
 | Codex Hub plan | `agent/operations-hub-plan`, PR #35 | `aaadea863f48cc7b7545ab0dc8d8cb872697c95f` | Hub behavior, SimpleCrew replacement, field workflows |
 | Claude combined plan | `claude/operations-hub-plan`, PR #36 | `cdc1cb2fbe7356bab503f3af4a3f4d2682033882` | Decisions, shared master plan, backlog, contract mirror |
-| Quote Tool canonical contract | `claude/copilot-labor-tracking-a14bf3`, PR #701 | head `ada0d732c354dc9b869cf77efc8af4161d14f649`; merge `72c2eb89b0533221e0966cbc9df25f39f5f8e7e9` | Accepted canonical time/pay/integration contract v1.3.0-draft |
+| Quote Tool canonical contract baseline | `claude/copilot-labor-tracking-a14bf3`, PR #701 | head `ada0d732c354dc9b869cf77efc8af4161d14f649`; merge `72c2eb89b0533221e0966cbc9df25f39f5f8e7e9` | Accepted canonical time/pay/integration contract v1.3.0-draft baseline |
+| Quote Tool self-contained canonical contract | `naldo/ops-contract-v130-clarifications`, PR #716 | head `d2cf098658a595da1bd7b5b35ae553605fcbd1a0`; merge `5d56ebb62e23b2fe592cdc1912359b1ddf137270` | Canonical v1.3.0-draft consumed by the Operations Hub |
 
 ## Known source condition
 
@@ -23,9 +24,9 @@ Prepared: 2026-08-07
 
 - Quote Tool PR #701 baseline merge commit:
   `72c2eb89b0533221e0966cbc9df25f39f5f8e7e9`
-- Paired self-contained clarification source branch/commit:
-  `naldo/ops-contract-v130-clarifications` at
-  `d2cf098658a595da1bd7b5b35ae553605fcbd1a0`
+- Self-contained canonical merge on Quote Tool `master`: PR #716, merge commit
+  `5d56ebb62e23b2fe592cdc1912359b1ddf137270` (source head
+  `d2cf098658a595da1bd7b5b35ae553605fcbd1a0`).
 - Canonical and Hub mirror SHA-256:
   `2fc10d33bf592b79d38741e8f40bdc1abcf52c2233d3be89521807211bbafa4a`
 - Canonical and Hub mirror byte length: `41336`
