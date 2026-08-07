@@ -2,19 +2,26 @@
 
 This directory is the shared, version-controlled planning location for the Yule Love Lights Operations Hub.
 
-## Current documents
+## Authoritative documents
 
-- [`CODEX-PLAN.md`](./CODEX-PLAN.md) — Codex product and technical plan. This is the active Codex-side source document.
-- [`CODEX-REVIEW-FINDINGS.md`](./CODEX-REVIEW-FINDINGS.md) — independent admin, field-user, and architecture review findings plus remaining decisions.
+- [`OPERATIONS-HUB-SPEC.md`](./OPERATIONS-HUB-SPEC.md) — canonical Hub-side behavior specification. If an older Hub document conflicts, this file wins.
+- [`MASTER-PLAN.md`](./MASTER-PLAN.md) — reconciled Codex + Claude architecture, workflows, delivery tracks, controls, and launch gates.
+- [`PLAN-COMPARISON.md`](./PLAN-COMPARISON.md) — explicit comparison and conflict resolutions between the two source plans.
+- [`MASTER-PLAN-REVIEW.md`](./MASTER-PLAN-REVIEW.md) — admin, field, architecture/pay-contract, and self-review record.
 
-## Planned collaboration files
+## Historical source documents
 
-- `CLAUDE-PLAN.md` — add or link Claude's plan here when the owner provides it. Do not overwrite the Codex plan.
-- `PLAN-COMPARISON.md` — section-by-section conflicts, gaps, and recommended decisions.
-- `MASTER-PLAN.md` — create only after the owner resolves material conflicts. This will become the implementation authority.
-- `INTEGRATION-CONTRACT.md` — jointly owned field-by-field contract for Operations Hub, Quote Tool, and Telegram events/commands.
-- `DECISIONS.md` — approval log for master-plan decisions.
+- [`CODEX-PLAN.md`](./CODEX-PLAN.md) — original full Codex product/technical plan; preserved for traceability.
+- [`CODEX-REVIEW-FINDINGS.md`](./CODEX-REVIEW-FINDINGS.md) — reviews of the original Codex plan.
+- Claude's Hub/P4P mirror: [`docs/P4P-OPERATIONS-HUB-PLAN.md`](../../tree/naldo/p4p-plan-pointer/docs/P4P-OPERATIONS-HUB-PLAN.md) on branch `naldo/p4p-plan-pointer`.
+- Claude's mirror declares `yll-quote-tool/docs/context/project_p4p_labor.md` as its canonical source.
 
-## Merge rule
+## Cross-repository authority
 
-Keep both source plans intact during the first comparison. The future master plan should cite which plan supplied each decision and clearly record any owner-approved resolution.
+The Operations Hub specification is authoritative for Hub authentication/UI/advertising/route-evidence behavior. The Quote Tool remains authoritative for customers, jobs, schedule, canonical labor time, Budgeted Hours, completion, P4P, and payroll.
+
+The final shared API/schema contract should live in `yll-quote-tool/docs/context/OPERATIONS_HUB_CONTRACT.md`, with a versioned pointer or mirror here. Quote Tool labor/schema work and Hub consumer implementation must not begin against different contract versions.
+
+## Review rule
+
+Keep both historical source plans intact. Future changes go through the master/spec and record the reason, owner decision, contract version, and affected repository. Do not claim joint approval until the Quote Tool assistant has reviewed the published files and the remaining contract differences are resolved.
