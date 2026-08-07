@@ -108,8 +108,9 @@ new-hire onboarding checklist, off-season behavior.
 
 | Decision | Options | Status |
 |---|---|---|
-| How the advertising crew is PAID in v1 (they currently have NO time record anywhere: Placement Runs are not payroll and advertising is excluded from attendance) | hourly day clock / per-sign piece rate (NY piece-rate rules apply) / off-system season 1 | PENDING Naldo |
-| Payroll vendor, so the weekly export lands somewhere (Copilot exported to QuickBooks/Gusto; current plan ends at a raw CSV, a regression) | QuickBooks / Gusto / accountant's pick | PENDING Naldo |
-| THE owner digest (two exist: hub's coaching digest, QT's morning ops digest) | recommend: QT morning digest becomes the unified owner digest | PENDING Naldo |
-| Sign inventory scope season 1 | worker-side stock counter only (backlog #1) vs fold into #82 epic | PENDING Naldo |
+| Advertising crew pay | piece rate / hourly / off-system | RULED 2026-08-06: PER-SIGN PIECE RATE, $0.25 per accepted placement, rate changeable as things go. Design consequence (NY law, min wage applies to piece-rate hourly averages): the ad crew joins the same day clock, and the QT pay engine computes signs x rate with a $17/hr floor true-up against hours, same machine as the installers. Accountant blesses the piece-rate wording with the comp plan. |
+| Payroll vendor | QuickBooks / Gusto / CSV | RULED 2026-08-06: RAW CSV now, QuickBooks as a later-down-the-line plan. Payroll-day wizard (backlog #20) deferred until then; the CSV must still satisfy NY pay-stub content rules. |
+| Digest model | one unified / per-department | RULED 2026-08-06: FOUR DIGESTS, one per department (office, advertising, install, management), each combining that department's ops AND attendance. Admins (Naldo, Jason) receive all four. The QT morning ops digest and the hub coaching digest fold into this model. |
+| Sign inventory | counter only / full ledger | RULED 2026-08-06: IN SCOPE with the weekly-allocation model: stock on hand, weekly issuance of X signs per person (decrements stock), placements decrement the issued count, week-end reconciliation shows expected-back vs placed and feeds the piece-rate pay count. Hub owns the ledger (advertising domain); the QT pay engine consumes the weekly accepted-placement count per person. |
 | Contract v1.1.0 amendments (design/load-list endpoint, takedown badge, sold_by + rep notification, missed-tap nudge, material fields pinned, deactivation final-pay, vocabulary/enums, DLQ alert, deploy smoke, shared schema, relay SLA, Flow F reserved) | applied to canonical + mirror | DONE, needs Codex ack |
+| Contract v1.2.0 amendments (Flow G advertising pay inputs, ad-crew day clock, piece-rate fields) | applied to canonical + mirror | DONE, needs Codex ack |
