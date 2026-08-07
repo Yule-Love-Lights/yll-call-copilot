@@ -15,9 +15,9 @@
 | R3 | Authoritative mechanism for pay-feeding job hours | explicit clock primary / GPS visits primary | explicit clock | RULED: GPS visits primary (against recommendation, owner's call). Clock punches become the backup/correction path. Consequences recorded below. | 2026-08-06 |
 | R4 | One Telegram bot, webhook stays quote tool, hub actions relayed | confirm / second bot / bot cutover | confirm | RULED: confirmed, relay pattern | 2026-08-06 |
 | R5 | Clock gate applies in hub UI as well as bot | yes / bot only / off | yes | RULED earlier: Naldo locked the gate ON for all crew surfaces in the Claude-side Q&A ("keep the gate", 2026-08-06) | 2026-08-06 |
-| R6 | v1 roles: owner/admin, office, installer, advertising; Manager tier designed but not provisioned | confirm / provision Manager now | confirm | PENDING | |
-| R7 | One department per employee in v1, changeable with history | confirm / multi-department now | confirm | PENDING | |
-| R8 | Pay math lives only in the quote tool; hub never duplicates payroll logic | confirm | confirm | PENDING (implied by R2, awaiting explicit yes) | |
+| R6 | v1 roles: owner/admin, office, installer, advertising; Manager tier designed but not provisioned | confirm / provision Manager now | confirm | RULED: confirmed | 2026-08-06 |
+| R7 | Department membership model | single per employee v1 / multi-department now | single v1 | RULED: MULTI-DEPARTMENT NOW. An employee can belong to more than one department from day one. Supersedes CODEX-PLAN section 6's one-department assumption; the master plan defines home-screen and permission-union behavior. | 2026-08-06 |
+| R8 | Pay math lives only in the quote tool; hub never duplicates payroll logic | confirm | confirm | RULED: confirmed | 2026-08-06 |
 
 ### Recorded consequences of R1 and R3 (so nobody rediscovers them mid-season)
 
