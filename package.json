@@ -2,12 +2,17 @@
   "name": "yll-call-copilot",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "verify:ops-contract": "node scripts/verify-operations-contract.mjs",
+    "verify:ops-contract:cross-repo": "node scripts/verify-operations-contract.mjs --require-canonical"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",

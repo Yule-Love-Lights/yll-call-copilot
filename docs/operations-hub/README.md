@@ -1,12 +1,14 @@
 # Operations Hub final-review pack
 
-Status: **owner-approved for Phase 0 branch work; PR #37 not yet human-merged**
+Status: **owner-approved; PR #37 human-merged; Phase 0 foundation in progress**
 Prepared: 2026-08-07
-Hub branch: `codex/operations-hub-final-review`
+Merged Hub source: PR #37 at
+`master@f6cc06bcc9009a8d4357b0adcb31e16ae150d8cc`
 
-This branch is the reconciled and approved source for the Operations Hub.
-Quote Tool PR #701 merged the canonical `v1.3.0-draft` contract, Naldo signed
-the master plan, and the byte-identical Hub mirror is now present.
+This pack is the reconciled and approved source for the Operations Hub.
+Quote Tool PR #701 established the canonical `v1.3.0-draft` baseline, PR #716
+merged its self-contained form, Naldo signed the master plan, Hub PR #37 was
+human-merged, and the byte-identical Hub mirror is now present.
 
 ## Read in this order
 
@@ -22,6 +24,7 @@ the master plan, and the byte-identical Hub mirror is now present.
 7. `FEATURE-BACKLOG.md` — committed scope, launch blockers, and later ideas.
 8. `SOURCE-PINS.md` — the exact source revisions reconciled here.
 9. `CLAUDE-FINAL-REVIEW-HANDOFF.md` — historical final-review prompt.
+10. `PHASE-0-CHECKLIST.md` — live safety gates and the field-provisioning stop.
 
 ## Scoped authority
 
@@ -40,7 +43,8 @@ source-of-truth ownership.
 
 Completed:
 
-- Quote Tool PR #701 merged the canonical `v1.3.0-draft` contract.
+- Quote Tool PR #701 established the canonical `v1.3.0-draft` baseline and
+  PR #716 merged the self-contained canonical contract.
 - Naldo's four P16 rulings are recorded in `DECISIONS.md`.
 - Naldo signed the master-plan approval and authorized Phase 0.
 - The Hub contract mirror is byte-identical to the canonical file.
@@ -55,5 +59,6 @@ Phase 0 must now deliver:
 - Identity-link, auth, audit, idempotency, DLQ, kill-switch, and fail-closed
   scaffolding.
 
-PRs #35 and #36 are closed as superseded. PR #37 is the only Hub planning
-source. Every implementation PR still requires current gates and a human merge.
+PRs #35 and #36 are closed as superseded. Merged PR #37 is the only Hub
+planning source. Every implementation PR still requires current gates and a
+human merge.
