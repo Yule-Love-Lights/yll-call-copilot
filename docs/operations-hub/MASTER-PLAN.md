@@ -351,10 +351,17 @@ clean weeks.
 
 ## 16. Approval
 
-- [ ] Claude confirms Quote Tool ownership, contract feasibility, and lists any
+- [x] Claude confirms Quote Tool ownership, contract feasibility, and lists any
       v1.3 proposal changes by section and replacement language.
+      *(2026-08-07: `Claude approves MASTER-PLAN 1.3-review-1 subject only to the
+      recorded open decisions.` P1-P15 accepted, P6 accepted with the
+      travel-stays-paid clarification, P16 recorded as the open-decision
+      register. Canonical contract advanced to v1.3.0-draft on Quote Tool
+      PR #701, commit `7e01da98`.)*
 - [ ] Codex confirms the merged canonical file and Hub mirror are byte-identical
       and the Hub SPEC implements no private pay/time logic.
-- [ ] Naldo: `I approve MASTER-PLAN 1.3-review-1 as the implementation plan.`
+- [x] Naldo: `I approve MASTER-PLAN 1.3-review-1 as the implementation plan.`
+      *(2026-08-07, given after his four rulings on P16.5, P16.6, P16.8, and
+      P16.10 were recorded in `DECISIONS.md`.)*
 - [ ] Required CI/security/contract gates are green and a human authorizes the
       implementation tracks.

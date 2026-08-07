@@ -114,3 +114,36 @@ new-hire onboarding checklist, off-season behavior.
 | Sign inventory | counter only / full ledger | RULED 2026-08-06: IN SCOPE with the weekly-allocation model: stock on hand, weekly issuance of X signs per person (decrements stock), placements decrement the issued count, week-end reconciliation shows expected-back vs placed and feeds the piece-rate pay count. Hub owns the ledger (advertising domain); the QT pay engine consumes the weekly accepted-placement count per person. |
 | Contract v1.1.0 amendments (design/load-list endpoint, takedown badge, sold_by + rep notification, missed-tap nudge, material fields pinned, deactivation final-pay, vocabulary/enums, DLQ alert, deploy smoke, shared schema, relay SLA, Flow F reserved) | applied to canonical + mirror | DONE, needs Codex ack |
 | Contract v1.2.0 amendments (Flow G advertising pay inputs, ad-crew day clock, piece-rate fields) | applied to canonical + mirror | DONE, needs Codex ack |
+
+## Naldo's rulings on the v1.3 open decisions (2026-08-07)
+
+| # | Open item (CONTRACT-V1.3-PROPOSAL P16) | Ruling |
+|---|---|---|
+| P16.5 | Door-hanger unit/pay/privacy | RULED: door-hanger PRICING STAYS OFF. Not figured out yet. Door-hanger campaigns may still be captured under the protective privacy default (exact residential data owner-only); no pay unit is configured and no door-hanger placement enters any pay count until a later ruling. |
+| P16.6 | Completion photo requirement and nudges | RULED (provisional, "not sure yet, we can figure this out"): completion photos are NOT REQUIRED. The app prompts up to THREE times, then stops and lets the installer complete without photos. The same three-attempt cadence is the default for missed-tap nudges unless changed. Nothing blocks completion on media. |
+| P16.8 | Digest schedule and recipients | RULED: all four department digests send at 08:00 America/New_York, EVERY DAY. Recipients unchanged: each department gets its own; Naldo and Jason receive all four. Escalation policy not yet set; a failed send retries per the delivery policy and surfaces in the admin queue. |
+| P16.10 | Payroll CSV mapping/order | RULED: not figured out yet, use the recommended generic format for now (see the canonical contract's payroll section). Vendor-specific mapping and OT/blended-rate treatment stay open for the payroll professional. |
+
+### Recommended CSV format adopted by that ruling
+
+One row per pay line, stable ids, no provisional values, header row, UTF-8:
+
+`employee_id, employee_name, period_start, period_end, line_type, description,
+job_or_campaign_ref, quantity, unit, rate_cents, amount_cents, state, notes`
+
+`line_type` values: `hourly_base`, `installer_performance_earned`,
+`advertising_piece_rate`, `floor_true_up`, `training_bonus`, `referral_bonus`,
+`manual_adjustment`. A per-employee subtotal row closes each employee block.
+This is deliberately vendor-neutral: it reads cleanly by hand, imports into a
+spreadsheet, and can be remapped to QuickBooks or any processor later without
+changing what the engine computes.
+
+## Approval
+
+- 2026-08-07, Claude/Quote Tool side: `Claude approves MASTER-PLAN 1.3-review-1
+  subject only to the recorded open decisions.` Canonical contract advanced to
+  v1.3.0-draft on Quote Tool PR #701 (commit 7e01da98), accepting Codex's
+  P1-P15 with one clarification on P6 (travel stays paid day time;
+  `unclassified_seconds` surfaces missed taps and never unpays).
+- 2026-08-07, Naldo: `I approve MASTER-PLAN 1.3-review-1 as the implementation
+  plan.` Given after the four rulings above were recorded.
