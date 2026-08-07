@@ -103,3 +103,13 @@ structure. Rulings land here as they are made.
 Whole-day weather cancellation, vehicle cost, PTO/sick/holiday, worker
 classification, physical paycheck delivery, customer reschedule notification,
 new-hire onboarding checklist, off-season behavior.
+
+## Added by the five-lens review (2026-08-06 night; details in FEATURE-BACKLOG.md)
+
+| Decision | Options | Status |
+|---|---|---|
+| How the advertising crew is PAID in v1 (they currently have NO time record anywhere: Placement Runs are not payroll and advertising is excluded from attendance) | hourly day clock / per-sign piece rate (NY piece-rate rules apply) / off-system season 1 | PENDING Naldo |
+| Payroll vendor, so the weekly export lands somewhere (Copilot exported to QuickBooks/Gusto; current plan ends at a raw CSV, a regression) | QuickBooks / Gusto / accountant's pick | PENDING Naldo |
+| THE owner digest (two exist: hub's coaching digest, QT's morning ops digest) | recommend: QT morning digest becomes the unified owner digest | PENDING Naldo |
+| Sign inventory scope season 1 | worker-side stock counter only (backlog #1) vs fold into #82 epic | PENDING Naldo |
+| Contract v1.1.0 amendments (design/load-list endpoint, takedown badge, sold_by + rep notification, missed-tap nudge, material fields pinned, deactivation final-pay, vocabulary/enums, DLQ alert, deploy smoke, shared schema, relay SLA, Flow F reserved) | applied to canonical + mirror | DONE, needs Codex ack |

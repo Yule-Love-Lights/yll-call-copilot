@@ -83,6 +83,15 @@ shift; multi-department employees get a switcher.
 **Phase 0, joint:** the contract as OpenAPI stubs, identity mapping, auth/
 audit/idempotency scaffolding, kill switches, production-route security
 audit, PWA cache policy, AGENTS.md ownership rows for both assistants.
+Added from the five-lens risk audit (2026-08-06): merge the canonical
+contract to the Quote Tool's master FIRST (it lives on the PR #701 branch
+until then); publish the shared JSON Schema artifact both CIs validate
+against, with a cross-repo byte-diff check on the contract copies; turn
+"RLS before field launch" into a per-table checklist with impersonated-role
+tests (68 existing service-role routes); wire DLQ depth into a bot alert;
+add the deploy version smoke; and record that Track A's Sept 21 target runs
+on admin-seeded identity rows, NOT on the OTP UI (contract section 2
+interim rule).
 
 Then three tracks in parallel:
 
