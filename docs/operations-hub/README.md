@@ -8,6 +8,7 @@ This directory is the shared, version-controlled planning location for the Yule 
 - [`MASTER-PLAN.md`](./MASTER-PLAN.md) — reconciled Codex + Claude architecture, workflows, delivery tracks, controls, and launch gates.
 - [`PLAN-COMPARISON.md`](./PLAN-COMPARISON.md) — explicit comparison and conflict resolutions between the two source plans.
 - [`MASTER-PLAN-REVIEW.md`](./MASTER-PLAN-REVIEW.md) — admin, field, architecture/pay-contract, and self-review record.
+- [`CLAUDE-REVIEW-HANDOFF.md`](./CLAUDE-REVIEW-HANDOFF.md) — exact prompt and checklist for the Quote Tool assistant's final contract review.
 
 ## Historical source documents
 
