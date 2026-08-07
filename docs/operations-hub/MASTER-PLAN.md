@@ -1,8 +1,8 @@
 # Yule Love Lights Operations Hub — master plan
 
-Status: **final candidate for Claude and Naldo review; not yet build-approved**  
-Version: `1.3-review-1`  
-Date: 2026-08-06
+Status: **approved for Phase 0 implementation**
+Version: `1.3-review-1`
+Date: 2026-08-07
 
 ## 1. Mission
 
@@ -21,17 +21,17 @@ live camera, and each shutter becomes durable locally before the next capture.
 
 ## 2. Governing documents
 
-The ruling order is:
+Authority is scoped. `INTEGRATION-CONTRACT.md` governs all cross-repository
+schemas, commands, events, canonical time, pay, and Quote Tool facts.
+`DECISIONS.md` records Naldo's dated product rulings; a ruling that changes
+contract-owned behavior is not implementation authority until incorporated
+into the canonical contract under section 10 and mirrored byte-identically.
+This master plan governs shared delivery, and `OPERATIONS-HUB-SPEC.md` governs
+Hub-only behavior. Any conflict stops work at the affected boundary.
 
-1. `DECISIONS.md` for Naldo's decisions and binding display/legal constraints.
-2. The merged Quote Tool canonical integration contract for cross-repository
-   commands, events, time, pay, and Quote Tool facts.
-3. This master plan for the shared product and delivery model.
-4. `OPERATIONS-HUB-SPEC.md` for Hub behavior.
-
-`CONTRACT-V1.3-PROPOSAL.md` is review language only. It cannot override the
-canonical contract. Accepted language must be introduced through the Quote
-Tool contract PR process.
+`CONTRACT-V1.3-PROPOSAL.md` is retained as historical review input. Its
+accepted P1-P15 language now lives in the merged canonical
+`INTEGRATION-CONTRACT.md`.
 
 ## 3. System ownership
 
@@ -202,9 +202,11 @@ shutter; a zero-photo run is abandoned/reviewed.
   truth. The employee or Naldo/Jason confirms/corrects it.
 - Completion has two dimensions: field-work state and office-review state.
   Field completion never performs financial completion.
-- Completion photos are optional until Naldo approves an exact rule. Offline
-  completion remains a durable draft until media and the canonical command are
-  acknowledged by the Quote Tool.
+- Completion media is optional and never blocks the completion command. The
+  surface prompts at most three times, then permits completion without media.
+  If the employee does attach media, the offline draft preserves those files
+  until their upload state and the canonical command are acknowledged by the
+  Quote Tool.
 - Materials used, quantities, estimated quantities, optional on-hand true-up,
   notes, photo references, and raw command text use the same canonical
   operation in PWA, Telegram, and office surfaces.
@@ -340,21 +342,32 @@ clean weeks.
 - Department switch rules during an open job/run and who may approve them.
 - Exact installer travel classification and missed-tap thresholds.
 - Placement rejection/reversal reason codes, reviewer SLA, and week-close role.
-- Door-hanger capture unit, pay treatment, and residential visibility.
-- Exact installer completion-photo requirements and installed-notification
-  trigger.
+- Door-hanger capture unit and any broader residential visibility. Door-hanger
+  pay is OFF under ruling P16.5.
+- Exact installed-notification trigger. Completion media is optional and uses
+  at most three prompts under provisional ruling P16.6.
 - Office qualified-call formula and seller-credit correction rules.
-- Digest schedule, recipients beyond Naldo/Jason, and delivery escalation.
-- Deactivated employee self-service duration and payroll CSV column/order rules.
+- Digest recipient selection within each department and delivery escalation.
+  Schedule is daily at 08:00 America/New_York; Naldo/Jason receive all four
+  under P16.8. Implementers MUST NOT interpret "per-department recipients" as
+  every department member until Naldo defines the recipient-selection rule.
+- Deactivated employee self-service duration.
+- Payroll-vendor mapping and ordering beyond the ruled generic V1 CSV. The
+  canonical contract also needs a follow-up amendment defining the required
+  subtotal row's `line_type`, quantity, unit, rate, state, and reference fields;
+  payroll CSV implementation remains blocked until that amendment is merged.
 - Overtime/blended-rate handling, meal-period policy by role, and all legal/payroll
   language. These block pay activation, not safe shadow reporting.
 
 ## 16. Approval
 
-- [ ] Claude confirms Quote Tool ownership, contract feasibility, and lists any
-      v1.3 proposal changes by section and replacement language.
-- [ ] Codex confirms the merged canonical file and Hub mirror are byte-identical
-      and the Hub SPEC implements no private pay/time logic.
-- [ ] Naldo: `I approve MASTER-PLAN 1.3-review-1 as the implementation plan.`
-- [ ] Required CI/security/contract gates are green and a human authorizes the
-      implementation tracks.
+- [x] Claude confirms Quote Tool ownership and contract feasibility through
+      merged Quote Tool PR #701 and canonical contract `v1.3.0-draft`.
+- [x] Codex confirms the merged canonical file and Hub mirror are byte-identical
+      (SHA-256 `9c929965e963bf21fe021877fcaf03d3333005f5e3ae73eff4eccbd642e75235`)
+      and `OPERATIONS-HUB-SPEC.md` requires the Hub to consume canonical Quote
+      Tool time/pay facts rather than calculate them.
+- [x] Naldo: `I approve MASTER-PLAN 1.3-review-1 as the implementation plan.`
+      Signed 2026-08-07.
+- [x] Naldo authorizes Phase 0 to start. Each implementation PR still requires
+      its own current-branch gates, security review, green CI, and human merge.

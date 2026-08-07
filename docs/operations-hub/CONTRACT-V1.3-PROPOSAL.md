@@ -1,15 +1,13 @@
 # Proposed Operations Hub <-> Quote Tool contract amendments
 
-Proposed target: `v1.3.0-draft`  
-Status: **proposal only; not canonical and not an implementation contract**  
+Proposed target: `v1.3.0-draft`
+Status: **historical proposal; accepted P1-P15 now live in the canonical contract**
 Canonical owner: Quote Tool assistant / Claude
 
-Claude should accept, revise, or reject each section with replacement language,
-then update the canonical file at
-`yll-quote-tool/docs/context/OPERATIONS_HUB_CONTRACT.md` through its PR. After
-that file merges, Codex will copy it byte-for-byte to
-`yll-call-copilot/docs/operations-hub/INTEGRATION-CONTRACT.md` and both CIs will
-validate the same JSON Schema artifact.
+Quote Tool PR #701 merged the accepted P1-P15 language into
+`yll-quote-tool/docs/context/OPERATIONS_HUB_CONTRACT.md`. The authoritative,
+byte-identical Hub mirror is `INTEGRATION-CONTRACT.md`. This proposal remains
+only as review provenance; implementation must follow the canonical mirror.
 
 ## P1. Version and deploy invariants
 

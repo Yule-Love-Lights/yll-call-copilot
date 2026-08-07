@@ -1,6 +1,7 @@
 # Operations Hub feature backlog
 
 Status values: `COMMITTED` is already required by decisions/spec;
+`PARTIALLY-RULED` has binding behavior plus a narrower remaining decision;
 `BLOCKED-DECISION` needs a ruling before its feature ships; `LATER` is not V1
 scope. This file does not authorize implementation beyond the approved master
 plan.
@@ -37,12 +38,12 @@ plan.
 | Department switch during open state | BLOCKED-DECISION | Reject, auto-split, or owner-review policy |
 | Installer travel and missed taps | BLOCKED-DECISION | Classification and thresholds |
 | Placement review/week close | BLOCKED-DECISION | Reason codes, SLA, approvers |
-| Door hangers | BLOCKED-DECISION | Capture unit, pay, privacy |
-| Installer completion media | BLOCKED-DECISION | Count, camera/gallery, GPS, installed trigger |
+| Door hangers | PARTIALLY-RULED | Pay is OFF; capture unit and residential privacy/visibility remain open |
+| Installer completion media | PARTIALLY-RULED | Media is optional and prompts stop after three attempts; camera/gallery provenance, GPS, and installed trigger remain open |
 | Office qualified-call and seller credit | BLOCKED-DECISION | Formula and correction rights |
-| Digests | BLOCKED-DECISION | Schedule, extra recipients, escalation |
+| Digests | PARTIALLY-RULED | Daily 08:00 America/New_York and Naldo/Jason on all four are ruled; department-recipient selection and escalation remain open |
 | Deactivated employee access | BLOCKED-DECISION | Self-service duration |
-| Payroll output | BLOCKED-DECISION | CSV mapping/order and OT/blended-rate treatment |
+| Payroll output | PARTIALLY-RULED | Generic columns and pay-line types are ruled; canonical subtotal-row fields, vendor mapping/order, and OT/blended-rate treatment remain open |
 | Break/meal policy by department | BLOCKED-DECISION | Payroll/counsel-approved configuration |
 
 ## Later candidates

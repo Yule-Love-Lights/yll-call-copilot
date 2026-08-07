@@ -7,11 +7,12 @@ privacy/security, and release topology.
 
 ## Executive finding
 
-The product direction is coherent, but v1.2.0-draft is not yet safe to build
-against. It names the major flows but leaves several boundaries too implicit
-for two assistants to implement independently. The amended SPEC resolves Hub
-behavior; `CONTRACT-V1.3-PROPOSAL.md` identifies the canonical additions Claude
-must accept or revise before Phase 0 completes.
+The product direction is coherent, and the merged v1.3.0-draft canonical
+contract now incorporates the P1-P15 boundary amendments and Naldo's four P16
+rulings. Phase 0 may begin. The remaining decisions below block only their
+affected features. One post-merge contract defect remains: P16.10 requires an
+employee subtotal row but supplies no `subtotal` `line_type` or field semantics,
+so payroll CSV implementation must wait for a canonical amendment.
 
 ## Cross-repository P0 findings
 
@@ -46,7 +47,7 @@ must accept or revise before Phase 0 completes.
 
 ### Remaining decisions
 
-- Door-hanger unit, pay, and residential visibility.
+- Door-hanger capture unit and residential visibility. Pay is ruled OFF.
 - Rejection/reversal codes, response path, and expected reviewer turnaround.
 - Whether workers may see coworker live location; protective default is no.
 - Maximum offline queue/storage policy and low-storage cutoff.
@@ -73,7 +74,8 @@ must accept or revise before Phase 0 completes.
 ### Remaining decisions
 
 - Travel classification and missed-tap thresholds.
-- Exact completion photo rule and departure behavior.
+- Camera/gallery provenance, GPS behavior, installed trigger, and departure
+  behavior. Media is optional and prompts stop after three attempts.
 - Meal/break and overtime treatment validated by payroll/counsel.
 - Weather/no-access/material stoppage policies.
 
@@ -124,9 +126,11 @@ must accept or revise before Phase 0 completes.
 ### Remaining decisions
 
 - Week-close/placement reviewer permissions and service-level expectation.
-- Digest schedule and any recipients beyond Naldo/Jason.
+- Department-recipient selection and digest escalation. The daily 08:00
+  America/New_York schedule and Naldo/Jason on all four are ruled.
 - Deactivated employee self-service access duration.
-- CSV mapping and payroll review procedure.
+- CSV subtotal-row semantics, vendor mapping/order, OT/blended-rate treatment,
+  and payroll review procedure. Generic columns and pay-line types are ruled.
 
 ### Future improvements
 
@@ -151,12 +155,12 @@ must accept or revise before Phase 0 completes.
 
 ## Release review
 
-The safest sequence is two merge gates:
+The release sequence has two merge gates:
 
-1. Claude updates and merges the canonical Quote Tool contract and schema.
-2. Codex copies those exact bytes into this Hub branch, verifies both repos,
-   then the Hub planning PR may merge.
+1. **Completed:** Quote Tool PR #701 merged the canonical contract.
+2. **Completed on this branch:** Codex copied and byte-verified the exact
+   contract. The Hub planning PR still requires a human merge; shared schemas
+   remain a Phase 0 deliverable owned canonically by the Quote Tool.
 
-PR #35 and PR #36 should remain historical and later be closed as superseded;
-they should not be merged together. No implementation branch should fork from
-their conflicted combination.
+PR #35 and PR #36 are closed as superseded and remain historical. No
+implementation branch may fork from their conflicted combination.

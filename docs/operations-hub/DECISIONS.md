@@ -1,10 +1,11 @@
 # Operations Hub decision log
 
 > Every master-plan decision gets a row: what was decided, the options, who
-> ruled, when, and which source plan or review supplied it. MASTER-PLAN.md may
-> only contain decisions that are either agreed in both source plans (marked
-> AGREED) or ruled here by Naldo (marked RULED). PENDING rows block the
-> sections of the master plan that depend on them.
+> ruled, when, and which source plan or review supplied it. A ruling that
+> changes cross-repository, canonical time, pay, or Quote Tool behavior is not
+> implementation authority until it is incorporated into the canonical
+> contract and mirrored byte-identically. Pending rows block only the affected
+> feature unless this log says otherwise.
 
 ## Rulings pending from Naldo (from PLAN-COMPARISON.md section 7)
 
@@ -20,6 +21,10 @@
 | R8 | Pay math lives only in the quote tool; hub never duplicates payroll logic | confirm | confirm | RULED: confirmed | 2026-08-06 |
 
 ### Recorded consequences of R1 and R3 (so nobody rediscovers them mid-season)
+
+**Historical only:** F1 voided the R1 sequencing/data-gap consequences, and F3
+voided the GPS-primary consequences. Nothing in this subsection authorizes
+implementation.
 
 - The install season's first weeks run with NO per-job time capture. Shadow-mode
   P4P data starts when hub attendance and Route Mode land (Codex Phase 2,
@@ -78,7 +83,7 @@
 | Decision | Ruling |
 |---|---|
 | Source of truth: Quote Tool = customers, jobs, addresses, schedules, assignments, budgeted hours, financial status, canonical job status | RULED |
-| Source of truth: Hub = employees, permissions, attendance, breaks, routes, job visits, campaigns, Placement Runs, placements, hotspots | RULED |
+| Source of truth: Hub = employees, permissions, campaigns, Placement Runs, placements, hotspots, sign inventory, and raw route/device evidence. Quote Tool owns every canonical day-clock, break, job-segment, travel, approval, lock, and adjustment fact. This supersedes the earlier attendance/break/job-visit wording under F2. | RULED |
 | Quality guardrail: forfeiture of unearned performance pay, never deduction; 7-day window; no carry-forward | RULED |
 | Payout cadence: hours current week, performance pay following week | RULED |
 | Pool = 3 installers; Jason out, hourly, approver | RULED |
@@ -90,13 +95,37 @@
 | Season-1 guardrails: yellow slips, damage-as-yellow-slip, training bonus, referral bonus in; profit sharing out | RULED |
 | Wage-floor flag deferred by owner | RULED (recorded, not revisited) |
 
-## Codex-side open items (CODEX-PLAN.md section 29, not duplicated here)
+## Codex-side implementation decisions (reconciled from historical PR #35)
 
-22 items covering GPS thresholds and review approvers, door-hanger privacy,
-forgotten-run reconciliation, offline queue limits, SMS/OTP provider, Telegram
-launch actions, coworker location visibility, punch no-GPS behavior, and
-storage budget. They block Codex build phases, not the master plan's
-structure. Rulings land here as they are made.
+This table replaces the missing `CODEX-PLAN.md` reference. `OPEN` blocks only
+the named feature or release gate; it does not block unrelated Phase 0 safety
+work. `RULED` is authorized by the signed master plan or canonical contract.
+`SUPERSEDED` is no longer a V1 decision.
+
+| # | Decision | Status | Affected work |
+|---|---|---|---|
+| 1 | Door-hanger location terminology/privacy | OPEN — pay is OFF; capture unit and residential visibility remain open | Track B door-hanger capture |
+| 2 | Approver and pre-approval counting for placement accuracy worse than 20 m | OPEN | Track B review and pay-input acceptance |
+| 3 | GPS retry duration and sample-freshness window | OPEN | Track B camera validation |
+| 4 | Forgotten-run reconciliation at local midnight | RULED — closes at the last durable shutter; zero-photo run is abandoned/reviewed | Track B run recovery |
+| 5 | Server-assigned offline Sign Number and capture-order differences | RULED — server assigns once per campaign; numbers are immutable and never reused | Track B placement persistence |
+| 6 | Exact time-exception thresholds, overnight behavior, and locked-period handling | OPEN | Track A time contract / Track C exception UI |
+| 7 | Installer GPS radius, sampling, multi-installer credit, and tracking gaps | OPEN | Later calibrated route evidence |
+| 8 | Operational completion semantics | RULED in the canonical contract; departure behavior and installed trigger remain open | Track C completion |
+| 9 | Telegram launch actions and group privacy | OPEN | Telegram hardening |
+| 10 | Storage budget, backups, and indefinite placement-photo cost | OPEN | Phase 0 architecture / Track B release |
+| 11 | Coworker current-location visibility beyond Naldo/Jason | OPEN — protective default is no | Track B/C maps |
+| 12 | Unique-placement-spot clustering definition | OPEN | Later analytics |
+| 13 | No-GPS behavior for time, offline, and desktop office punches | OPEN | Track A contract / Track C punch UI |
+| 14 | Completion camera/gallery provenance and GPS requirements | OPEN — media itself is optional with at most three prompts | Track C completion media |
+| 15 | Forgotten daily clock-out rule and reminder cadence | OPEN | Track A time / Track C reminders |
+| 16 | Production SMS/OTP provider and recovery/support process | OPEN | Phase 0 identity |
+| 17 | Versioned cross-repository contract | RULED and completed by Quote Tool PR #701 plus exact Hub mirror | Phase 0 contract gate |
+| 18 | New-run connectivity, cached-session grace, and deactivated-device upload quarantine | OPEN | Phase 0 auth/offline safety / Track B |
+| 19 | Manager department-time behavior | SUPERSEDED for V1 — Manager tier is unprovisioned | Later Manager release |
+| 20 | Advertising placement/photo visibility by employee, campaign, notes, coordinates, and history | OPEN | Track B authorization/RLS |
+| 21 | Forgotten-run anchor and zero-photo behavior | RULED by the signed master plan | Track B run recovery |
+| 22 | Offline queue limits and pending-upload policy for uninstall, data clearing, account switch, and device replacement | OPEN | Phase 0 offline design / Track B release |
 
 ## Open items owned by neither plan yet (PLAN-COMPARISON.md section 4)
 
@@ -112,5 +141,30 @@ new-hire onboarding checklist, off-season behavior.
 | Payroll vendor | QuickBooks / Gusto / CSV | RULED 2026-08-06: RAW CSV now, QuickBooks as a later-down-the-line plan. Payroll-day wizard (backlog #20) deferred until then; the CSV must still satisfy NY pay-stub content rules. |
 | Digest model | one unified / per-department | RULED 2026-08-06: FOUR DIGESTS, one per department (office, advertising, install, management), each combining that department's ops AND attendance. Admins (Naldo, Jason) receive all four. The QT morning ops digest and the hub coaching digest fold into this model. |
 | Sign inventory | counter only / full ledger | RULED 2026-08-06: IN SCOPE with the weekly-allocation model: stock on hand, weekly issuance of X signs per person (decrements stock), placements decrement the issued count, week-end reconciliation shows expected-back vs placed and feeds the piece-rate pay count. Hub owns the ledger (advertising domain); the QT pay engine consumes the weekly accepted-placement count per person. |
-| Contract v1.1.0 amendments (design/load-list endpoint, takedown badge, sold_by + rep notification, missed-tap nudge, material fields pinned, deactivation final-pay, vocabulary/enums, DLQ alert, deploy smoke, shared schema, relay SLA, Flow F reserved) | applied to canonical + mirror | DONE, needs Codex ack |
-| Contract v1.2.0 amendments (Flow G advertising pay inputs, ad-crew day clock, piece-rate fields) | applied to canonical + mirror | DONE, needs Codex ack |
+| Contract v1.1.0 amendments (design/load-list endpoint, takedown badge, sold_by + rep notification, missed-tap nudge, material fields pinned, deactivation final-pay, vocabulary/enums, DLQ alert, deploy smoke, shared schema, relay SLA, Flow F reserved) | applied to canonical + mirror | DONE; Codex acknowledged in the v1.3.0-draft mirror |
+| Contract v1.2.0 amendments (Flow G advertising pay inputs, ad-crew day clock, piece-rate fields) | applied to canonical + mirror | DONE; Codex acknowledged in the v1.3.0-draft mirror |
+
+## P16 configuration rulings (Naldo, 2026-08-07)
+
+These rulings are copied from the merged Quote Tool canonical contract
+`v1.3.0-draft` and govern the corresponding open items in
+`CONTRACT-V1.3-PROPOSAL.md`.
+
+| Item | Ruling |
+|---|---|
+| P16.5 — Door hangers | **PAY OFF.** No door-hanger pay unit is configured. Door-hanger placements never enter a pay count or an `AdvertisingWeekClosed` net count until a later ruling. Capture may exist under the protective residential-privacy default. Any door-hanger pay field stays null, and the engine treats a configured-null unit as “feature disabled,” never as zero-value work. |
+| P16.6 — Completion media | **NOT REQUIRED; three prompts.** The completion command never blocks on `photo_refs[]`. The surface prompts at most three times, then completes without media. The same three-attempt cadence is the default for missed-tap nudges. Marked provisional by the owner. |
+| P16.8 — Digests | All four types send at **08:00 America/New_York, daily**. Per-department recipients plus Naldo and Jason on all four. Delivery failures retry per contract P13/P15 and surface in the admin queue; escalation policy remains open. |
+| P16.10 — Payroll CSV | **Generic vendor-neutral format for now.** One UTF-8 row per pay line, with a header and no provisional values: `employee_id, employee_name, period_start, period_end, line_type, description, job_or_campaign_ref, quantity, unit, rate_cents, amount_cents, state, notes`, plus a per-employee subtotal row. `line_type`: `hourly_base`, `installer_performance_earned`, `advertising_piece_rate`, `floor_true_up`, `training_bonus`, `referral_bonus`, `manual_adjustment`. Vendor mapping and OT/blended-rate treatment remain open for the payroll professional; QuickBooks remains out of V1. |
+
+Implementation guard: the P16.10 subtotal requirement and its closed
+`line_type` enum conflict. No payroll CSV code may guess the subtotal row's
+type or field values. The Quote Tool owner must merge a canonical contract
+amendment, after which the Hub remirrors exact bytes. This does not block other
+Phase 0 foundation work.
+
+## Final plan approval (Naldo, 2026-08-07)
+
+Naldo approved `MASTER-PLAN 1.3-review-1` as the implementation plan and
+authorized Phase 0 to begin after the merged canonical contract was mirrored
+and byte-verified.

@@ -282,11 +282,13 @@ An accepted placement MAY later receive an append-only `reversed` event.
 - Completion payload SHALL support materials used (SKU, quantity, estimated
   quantity), optional on-hand true-up, note, photo references, and raw text for
   audit.
-- Completion photos SHALL remain optional until an approved rule defines count,
-  camera/gallery provenance, and GPS requirements.
-- Offline completion SHALL stay a durable Hub draft until every required media
-  object and the Quote Tool command are acknowledged. UI SHALL not say complete
-  before canonical acceptance.
+- Completion media SHALL be optional and SHALL never block the completion
+  command. The surface SHALL prompt at most three times, then allow completion
+  without media. Camera/gallery provenance, GPS requirements, and the exact
+  installed-notification trigger remain open.
+- When the employee attaches optional media, offline completion SHALL keep the
+  media in a durable Hub draft until its upload state and the Quote Tool command
+  are acknowledged. UI SHALL not say canonically accepted before that response.
 - On the approved installed state, Quote Tool MAY emit seller attribution and
   review/referral enqueue events. Hub SHALL notify only from those canonical
   events.
@@ -343,6 +345,9 @@ An accepted placement MAY later receive an append-only `reversed` event.
   Management.
 - Each department digest SHALL combine attendance and operational facts. Naldo
   and Jason SHALL receive all four.
+- "Per-department recipients" remains an owner configuration decision. Until
+  that rule is approved, the Hub SHALL NOT infer that every active department
+  member receives a department-wide digest.
 - Quote Tool SHALL supply canonical time/pay/job facts; Hub SHALL supply
   campaign/placement/inventory and Hub-owned call facts.
 - Each digest run SHALL record type, period, source-through times, input

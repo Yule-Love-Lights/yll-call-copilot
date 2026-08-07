@@ -1,12 +1,12 @@
 # Operations Hub final-review pack
 
-Status: **review-only; no implementation is authorized by this branch**  
-Prepared: 2026-08-06  
+Status: **owner-approved for Phase 0 branch work; PR #37 not yet human-merged**
+Prepared: 2026-08-07
 Hub branch: `codex/operations-hub-final-review`
 
-This branch reconciles the Codex Hub specification with Claude's labor, pay,
-and Quote Tool plan. It is the branch Claude and Naldo should review before the
-build begins.
+This branch is the reconciled and approved source for the Operations Hub.
+Quote Tool PR #701 merged the canonical `v1.3.0-draft` contract, Naldo signed
+the master plan, and the byte-identical Hub mirror is now present.
 
 ## Read in this order
 
@@ -14,43 +14,46 @@ build begins.
 2. `MASTER-PLAN.md` — one system plan across both repositories.
 3. `OPERATIONS-HUB-SPEC.md` — normative employee and administrator behavior in
    the Hub.
-4. `CONTRACT-V1.3-PROPOSAL.md` — proposed additions to the Quote Tool's
-   canonical integration contract. This file is not itself canonical.
-5. `FINAL-REVIEW-FINDINGS.md` — persona and cross-repository failure review.
-6. `FEATURE-BACKLOG.md` — committed scope, launch blockers, and later ideas.
-7. `SOURCE-PINS.md` — the exact source revisions reconciled here.
-8. `CLAUDE-FINAL-REVIEW-HANDOFF.md` — the review prompt and approval procedure.
+4. `INTEGRATION-CONTRACT.md` — byte-identical mirror of the merged Quote Tool
+   canonical contract.
+5. `CONTRACT-V1.3-PROPOSAL.md` — historical proposal retained for audit; it
+   is not authoritative.
+6. `FINAL-REVIEW-FINDINGS.md` — persona and cross-repository failure review.
+7. `FEATURE-BACKLOG.md` — committed scope, launch blockers, and later ideas.
+8. `SOURCE-PINS.md` — the exact source revisions reconciled here.
+9. `CLAUDE-FINAL-REVIEW-HANDOFF.md` — historical final-review prompt.
 
-## Authority order
+## Scoped authority
 
-1. Naldo's dated rulings in `DECISIONS.md`.
-2. The merged canonical contract in
-   `yll-quote-tool/docs/context/OPERATIONS_HUB_CONTRACT.md` for cross-repository
-   schemas, commands, events, time, pay, and Quote Tool facts.
-3. `MASTER-PLAN.md` for the shared product and delivery model.
-4. `OPERATIONS-HUB-SPEC.md` for Hub behavior.
+`INTEGRATION-CONTRACT.md` governs all cross-repository schemas, commands,
+events, canonical time, pay, and Quote Tool facts. `DECISIONS.md` records
+Naldo's dated product rulings; a ruling that changes contract-owned behavior is
+not implementation authority until incorporated into the canonical contract
+under section 10 and mirrored byte-identically. `MASTER-PLAN.md` governs shared
+delivery, and `OPERATIONS-HUB-SPEC.md` governs Hub-only behavior. Any conflict
+stops work at the affected boundary.
 
-If two documents conflict, work stops at the affected boundary until the
-higher-authority document is corrected. No implementation may guess at wages,
-privacy, surveillance, permissions, or source-of-truth ownership.
+No implementation may guess at wages, privacy, surveillance, permissions, or
+source-of-truth ownership.
 
-## Build gate
+## Phase 0 state
 
-The build may start only after all of the following are true:
+Completed:
 
-- Claude reviews this pack and incorporates every accepted contract amendment
-  into the Quote Tool's canonical contract by PR.
-- Naldo adds an approval line to `MASTER-PLAN.md` section 16.
-- The canonical Quote Tool contract merges to Quote Tool `master` first.
-- A byte-identical contract mirror and the shared JSON Schema artifact are then
-  added to this Hub branch from that merged commit.
-- Both repositories validate the same contract version and schema; the
-  cross-repository byte comparison and deploy-version smoke pass.
+- Quote Tool PR #701 merged the canonical `v1.3.0-draft` contract.
+- Naldo's four P16 rulings are recorded in `DECISIONS.md`.
+- Naldo signed the master-plan approval and authorized Phase 0.
+- The Hub contract mirror is byte-identical to the canonical file.
+
+Phase 0 must now deliver:
+
+- The shared JSON Schema/OpenAPI artifacts from their canonical Quote Tool
+  owner, vendored byte-identically in the Hub.
+- CI validation of contract/schema bytes and runtime version compatibility.
 - RLS/authorization checklists and impersonated-role tests are defined for
   every field-facing Hub table and endpoint.
-- Required CI checks are green, the PR is current with its base, and a human
-  performs the merge.
+- Identity-link, auth, audit, idempotency, DLQ, kill-switch, and fail-closed
+  scaffolding.
 
-The existing planning PRs remain historical sources. They should not be merged
-in place because their overlapping files and stale base create avoidable
-conflicts.
+PRs #35 and #36 are closed as superseded. PR #37 is the only Hub planning
+source. Every implementation PR still requires current gates and a human merge.
