@@ -1,6 +1,6 @@
 # Yule Love Lights Operations Hub — master plan
 
-Status: **approved for Phase 0 implementation**
+Status: **approved direction; paired contract clarification pending human merge**
 Version: `1.3-review-1`
 Date: 2026-08-07
 
@@ -75,9 +75,14 @@ whether it is local, submitted, accepted, under review, rejected, or adjusted.
 - Employee roles are Office, Advertising, and Installer. A Manager capability
   tier is designed and tested but **not provisioned in V1**.
 - An employee may hold multiple department memberships. Exactly one active
-  department context is attached to a canonical paid shift. Switching context
-  is an explicit, audited Quote Tool operation and cannot silently move already
-  recorded time.
+  department-context interval is active at each instant of a canonical paid
+  shift. Switching context is an explicit, audited Quote Tool operation and
+  cannot silently move already recorded time.
+- Membership union may expose non-sensitive module navigation only. Sensitive
+  reads and actions require an explicit capability, the current paid-work
+  context, and assignment/resource scope. A secondary membership never bypasses
+  the clock gate. Office work uses a separate resource-scoped office operation,
+  not an installer endpoint.
 - Department membership is not compensation authority. Pay configuration and
   effective dates remain Quote Tool facts.
 - "Public" means visible only to active YLL employees. Public screens never
@@ -331,6 +336,9 @@ clean weeks.
 - A workday reconciles clock, breaks, visits, travel/unclassified residual,
   corrections, lock, and export without overlap or double count.
 - Exact-address clock gate is enforced server-side.
+- Multi-department impersonation tests prove that a secondary Office membership,
+  stale membership version, wrong active context, unassigned resource, or
+  unprovisioned Manager claim cannot expose sensitive data.
 - Provisional pay wording and exclusion pass API, UI, Telegram, digest,
   leaderboard, and CSV tests.
 - No employee can see another employee's pay, exact private route, restricted
@@ -342,10 +350,12 @@ clean weeks.
 - Department switch rules during an open job/run and who may approve them.
 - Exact installer travel classification and missed-tap thresholds.
 - Placement rejection/reversal reason codes, reviewer SLA, and week-close role.
-- Door-hanger capture unit and any broader residential visibility. Door-hanger
-  pay is OFF under ruling P16.5.
-- Exact installed-notification trigger. Completion media is optional and uses
-  at most three prompts under provisional ruling P16.6.
+- Door-hanger capture unit and any residential visibility broader than the
+  contract's restrictive employee/Naldo/Jason default. Door-hanger pay is OFF
+  under ruling P16.5.
+- Completion media is optional and uses at most three prompts under provisional
+  ruling P16.6. The installed notification fires on contract-defined
+  `field_work_completed`.
 - Office qualified-call formula and seller-credit correction rules.
 - Digest recipient selection within each department and delivery escalation.
   Schedule is daily at 08:00 America/New_York; Naldo/Jason receive all four
@@ -353,9 +363,9 @@ clean weeks.
   every department member until Naldo defines the recipient-selection rule.
 - Deactivated employee self-service duration.
 - Payroll-vendor mapping and ordering beyond the ruled generic V1 CSV. The
-  canonical contract also needs a follow-up amendment defining the required
-  subtotal row's `line_type`, quantity, unit, rate, state, and reference fields;
-  payroll CSV implementation remains blocked until that amendment is merged.
+  contract defines stable `pay_line_id` values and the `employee_subtotal` row;
+  no implementation may change those amounts or fields outside the contract
+  process.
 - Overtime/blended-rate handling, meal-period policy by role, and all legal/payroll
   language. These block pay activation, not safe shadow reporting.
 
@@ -363,10 +373,13 @@ clean weeks.
 
 - [x] Claude confirms Quote Tool ownership and contract feasibility through
       merged Quote Tool PR #701 and canonical contract `v1.3.0-draft`.
-- [x] Codex confirms the merged canonical file and Hub mirror are byte-identical
-      (SHA-256 `9c929965e963bf21fe021877fcaf03d3333005f5e3ae73eff4eccbd642e75235`)
+- [x] Codex confirms the paired canonical proposal and Hub mirror are
+      byte-identical (SHA-256
+      `2fc10d33bf592b79d38741e8f40bdc1abcf52c2233d3be89521807211bbafa4a`)
       and `OPERATIONS-HUB-SPEC.md` requires the Hub to consume canonical Quote
       Tool time/pay facts rather than calculate them.
+- [ ] Quote Tool owner/Claude reviews the self-contained v1.3 clarification;
+      both paired PRs are human-merged before implementation consumes it.
 - [x] Naldo: `I approve MASTER-PLAN 1.3-review-1 as the implementation plan.`
       Signed 2026-08-07.
 - [x] Naldo authorizes Phase 0 to start. Each implementation PR still requires

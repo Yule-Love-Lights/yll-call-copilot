@@ -21,15 +21,15 @@ Prepared: 2026-08-07
 
 ## Final contract pins
 
-- Quote Tool PR #701 merge commit:
+- Quote Tool PR #701 baseline merge commit:
   `72c2eb89b0533221e0966cbc9df25f39f5f8e7e9`
-- Exact Quote Tool `master` source commit used for the mirror:
-  `c65f73e1b8e0b061895d6d18bf28fa24ee6a2363`
-- Canonical contract SHA-256:
-  `9c929965e963bf21fe021877fcaf03d3333005f5e3ae73eff4eccbd642e75235`
-- Hub mirror SHA-256:
-  `9c929965e963bf21fe021877fcaf03d3333005f5e3ae73eff4eccbd642e75235`
-- Hub mirror commit:
-  `1e4ade9bd3bfbe760fba574a221bf301ec01ed41`
+- Paired self-contained clarification source branch/commit:
+  `naldo/ops-contract-v130-clarifications` at
+  `d2cf098658a595da1bd7b5b35ae553605fcbd1a0`
+- Canonical and Hub mirror SHA-256:
+  `2fc10d33bf592b79d38741e8f40bdc1abcf52c2233d3be89521807211bbafa4a`
+- Canonical and Hub mirror byte length: `41336`
+- Paired Hub branch: `codex/operations-hub-final-review`; its PR reports the
+  exact commit that carries these bytes.
 - Shared JSON Schema SHA-256: `PENDING` — the canonical Phase 0 artifact is not
   yet published in the Quote Tool repository.

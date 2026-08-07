@@ -25,10 +25,26 @@ only after they exist in the merged canonical Quote Tool contract.
 - Roles SHALL include owner/admin, Office, Advertising, and Installer. A Manager
   permission tier SHALL exist in design/tests but SHALL have no V1 assignee.
 - Employees MAY hold multiple department memberships. A paid shift SHALL have
-  exactly one active department context at a time.
+  exactly one active department-context interval at every instant.
 - Active-context changes SHALL be explicit, version checked, audited, and
   accepted by the Quote Tool. They SHALL NOT retroactively reclassify prior
   time.
+- Membership union MAY expose non-sensitive module navigation. It SHALL NOT
+  union sensitive permissions. Every department-scoped sensitive request SHALL
+  verify the active employee, current membership version, explicit capability,
+  paid-work context, and assignment/resource scope on the server.
+- A secondary Office membership SHALL NOT bypass the installer clock gate.
+  Office job work SHALL use a distinct `office_job_operations` capability and
+  resource-scoped server operation while the employee is clocked in under the
+  Office context. A multi-department employee SHALL switch context before doing
+  work for another department.
+- Owner/Admin capabilities SHALL be provisioned only to Naldo and Jason and
+  sensitive reads SHALL be audited. Every Manager claim SHALL be denied in V1.
+- Every membership snapshot/change SHALL carry a monotonic
+  `membership_version`, effective time, and explicit active/revoked state. Hub
+  SHALL publish the full authoritative snapshot; Quote Tool SHALL fail closed
+  on missing, stale, out-of-order, or deactivated state and invalidate affected
+  offline/cache grants.
 - Authorization SHALL be enforced server-side and with RLS or equivalent
   per-table policy. Hiding UI alone SHALL never count as authorization.
 - `Public` SHALL mean active YLL employees only. Internal-public data SHALL
@@ -61,7 +77,8 @@ only after they exist in the merged canonical Quote Tool contract.
 The home SHALL show Clock In/Out, Break when policy requires it, personal call
 statistics, current office work, and the existing call/coaching tools. It SHALL
 not expose advertising or installer actions without a matching membership and
-active context.
+active context. Exact customer/job information SHALL remain unavailable until
+an accepted Office Clock In and a resource-scoped office capability both exist.
 
 ### Advertising
 
@@ -104,6 +121,9 @@ Tool.
   requested/device/receipt/effective times and SHALL never hide the correction.
 - Employees SHALL request corrections; only Naldo/Jason SHALL approve canonical
   changes. Every accepted correction SHALL be append-only.
+- Employees SHALL see every correction request's submitted, under-review,
+  accepted, partially accepted, rejected, or forward-adjusted state, safe
+  reason, chosen effective time, and resulting adjustment reference.
 
 ## 6. Placement Run state machine
 
@@ -216,6 +236,11 @@ An accepted placement MAY later receive an append-only `reversed` event.
   canonical records.
 - Quote Tool SHALL acknowledge accepted/reversed placement events used by pay.
   Unacknowledged events SHALL block Advertising Week Close and payroll readiness.
+- A placement SHALL enter piece pay only when Quote Tool validates its linked
+  paid-day envelope, capture-time Advertising context interval, membership
+  version, earning date, and pay-enabled unit. Quote Tool SHALL snapshot the
+  effective rate/config version; reversal or correction SHALL reference and
+  adjust that original snapshot rather than reprice it.
 
 ## 9. Placement privacy and maps
 
@@ -229,9 +254,11 @@ An accepted placement MAY later receive an append-only `reversed` event.
   approved hotspot/avoid guidance.
 - Exact employee route trails SHALL be visible only to the employee and
   Naldo/Jason unless Naldo approves a narrower operational need.
-- Door-hanger residential points SHALL default to Naldo/Jason-only after
-  verification; employee maps SHALL aggregate/round them. Broader visibility
-  requires an explicit ruling.
+- Before verification, the capturing employee MAY see exact door-hanger
+  evidence only while it is local/pending/under review or inside its correction
+  window. After verification, residential points SHALL be Naldo/Jason-only;
+  employee maps SHALL aggregate/round them. Broader visibility requires an
+  explicit ruling.
 - No sign-retrieval workflow is required in V1.
 
 ## 10. Sign inventory
@@ -245,8 +272,10 @@ An accepted placement MAY later receive an append-only `reversed` event.
 - Accepted sign placement SHALL consume one compatible allocated unit exactly
   once. Reversal SHALL create a compensating inventory event according to the
   reviewed physical outcome; it SHALL not rewrite history.
-- Expected back SHALL equal issued minus accepted placements minus approved
-  damage/loss adjustments. Variance SHALL be reviewed and MAY trigger restock.
+- Expected back SHALL equal issued plus transferred-in minus transferred-out
+  minus accepted sign placements. Returned, approved damage/loss observations,
+  and variance SHALL remain distinct fields. Variance SHALL be reviewed and MAY
+  trigger restock.
 - Inventory variance SHALL never become an automatic wage deduction.
 - Advertising Week Close SHALL include inventory reconciliation and the
   acknowledged accepted-placement count sent to Quote Tool.
@@ -258,6 +287,10 @@ An accepted placement MAY later receive an append-only `reversed` event.
   be denied server-side.
 - Audited owner emergency override and a time-limited signed offline packet are
   the only exceptions.
+- Offline sensitive job data SHALL remain disabled until the signed-packet
+  lifetime, device binding, encryption, snapshot versioning, expiry, logout,
+  context-switch, deactivation, and next-open purge rules in the contract are
+  configured and tested. Non-sensitive schedule summaries remain available.
 - After Clock In, Hub SHALL show same-day assignments, route/order, job notes,
   design/load list, budgeted elapsed hours, planned crew size, budgeted crew
   hours, job lead, and assigned crew roles when provided.
