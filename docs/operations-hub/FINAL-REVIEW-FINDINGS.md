@@ -7,12 +7,14 @@ privacy/security, and release topology.
 
 ## Executive finding
 
-The product direction is coherent, and the merged v1.3.0-draft canonical
-contract now incorporates the P1-P15 boundary amendments and Naldo's four P16
-rulings. Phase 0 may begin. The remaining decisions below block only their
-affected features. One post-merge contract defect remains: P16.10 requires an
-employee subtotal row but supplies no `subtotal` `line_type` or field semantics,
-so payroll CSV implementation must wait for a canonical amendment.
+The product direction is coherent. A final independent cross-check found that
+the v1.3.0 draft still delegated required API shapes to a historical proposal,
+left multi-department clock-gate authorization ambiguous, and omitted the
+required payroll subtotal representation. The paired canonical/mirror
+clarification makes the contract self-contained, applies a least-privilege
+department rule, and defines the subtotal without changing pay math. Phase 0
+may proceed only from those paired bytes. Remaining decisions below block only
+their affected features.
 
 ## Cross-repository P0 findings
 
@@ -30,6 +32,13 @@ so payroll CSV implementation must wait for a canonical amendment.
 | 10 | Deactivating a worker can strand time, quality windows, inventory, or final pay. | Deactivation-readiness API and restricted retained records. |
 | 11 | Four digests combine data from both repos without a facts/version contract. | Typed digest facts, source-through/version metadata, persisted delivery state, and same privacy/pay rules. |
 | 12 | Raw CSV can silently omit blockers or export provisional values. | Quote-owned readiness/lock/export endpoints; no provisional rows; later adjustments only. |
+| 13 | The canonical contract points implementers to a file labeled historical for required command/event fields. | All request, response, exception, correction, placement, advertising-week, payroll-blocker, and unresolved-configuration shapes are inline in the canonical contract. |
+| 14 | Office membership can be read as an installer clock-gate bypass for a multi-department employee. | Membership union is navigation-only; sensitive access requires capability, active paid-work context, membership version, and resource scope. Office uses separate clocked-in operations. |
+| 15 | A placement can enter piece pay without proof it occurred during authorized Advertising paid work. | Every payable event links to its paid-day envelope and Advertising context interval; Quote Tool validates membership/context at the effective time or holds it for review. |
+| 16 | Quote Tool has no authoritative membership-version revocation path. | Full effective-dated snapshots and change events are monotonic; stale, missing, out-of-order, or deactivated state fails closed and invalidates offline grants. |
+| 17 | A rate change or late reversal can reprice prior accepted placements. | Quote Tool snapshots earning date, config version, and piece-rate cents at acknowledgment; reversals/corrections reference that snapshot and locked periods adjust forward. |
+| 18 | Offline clock-gate packets do not control cached customer addresses/routes. | Offline sensitive data is disabled until device binding, encryption, expiry, versioning, and purge behavior are configured and tested. |
+| 19 | An employee can submit a time correction but cannot see its resolution. | Employee-scoped correction reads/events expose status, safe reason, chosen time, and forward-adjustment reference. |
 
 ## Advertising employee review
 

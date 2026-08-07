@@ -17,7 +17,7 @@
 | R4 | One Telegram bot, webhook stays quote tool, hub actions relayed | confirm / second bot / bot cutover | confirm | RULED: confirmed, relay pattern | 2026-08-06 |
 | R5 | Clock gate applies in hub UI as well as bot | yes / bot only / off | yes | RULED earlier: Naldo locked the gate ON for all crew surfaces in the Claude-side Q&A ("keep the gate", 2026-08-06) | 2026-08-06 |
 | R6 | v1 roles: owner/admin, office, installer, advertising; Manager tier designed but not provisioned | confirm / provision Manager now | confirm | RULED: confirmed | 2026-08-06 |
-| R7 | Department membership model | single per employee v1 / multi-department now | single v1 | RULED: MULTI-DEPARTMENT NOW. An employee can belong to more than one department from day one. Supersedes CODEX-PLAN section 6's one-department assumption; the master plan defines home-screen and permission-union behavior. | 2026-08-06 |
+| R7 | Department membership model | single per employee v1 / multi-department now | single v1 | RULED: MULTI-DEPARTMENT NOW. An employee can belong to more than one department from day one. Membership union may expose non-sensitive navigation only; sensitive access requires explicit capability, current paid-work context, and resource scope. A secondary membership never bypasses the F4 clock gate. | 2026-08-06 |
 | R8 | Pay math lives only in the quote tool; hub never duplicates payroll logic | confirm | confirm | RULED: confirmed | 2026-08-06 |
 
 ### Recorded consequences of R1 and R3 (so nobody rediscovers them mid-season)
@@ -152,16 +152,15 @@ These rulings are copied from the merged Quote Tool canonical contract
 
 | Item | Ruling |
 |---|---|
-| P16.5 — Door hangers | **PAY OFF.** No door-hanger pay unit is configured. Door-hanger placements never enter a pay count or an `AdvertisingWeekClosed` net count until a later ruling. Capture may exist under the protective residential-privacy default. Any door-hanger pay field stays null, and the engine treats a configured-null unit as “feature disabled,” never as zero-value work. |
+| P16.5 — Door hangers | **PAY OFF.** No door-hanger pay unit is configured. Door-hanger placements never enter a pay count or an `AdvertisingWeekClosed` net count until a later ruling. The protective default lets the capturing employee see exact evidence only while local/pending/under review or inside the correction window; after verification, exact address/coordinates/photos are Naldo/Jason-only and employee maps aggregate/round them. Exact residential evidence is excluded from internal-public maps, leaderboards, and digests. Any door-hanger pay field stays null, and the engine treats a configured-null unit as “feature disabled,” never as zero-value work. |
 | P16.6 — Completion media | **NOT REQUIRED; three prompts.** The completion command never blocks on `photo_refs[]`. The surface prompts at most three times, then completes without media. The same three-attempt cadence is the default for missed-tap nudges. Marked provisional by the owner. |
 | P16.8 — Digests | All four types send at **08:00 America/New_York, daily**. Per-department recipients plus Naldo and Jason on all four. Delivery failures retry per contract P13/P15 and surface in the admin queue; escalation policy remains open. |
-| P16.10 — Payroll CSV | **Generic vendor-neutral format for now.** One UTF-8 row per pay line, with a header and no provisional values: `employee_id, employee_name, period_start, period_end, line_type, description, job_or_campaign_ref, quantity, unit, rate_cents, amount_cents, state, notes`, plus a per-employee subtotal row. `line_type`: `hourly_base`, `installer_performance_earned`, `advertising_piece_rate`, `floor_true_up`, `training_bonus`, `referral_bonus`, `manual_adjustment`. Vendor mapping and OT/blended-rate treatment remain open for the payroll professional; QuickBooks remains out of V1. |
+| P16.10 — Payroll CSV | **Generic vendor-neutral format for now.** One UTF-8 row per pay line, with a header and no provisional values. The canonical contract adds the required stable `pay_line_id` and defines the subtotal as `line_type = employee_subtotal` with blank quantity/unit/rate/reference fields and a deterministic ID. This completes the approved subtotal requirement without changing any pay amount. Vendor mapping and OT/blended-rate treatment remain open for the payroll professional; QuickBooks remains out of V1. |
 
-Implementation guard: the P16.10 subtotal requirement and its closed
-`line_type` enum conflict. No payroll CSV code may guess the subtotal row's
-type or field values. The Quote Tool owner must merge a canonical contract
-amendment, after which the Hub remirrors exact bytes. This does not block other
-Phase 0 foundation work.
+Implementation guard: the paired v1.3 clarification defines the subtotal shape
+and stable pay-line identity. Payroll CSV remains blocked only on its named open
+vendor, overtime, and blended-rate decisions; no client may alter or calculate
+pay independently.
 
 ## Final plan approval (Naldo, 2026-08-07)
 
