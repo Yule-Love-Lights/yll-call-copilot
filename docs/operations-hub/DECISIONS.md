@@ -10,14 +10,34 @@
 
 | # | Decision | Options | Recommendation | Ruling | Date |
 |---|---|---|---|---|---|
-| R1 | Sequencing vs Sept 21 season start | (a) hub attendance before advertising (b) interim quote-tool bot clock, migrate later (c) advertising slips | (b) | PENDING | |
-| R2 | Attendance split: hub owns shifts/breaks, quote tool owns per-job labor spans + compensation config | confirm / restructure | confirm | PENDING | |
-| R3 | Actual job time: explicit clock authoritative, GPS visits corroborate only | confirm / GPS-primary | confirm | PENDING | |
-| R4 | One Telegram bot, webhook stays quote tool, hub actions relayed | confirm / second bot / bot cutover | confirm | PENDING | |
-| R5 | Clock gate applies in hub UI as well as bot | yes / bot only / off | yes | PENDING | |
+| R1 | Sequencing vs Sept 21 season start | (a) hub attendance before advertising (b) interim quote-tool bot clock, migrate later (c) advertising first, time waits | (b) | RULED: (c) advertising first, installer time capture arrives mid-season. The Sept 21 time-capture target is retired; consequences recorded below. | 2026-08-06 |
+| R2 | Attendance split: hub owns shifts/breaks, quote tool owns per-job labor spans + compensation config | confirm / restructure | confirm | RULED: confirmed | 2026-08-06 |
+| R3 | Authoritative mechanism for pay-feeding job hours | explicit clock primary / GPS visits primary | explicit clock | RULED: GPS visits primary (against recommendation, owner's call). Clock punches become the backup/correction path. Consequences recorded below. | 2026-08-06 |
+| R4 | One Telegram bot, webhook stays quote tool, hub actions relayed | confirm / second bot / bot cutover | confirm | RULED: confirmed, relay pattern | 2026-08-06 |
+| R5 | Clock gate applies in hub UI as well as bot | yes / bot only / off | yes | RULED earlier: Naldo locked the gate ON for all crew surfaces in the Claude-side Q&A ("keep the gate", 2026-08-06) | 2026-08-06 |
 | R6 | v1 roles: owner/admin, office, installer, advertising; Manager tier designed but not provisioned | confirm / provision Manager now | confirm | PENDING | |
 | R7 | One department per employee in v1, changeable with history | confirm / multi-department now | confirm | PENDING | |
-| R8 | Pay math lives only in the quote tool; hub never duplicates payroll logic | confirm | confirm | PENDING | |
+| R8 | Pay math lives only in the quote tool; hub never duplicates payroll logic | confirm | confirm | PENDING (implied by R2, awaiting explicit yes) | |
+
+### Recorded consequences of R1 and R3 (so nobody rediscovers them mid-season)
+
+- The install season's first weeks run with NO per-job time capture. Shadow-mode
+  P4P data starts when hub attendance and Route Mode land (Codex Phase 2,
+  mid-season at best). The Claude-plan Phase 4 pay engine and the weekly
+  economics ritual slide accordingly; a pay flip this install season is
+  unlikely, takedown season or next year is the realistic window. Owner chose
+  this knowingly to get advertising live first.
+- The quote tool's independent pieces still ship on their own schedule:
+  Phase 1 (budgeted hours + labor revenue + crew_members cache) and Phase 3
+  (scheduling calendar) have no hub dependency.
+- Under GPS-primary: the visit review/confirmation queue becomes a pay-critical
+  path (approvals must happen before each weekly payroll), phone-lock and
+  navigation-app gaps produce suggested visits needing human confirmation, and
+  the bot/hub one-tap Arrived/Departed punches are the correction mechanism.
+  Codex's own plan already treats low-evidence visits as suggestions requiring
+  confirmation; that behavior is now load-bearing for pay.
+- Copilot CRM cancellation re-anchors: after the quote tool calendar (Claude
+  Phase 3) AND hub attendance are both live and clean for two weeks.
 
 ## Non-optional directives (acknowledged, not ruled)
 
