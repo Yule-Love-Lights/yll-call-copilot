@@ -45,7 +45,7 @@ describe('Operations Hub contract verifier', () => {
       env: cleanEnvironment(),
     });
 
-    expect(output).toContain('LOCAL_PIN_OK contract_version=1.3.0-draft 26795 bytes');
+    expect(output).toContain('LOCAL_PIN_OK contract_version=1.3.0-draft 41336 bytes');
   });
 
   it('accepts an independent exact canonical byte copy from another cwd', () => {

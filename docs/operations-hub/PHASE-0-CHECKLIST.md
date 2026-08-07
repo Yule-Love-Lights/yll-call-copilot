@@ -2,7 +2,7 @@
 
 Status: **foundation started; field-user provisioning blocked**
 Date: 2026-08-07
-Branch base: `codex/operations-hub-final-review@c2ea224ffae95896d1eabca5e40e5fedd7f538e6`
+Branch base: Hub `master@f6cc06bcc9009a8d4357b0adcb31e16ae150d8cc`
 
 This checklist records the actual repository baseline and the safety gates that
 must precede Advertising or Installer accounts. It does not authorize Hub-owned
@@ -30,9 +30,11 @@ RLS, and impersonated-role gates below pass.
 
 ## 2. Contract and repository boundary
 
-- [x] Quote Tool PR #701 merged canonical contract `v1.3.0-draft`.
-- [x] Hub mirror is exact: 26,795 bytes, SHA-256
-      `9c929965e963bf21fe021877fcaf03d3333005f5e3ae73eff4eccbd642e75235`.
+- [x] Quote Tool PR #701 established the `v1.3.0-draft` baseline; PR #716
+      merged its self-contained canonical form to Quote Tool `master` at
+      `5d56ebb62e23b2fe592cdc1912359b1ddf137270`.
+- [x] Hub mirror is exact: 41,336 bytes, SHA-256
+      `2fc10d33bf592b79d38741e8f40bdc1abcf52c2233d3be89521807211bbafa4a`.
 - [x] `contract-pin.json` records one version, source commit/path, byte length,
       and raw-byte SHA-256.
 - [x] Local verification detects mirror/pin drift and clearly reports
