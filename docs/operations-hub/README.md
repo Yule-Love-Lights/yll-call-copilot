@@ -13,7 +13,7 @@ This directory is the shared, version-controlled planning location for the Yule 
 
 - [`CODEX-PLAN.md`](./CODEX-PLAN.md) — original full Codex product/technical plan; preserved for traceability.
 - [`CODEX-REVIEW-FINDINGS.md`](./CODEX-REVIEW-FINDINGS.md) — reviews of the original Codex plan.
-- Claude's Hub/P4P mirror: [`docs/P4P-OPERATIONS-HUB-PLAN.md`](../../tree/naldo/p4p-plan-pointer/docs/P4P-OPERATIONS-HUB-PLAN.md) on branch `naldo/p4p-plan-pointer`.
+- Claude's Hub/P4P mirror: [`docs/P4P-OPERATIONS-HUB-PLAN.md`](https://github.com/Yule-Love-Lights/yll-call-copilot/blob/naldo/p4p-plan-pointer/docs/P4P-OPERATIONS-HUB-PLAN.md).
 - Claude's mirror declares `yll-quote-tool/docs/context/project_p4p_labor.md` as its canonical source.
 
 ## Cross-repository authority
