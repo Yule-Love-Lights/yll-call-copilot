@@ -39,6 +39,31 @@
 - Copilot CRM cancellation re-anchors: after the quote tool calendar (Claude
   Phase 3) AND hub attendance are both live and clean for two weeks.
 
+## Final rulings F1-F4 (Naldo, 2026-08-06 evening, supersede R1/R2/R3/R5 where stated)
+
+| # | Decision | Ruling |
+|---|---|---|
+| F1 | Sequencing, supersedes R1 | RULED: PARALLEL TRACKS after joint Phase 0. Track A = quote tool labor/time/scheduling (Claude), targets Sept 21 with Telegram-bot-first capture into the canonical ledger. Track B = advertising PWA (Codex). Track C = hub office/install UI (Codex). Advertising no longer blocks time capture; R1's data-gap consequence is void. |
+| F2 | Time ownership, supersedes R2 | RULED: QUOTE TOOL OWNS ALL CANONICAL TIME (day clock, breaks, job segments, travel) as one paid-day envelope. Hub = capture UI, offline command queue, raw GPS route evidence, read models. Matches both assistants' converged recommendation. |
+| F3 | Pay-hours mechanism, supersedes R3 | RULED: MANUAL PRIMARY. One-tap Arrived/Departed punches are authoritative for pay from day one; GPS corroborates, flags mismatches, and may be promoted after Phase 5 field calibration. |
+| F4 | Clock gate, refines R5 | RULED: SOFTENED GATE. Pre-clock-in: non-sensitive summary (date, start, crew, prep). Exact addresses, customer contact, route, and job actions unlock at accepted clock-in, server-enforced. Audited owner emergency override exists. |
+
+## Enforcement notes from the compliance audit (2026-08-06, no new ruling needed)
+
+- R6 stands: Codex's SPEC/MASTER describe a live Manager tier; final docs scope it
+  back to designed-not-provisioned in v1. YLL has no managers.
+- Wage-floor deferral stands: Codex's MASTER §8 gates Phase 2 reporting on a wage
+  review; final docs move that requirement to where it always was, before the
+  actual pay flip (attorney + payroll review), not before shadow reporting.
+- R7 reconciliation: employees hold one or more department MEMBERSHIPS (Naldo's
+  multi-department ruling); ONE ACTIVE department context per shift (Codex's
+  routing model). Both satisfied.
+- Silent items the final docs must state explicitly: 6-year wage-record retention
+  figure, RLS before field launch, the written signed comp plan, the NY WTPA
+  pay-rate notice on any hourly-to-P4P change, training bonus (+$4/hr) and
+  referral bonus (season-1 IN per ruling), and A8's four non-negotiables
+  consolidated into the contract section itself.
+
 ## Non-optional directives (acknowledged, not ruled)
 
 | Directive | Source | Status |
