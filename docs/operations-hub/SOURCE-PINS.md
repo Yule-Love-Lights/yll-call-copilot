@@ -29,7 +29,7 @@ Prepared: 2026-08-07
   `9c929965e963bf21fe021877fcaf03d3333005f5e3ae73eff4eccbd642e75235`
 - Hub mirror SHA-256:
   `9c929965e963bf21fe021877fcaf03d3333005f5e3ae73eff4eccbd642e75235`
-- Hub mirror commit: `PENDING` — replace with the immutable commit containing
-  `INTEGRATION-CONTRACT.md` before PR #37 is marked ready for review.
+- Hub mirror commit:
+  `1e4ade9bd3bfbe760fba574a221bf301ec01ed41`
 - Shared JSON Schema SHA-256: `PENDING` — the canonical Phase 0 artifact is not
   yet published in the Quote Tool repository.
