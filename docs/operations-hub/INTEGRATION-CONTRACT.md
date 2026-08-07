@@ -1,138 +1,219 @@
-# Integration contract: Operations Hub <-> Quote Tool (draft v0.1)
+> MIRROR of the canonical contract. Canonical copy:
+> `yll-quote-tool/docs/context/OPERATIONS_HUB_CONTRACT.md`. If they drift, the
+> canonical copy wins; update this mirror to match. Version must stay identical
+> in both repos.
 
-> Jointly owned. Neither system builds against an endpoint, event, or field
-> that is not in this file. Changes land by PR touching this file, reviewed by
-> both assistants, approved by Naldo for anything that moves money or changes
-> ownership. Draft v0.1 defines shapes and flows; exact JSON schemas get
-> nailed per-endpoint in the PR that implements each one, updating this file
-> in the same PR.
+# Operations Hub <-> Quote Tool contract, v1.0.0-draft
 
-## 1. Transport, auth, and delivery rules (both directions)
+> CANONICAL copy. The mirror lives at
+> `yll-call-copilot/docs/operations-hub/INTEGRATION-CONTRACT.md` and must carry
+> the same version string. Neither repo builds against anything not in this
+> file. Built 2026-08-06 from CODEX-PLAN §19-21, OPERATIONS-HUB-SPEC §3-§7,
+> CLAUDE-PLAN A3/A8, the union checklist from the cross-doc gap audit, and
+> Naldo's rulings R1-R8 + F1-F4 (DECISIONS.md in the hub repo). Approved by the
+> Claude/Quote Tool side as v1.0.0-draft; becomes v1.0.0 when Codex confirms
+> the mirror matches and Naldo approves the master plan.
 
-- HTTPS service APIs, versioned paths (`/api/v1/...` hub-side; the Quote Tool
-  uses its existing route conventions with an `x-api-version` header).
-- Scoped machine credentials per direction, environment-specific, never
-  browser-session credentials, rotated; replay protection via signed
-  timestamp+nonce (CODEX §20).
-- Every mutation carries an idempotency key. Retries return the original
-  result, never a duplicate.
-- Deliveries go through a transactional outbox on the writer and an inbox
-  dedup table on the reader, with aggregate version, expected prior version,
-  actor, source channel, correlation and causation IDs, retry/backoff, and a
-  dead-letter queue with an admin surface (CODEX §20, §23).
-- Every Quote Tool route reachable by the Hub or crew is in `operatorGate`'s
-  allowlist in the same PR that creates it, verified logged out.
-- Kill switches per flow, independently: hub->qt attendance events, qt->hub
-  job read/events, completion commands, telegram relay (CODEX §27 Phase 0).
-- Clock times in UTC; the weekly pay boundary and business days are
-  America/New_York.
+## 0. Ownership (final, per rulings F2/R8)
 
-## 2. Identity mapping
+- **Quote Tool owns:** customers, jobs, addresses, schedule, assignments,
+  budgeted hours, labor revenue, ALL canonical time (day clock, breaks, job
+  segments, travel, as one paid-day envelope), approvals and payroll locks,
+  completion state and photo binaries, the whole P4P engine, payroll export,
+  compensation config, the Telegram bot, and every shared-labor schema
+  migration plus the `/api/ops/v1` routes (single author: the Quote Tool
+  assistant).
+- **Hub owns:** phone-OTP auth, employee profiles/roles/department
+  memberships, sessions, the office/call tools, ALL advertising (campaigns,
+  runs, placements, numbering, media, hotspots), raw route breadcrumbs and
+  device evidence, offline command queues, read-model caches, hub audit
+  events, and the hub schema (single author: Codex).
+- The Hub is capture UI and projection for time; it never holds mutable
+  canonical time and never computes pay (F2, R8).
 
-- Hub `employees.employee_id` (UUID) is canonical.
-- Quote Tool `crew_members`: `id`, `hub_employee_id` (nullable until Hub
-  Phase 0 backfill), `telegram_user_id`, `display_name`, `base_rate_cents`,
-  `in_p4p_pool`, `pay_mode` (`hourly` | `p4p` | `shadow`), `language`,
-  `active`, timestamps. Pay fields are Quote Tool truth; identity fields are
-  a cache of Hub truth.
-- Hub emits employee lifecycle events; the Quote Tool consumes and updates
-  its cache. The Quote Tool never creates employees.
-- `EmployeeUpserted` payload: employee_id, display_name, departments[],
-  role, active, telegram_user_id?, language. `EmployeeDeactivated`:
-  employee_id, at, reason. Deactivation also invalidates the Telegram
-  linkage relay-side.
+## 1. Transport and envelope rules (every flow)
 
-## 3. Flow A: Quote Tool -> Hub, jobs read model
+- TLS; environment-scoped machine credentials per direction; replay
+  protection (signed timestamp+nonce); key rotation; request-size limits;
+  service keys never in a browser.
+- Every mutation carries: acting `employee_id`, `idempotency_key`,
+  `device_time` + timezone, `source` (`pwa` | `telegram` | `office` |
+  `system`), app/device version, optional GPS + accuracy, `expected_version`,
+  optional reason/evidence.
+- Every response returns: canonical id, accepted server time, state enum,
+  new version, review flag, safe error code.
+- Same key + same payload returns the original result. Same key + different
+  payload is rejected. Dedupe keys are retained at least 45 days (covers
+  offline retry windows), retention recorded here.
+- Transactional outbox on the writer, inbox dedup on the reader, aggregate
+  versions with stale-version rejection, correlation and causation ids,
+  retry with backoff, dead-letter queue WITH an admin surface in both apps.
+- UTC storage; America/New_York for display, business days, and the weekly
+  pay boundary. Integer cents everywhere; no floats.
+- Pagination on every list endpoint; versioned paths (`/api/ops/v1/...`);
+  deprecation runs old+new in overlap with a dated retirement; rollback
+  semantics stated per endpoint at implementation time.
+- Each implemented endpoint ships a formal OpenAPI fragment in the PR that
+  builds it, appended to this contract's spec directory.
+- Every crew-reachable Quote Tool route enters `operatorGate`'s allowlist in
+  the same PR, verified logged out. Hub field launch requires RLS enabled and
+  tested; production fails closed.
+- Independent kill switches: QT time-writes, QT job-reads, completion
+  commands, Telegram relay, hub advertising writes, route collection.
 
-The Hub renders installer days from this; it stores a read model, never
-authoritative job data.
+## 2. Identity (Flow I)
 
-- `GET qt:/api/ops/jobs?assigned_to={employee_id}&date={yyyy-mm-dd}`
-  Returns per job: job_id, customer display name, address, lat/lng if
-  geocoded, scheduled window, assigned employee_ids[], budgeted_hours,
-  canonical status, service type. Address visibility follows role rules
-  (assigned installers and admins only, CODEX §6).
+- Immutable mapping, one row per person: hub `employee_id` (canonical) <->
+  QT `crew_members.id` <-> phone <-> `telegram_user_id`. Runtime linkage
+  never by name or email text.
+- Hub emits `EmployeeUpserted` (employee_id, display_name, department
+  memberships[], role, active, telegram_user_id?, language) and
+  `EmployeeDeactivated` (employee_id, at, reason; also kills Telegram
+  pairing and integration credentials).
+- QT `crew_members` additionally holds the pay-side fields (QT truth):
+  `base_rate_cents`, `in_p4p_pool`, `pay_mode` (`hourly`|`shadow`|`p4p`),
+  `language`. `hub_employee_id` is nullable until Hub Phase 0 lands, then
+  backfilled; partial provisioning is labeled and retried, never a silent
+  duplicate.
+- Departments are MEMBERSHIPS (one or more per employee, per ruling R7) with
+  ONE active department context per shift.
+
+## 3. Flow A: jobs and schedule reads (QT -> Hub)
+
+- `GET /api/ops/v1/me/day` — the installer's day. Empty of sensitive detail
+  until an accepted clock-in exists (the gate, F4): pre-clock-in it returns
+  only the non-sensitive summary (date, start time, crew names, prep notes);
+  post-clock-in it returns exact addresses, customer contact, route order,
+  and job action affordances. Enforced server-side on every request; cached
+  screens cannot bypass; office/admin roles exempt; the audited owner
+  emergency override and the signed offline work packet ("Clock-in waiting
+  to sync") are the only exceptions.
+- `GET /api/ops/v1/jobs?assigned_to={employee_id}&date=` — job_id, customer
+  display name, address (role-gated), lat/lng, window, assigned
+  employee_ids[], budgeted_hours, canonical status, service type.
 - Events: `JobAssigned`, `JobUnassigned`, `JobRescheduled`,
-  `JobStatusChanged` (job_id, status, at, version). The Hub uses these to
-  invalidate its read model and to know which jobs Route Mode may match
-  visits against.
-- **Clock-gate rule:** the Hub's own day view for installers must return
-  empty until the employee has an open Hub shift (server-side check on the
-  Hub; DECISIONS R5). The Quote Tool applies the same gate on any surface it
-  serves to installers.
+  `JobStatusChanged` (job_id, status, at, version).
 
-## 4. Flow B: Hub -> Quote Tool, attendance and labor spans
+## 4. Flow B: time capture commands (Hub/Telegram/office -> QT)
 
-The pay engine's inputs. Only APPROVED records flow; suggestions and
-unapproved corrections never leave the Hub.
+The canonical ledger lives in the QT (F2). Capture surfaces submit commands;
+the QT applies them to one paid-day envelope with non-overlapping segments.
 
-- `ShiftApproved`: employee_id, shift_id, clock_in_at, clock_out_at,
-  break_spans[], stoppage/exception flags, approved_by, approved_at,
-  version. Weekly floor and overtime math read these.
-- `JobVisitApproved`: visit_id, employee_id, job_id (Quote Tool id),
-  arrived_at, departed_at, source (`gps_auto` | `gps_suggested_confirmed` |
-  `manual_punch` | `office_entry`), confidence, stoppage_reason?, entry_kind
-  (`install` | `rework` | `non_billable` | `travel`), approved_by,
-  approved_at, version. These land in the Quote Tool's per-job labor table
-  (DECISIONS R2, R3).
-- `JobVisitCorrected` / `ShiftCorrected`: same shape plus supersedes_id.
-  After the Quote Tool's payroll lock, corrections create next-period
-  adjustment rows, never retroactive edits (CLAUDE A5 Phase 2).
-- Ordering: per-aggregate versions; the Quote Tool rejects stale versions
-  and dead-letters gaps for reconciliation (CODEX §20).
-- **Weekly payroll dependency:** the Quote Tool's pay run for week N reads
-  only events received and approved by the cutoff; the Hub's approval queue
-  must clear before the cutoff. The pay run reports unapproved-span counts
-  loudly rather than silently paying less (DECISIONS R3 consequences).
+- `POST /api/ops/v1/clock-in` · `POST /api/ops/v1/clock-out`
+- `POST /api/ops/v1/breaks/start` · `POST /api/ops/v1/breaks/end`
+- `POST /api/ops/v1/jobs/{id}/arrive` · `POST /api/ops/v1/jobs/{id}/depart`
+- `POST /api/ops/v1/jobs/{id}/complete` (also requests operational
+  completion, Flow C)
 
-## 5. Flow C: completion commands (Hub or Telegram -> Quote Tool)
+Semantics (state machine, QT-enforced):
 
-- `POST qt: field completion command` with job_id, employee_id, note?,
-  photo_refs[], idempotency key. The Quote Tool validates assignment +
-  status, stores `field_work_completed` or
-  `completion_submitted_for_office_review`, emits `JobStatusChanged` back.
-  Never touches invoices or money (CODEX §19, master plan §8).
-- Photos post through the Quote Tool's existing photo upload path; the
-  command carries returned photo reference IDs, the binary lives once.
-- This extends the existing bot `completeInstall` operation; there is one
-  canonical completion code path regardless of channel.
+- Clock-in opens the day envelope (GPS sample required, no geofence);
+  clock-out closes any open segment/break at punch time and flags review.
+- Arrive opens a job segment (`entry_kind = install` default; `rework` for a
+  closed job, allowed, affects efficiency, never reopens billing;
+  `non_billable` with approval). Depart closes it. Manual punches are
+  AUTHORITATIVE for pay (F3).
+- Break pauses job time and route collection; break end resumes the day,
+  not the job.
+- Travel = day time outside job/break/non-billable segments, counted once
+  (single-source rule; no BH travel allowance double-count).
+- `stoppage_reason` enum on segment close: `completed` | `weather` |
+  `no_access` | `materials` | `other`. Ships day one; weather-flagged
+  segments are excluded from the BH learning signal.
+- Midnight (America/New_York) auto-closes forgotten days AND is independent
+  of the Hub's Placement Run midnight reconciliation.
+- Capture states visible to the employee: saved-on-phone, waiting-to-sync,
+  accepted, needs-review, rejected.
+- GPS-derived route evidence (Hub-owned) may SUGGEST visits after Phase 5
+  calibration; a suggestion becomes a segment only through an explicit
+  punch, an employee confirmation, or a Jason/Naldo correction (F3).
 
-## 6. Flow D: Telegram relay (Quote Tool webhook -> Hub)
+## 5. Flow C: canonical time reads, approvals, exceptions (QT surfaces)
 
-- The Quote Tool webhook authenticates the Telegram user against
-  `crew_members.telegram_user_id`, then calls Hub service APIs for Hub-owned
-  actions: `POST hub:/api/v1/attendance/clock-in|clock-out`,
-  `POST hub:/api/v1/visits/{id}/confirm`, break start/stop.
-- Relay calls carry: hub employee_id, source `telegram`, the Telegram
-  update_id (deduped both sides), idempotency key, and a reply-bound
-  confirmation token for consequential writes (CODEX §21).
-- Verified advertising placements never originate from Telegram (CODEX §21).
+- `GET /api/ops/v1/me/hours` — the employee's envelope: segments with
+  entry_kind, breaks, travel, gaps, acceptance states, approved totals.
+- Approval, correction, split, rejection, lock, reopen, and post-export
+  adjustment are QT owner operations: Jason primary, Naldo backup, ONLY
+  them (managers comment/recommend). Every edit is append-only with
+  before/after, actor, reason. Exported periods change by adjustment rows
+  in the next period, never rewrite.
+- Exception queues (QT): forgotten clock-out, duplicate punch, open break at
+  clock-out, open job segment at clock-out, overnight/DST, missing/poor GPS
+  on punches, correction requests, unapproved-time-at-payroll-cutoff.
+- Owner emergency override API: requester, approver, reason, start, expiry,
+  affected employee, fully audited.
+- Wage-feeding records (envelope, segments, approvals, pay ledger): SIX-YEAR
+  retention, append-only. Raw route breadcrumbs (Hub): 120 days.
 
-## 7. Flow E: earnings display (Hub -> employee, data from Quote Tool)
+## 6. Flow D: operational completion
 
-- `GET qt:/api/ops/me/earnings?employee_id=...&period=...` returns, per pay
-  period: base_pay_cents, hours breakdown, pool_share_provisional_cents,
-  pool_share_earned_cents, floor_true_up_cents, bonuses[], forfeitures[]
-  (job, reason, window dates), pay_mode, and the week-N/week-N-1 split
-  (hours current week, performance pay following week).
-- **Display rule, binding:** provisional and earned are separate fields and
-  the Hub renders them distinctly; provisional is labeled pending quality
-  review, never earned (CLAUDE A3). Same rule for any leaderboard money.
-- `GET qt:/api/ops/me/stats` (efficiency, BH vs actual) and
-  `GET qt:/api/ops/leaderboard` follow the same rule.
+- `jobs/{id}/complete` stores a NON-financial state, names locked from
+  CODEX-PLAN §19: `field_work_completed` or
+  `completion_submitted_for_office_review`. Emits `JobStatusChanged` back.
+  NEVER touches invoices, deposits, or money. One canonical operation for
+  PWA, Telegram, and office (extends the existing bot `completeInstall`).
+- Completion photos post through the QT's existing photo path; commands
+  carry returned reference ids; the binary exists once. Required photo
+  count/camera/GPS rules stay OFF until Naldo defines them (Codex open item).
 
-## 8. Vocabulary lock (from PLAN-COMPARISON §6)
+## 7. Flow E: earnings, stats, leaderboard (QT -> Hub display)
 
-shift, break, job time entry (QT pay input), job visit (Hub evidence),
-Route Mode, Placement Run, field completion, provisional/earned/paid/
-forfeited, clock gate. Both codebases use these names in schemas and APIs so
-grep works across repos.
+- `GET /api/ops/v1/me/earnings?period=` returns per period: base_pay_cents,
+  hours breakdown, `pool_share_provisional_cents`,
+  `pool_share_earned_cents`, per-job `quality_window_closes_at`,
+  `floor_true_up_cents`, bonuses[] (training +$4/hr, referral, manual
+  adjustments), forfeitures[] (job, documented reason, employee response
+  state), pay_mode, and the week-N hours / week-N-1 performance split.
+- **Display law (binding, CLAUDE-PLAN A3):** provisional renders EXACTLY as
+  `Pending quality review` with its close date. Never earned/made/owed/paid,
+  never in earned totals, exports, or leaderboards. The server supplies
+  states and timestamps; the Hub never infers or computes them. Only
+  `earned` enters payroll export. Quality transitions are race-safe
+  (server-side compare-and-swap on state), evidence immutable, employee
+  response step included, Jason/Naldo finalize.
+- `GET /api/ops/v1/me/stats` (efficiency, BH vs actual, trend) and
+  `GET /api/ops/v1/leaderboard` (approved team metrics; no pay amounts, no
+  addresses, no routes on internal-public boards).
+- Engine guarantees restated as contract: integer cents, largest-remainder
+  split with remainder cents to the crew, pool computed at invoice-final
+  (never quote approval; never-invoiced jobs pay no pool), conservative
+  default labor % for unmapped item categories, floor-true-up alarm that
+  holds the pay flip, shadow mode until the per-person pay-mode flag flips,
+  written comp plan + NY WTPA pay-rate notice (employee's language) before
+  any individual's flip.
 
-## 9. Change process
+## 8. Flow T: Telegram relay
 
-1. PR against this file first, implementation second, or same PR touching
-   both.
-2. Both assistants named as reviewers in the PR body; a human (Naldo or
-   Jason) merges.
-3. Anything moving money, changing field ownership, or changing the legal
-   display rule needs Naldo's explicit line in DECISIONS.md.
+- The QT bot is the single ingress (one bot, one webhook, R4). Job/time/pay
+  commands hit the same `/api/ops/v1` operations with `source: telegram`,
+  the shared idempotency rules, update_id dedup, and reply-bound
+  confirmations for consequential writes.
+- Advertising over Telegram in v1: status + deep link into Hub Camera Mode
+  only. Run start/end and placement capture are Hub-only; Telegram photos
+  are never verified placements.
+- Pairing, roster, routing, webhook config, write enablement: Naldo/Jason
+  only, audited.
+
+## 9. Sequencing hooks (F1)
+
+Joint Phase 0 delivers: this contract as OpenAPI stubs, identity mapping,
+auth/audit/idempotency scaffolding, kill switches, AGENTS.md ownership rows.
+Then in parallel: Track A (QT: crew_members, BH + labor revenue, canonical
+time ledger + bot capture targeting Sept 21, scheduling calendar, approvals
+and exceptions, P4P shadow engine, earnings API), Track B (Hub advertising
+PWA), Track C (Hub office/install UI: rename, OTP, gate summary screens,
+manual punch UI, completion UI). Actual P4P pay enablement is last and
+feature-flagged. External Copilot CRM cancels only after schedule/time
+parity plus two clean weeks; YLL Call Copilot the codebase is preserved and
+renamed.
+
+## 10. Change process
+
+1. PR against this file (and the mirror in the same or a paired PR) BEFORE
+   or WITH the implementation.
+2. Both assistants named reviewers; a human merges.
+3. Money movement, ownership changes, or display-law changes need Naldo's
+   line in DECISIONS.md.
+4. Version bumps: patch for additive fields, minor for new endpoints, major
+   for semantics. Both repos must reference the identical version before
+   either builds against a change.
