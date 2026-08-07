@@ -22,6 +22,7 @@ the master plan, and the byte-identical Hub mirror is now present.
 7. `FEATURE-BACKLOG.md` — committed scope, launch blockers, and later ideas.
 8. `SOURCE-PINS.md` — the exact source revisions reconciled here.
 9. `CLAUDE-FINAL-REVIEW-HANDOFF.md` — historical final-review prompt.
+10. `PHASE-0-CHECKLIST.md` — live safety gates and the field-provisioning stop.
 
 ## Scoped authority
 

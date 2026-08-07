@@ -1,0 +1,10 @@
+{
+  "manifest_version": 1,
+  "contract_version": "1.3.0-draft",
+  "canonical_repository": "Yule-Love-Lights/yll-quote-tool",
+  "canonical_path": "docs/context/OPERATIONS_HUB_CONTRACT.md",
+  "canonical_commit": "c65f73e1b8e0b061895d6d18bf28fa24ee6a2363",
+  "mirror_path": "docs/operations-hub/INTEGRATION-CONTRACT.md",
+  "sha256": "9c929965e963bf21fe021877fcaf03d3333005f5e3ae73eff4eccbd642e75235",
+  "byte_length": 26795
+}
