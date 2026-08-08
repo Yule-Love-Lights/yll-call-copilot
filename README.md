@@ -5,11 +5,11 @@ Internal tool for Yule Love Lights. It helps human reps handle inbound calls and
 ## Setup
 
 1. `npm install`
-2. Copy `.env.example` to `.env.local` and fill the values from the Yule Love Lights accounts (GoHighLevel private integration token + location id, Supabase project keys). If you also want inbound calls/texts to trigger the dashboard's screen-pop, set `GHL_WEBHOOK_SECRET` to a long random string and point the GHL workflow's webhook action at `https://<this app>/api/webhooks/ghl?key=<the same value>` (see `.env.example` for details).
-3. Create your own staff login -- there is no self-signup; sign-in requires both a Supabase Auth account and an `app_users` row, and `node scripts/create-user.mjs <email> <temp-password> [role]` is the only way to create both at once. Don't leave the password lying around in a file once you've signed in with it.
+2. Copy `.env.example` to `.env.local` and fill the values from the Yule Love Lights accounts (GoHighLevel private integration token + location id, Supabase project keys). HighLevel Marketplace webhooks use signed-body verification; a private workflow may temporarily use the `GHL_WEBHOOK_SECRET` compatibility path described in `.env.example`.
+3. Create an Office staff login -- there is no self-signup; sign-in requires both a Supabase Auth account and an `app_users` row, and `node scripts/create-user.mjs <email> <temp-password> [role]` creates the closed `rep`/`office` bootstrap roles. Owner/Admin is never created by this script; production must use the separately reviewed Naldo/Jason immutable-ID path. Don't leave the password lying around in a file once you've signed in with it.
 4. `npm run dev` and open http://localhost:3000, then sign in with the account from step 3.
 
-The app runs fine with an empty `.env.local`; the health panel just shows red until the keys are in. Auth is the exception -- once real Supabase keys are filled in, every route requires a signed-in, allowlisted user, so step 3 is not optional once you're past a bare `.env.local`.
+Authentication and authorization fail closed: protected pages and non-health APIs return a generic 503 until the complete Supabase configuration is present. Once configured, every employee route requires a signed-in user, a resolved `app_users` actor, and the route's explicit capabilities.
 
 ## Checks
 
@@ -28,16 +28,21 @@ npm test
 To switch a call over to a real phone call once those accounts exist:
 
 1. Fill in the Twilio/Deepgram vars in `.env.local` (see `.env.example` for what each one is and where to find it).
-2. Start the standalone media bridge alongside `npm run dev`: `node scripts/live-bridge.mjs`. It listens on `ws://localhost:8787` for Twilio's Media Stream and transcribes with Deepgram. Twilio requires a `wss://` URL in production, so put a TLS tunnel (e.g. `ngrok http 8787`, using its `wss://` forwarding address) in front of it and point `LIVE_BRIDGE_URL` at that address.
+2. Start the standalone media bridge alongside `npm run dev`: `node scripts/live-bridge.mjs`. It listens locally on port 8787 and transcribes only Twilio-signed Media Stream upgrades whose five-minute grant the Hub atomically consumes once. Twilio requires a `wss://` URL, so put a TLS tunnel (e.g. `ngrok http 8787`, using its `wss://` forwarding address) in front of it and set the same query-free `LIVE_BRIDGE_URL` base URL for both the app and bridge. Set `LIVE_APP_BASE_URL` to the Hub's HTTPS origin (loopback HTTP is allowed only locally) so the bridge can consume the durable grant and post transcript segments. The app appends a unique session path for each call.
 3. Point the Twilio TwiML App's Voice "request URL" at `https://<this app>/api/twilio/voice`.
 
 This path is coded against Twilio's and Deepgram's documented APIs but has never run against a live account -- treat it as unverified until someone confirms a real call end to end.
 
 ## Deploy note (Vercel)
 
-`vercel.json` carries one cron entry: a Monday-morning GET to `/api/cron/brain-review`, which loops every vertical through the same weekly-review logic as the manual button on `/analytics`. It no-ops unless `CRON_ENABLED=true` is set on the Vercel project, so deploying does not silently start scheduled AI runs. Vercel Cron only sends GET, which is why the cron route exists separately from the per-vertical POST route the button uses.
+`vercel.json` carries five GET cron entries. Every request must present Vercel's `Authorization: Bearer $CRON_SECRET` header; `CRON_ENABLED=true` is a separate kill switch. Configure both values in the Vercel project before enabling scheduled work.
+
+Before a production deploy, run `npm run verify:auth-config` in an environment
+containing the production variable names. It validates Supabase, the two
+approved Owner/Admin Auth UUIDs, cron authentication, and any enabled
+Twilio/live-bridge/legacy-HighLevel credential set without printing values.
 
 ## Notes
 
-- Auth is live (staff allowlist sign-in, gated by `src/proxy.ts`). Supabase row level security is still service-role only; every table's RLS policy is deferred until a later pass.
+- Auth is live and capability-gated in `src/proxy.ts`; every current page/API method is declared in `src/lib/auth/routePolicy.ts`. Supabase row-level security and resource-scoped service-role handler checks remain Phase 0 release blockers.
 - Never commit `.env.local` or paste real key values into code, logs, or chat.

@@ -12,6 +12,13 @@ export type LiveSessionRow = {
   mode: LiveSessionMode;
   status: LiveSessionStatus;
   transcript_running: string;
+  dial_grant_hash: string | null;
+  dial_actor_auth_user_id: string | null;
+  dial_grant_expires_at: string | null;
+  dial_started_at: string | null;
+  media_stream_grant_hash: string | null;
+  media_stream_grant_expires_at: string | null;
+  media_stream_started_at: string | null;
   started_at: string;
   ended_at: string | null;
 };

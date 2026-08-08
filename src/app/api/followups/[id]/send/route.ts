@@ -7,6 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
+import { authorizeCallResource, resolveCurrentHubActor } from '@/lib/auth/resource';
 import { HighLevelError, isHighLevelConfigured, sendConversationMessage } from '@/lib/ghl/client';
 import type { CallRow, FollowupRow, LeadRow } from '@/lib/leads/types';
 
@@ -20,6 +21,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   const { id } = await params;
   const supabase = getSupabaseServerClient()!;
+  const actorResolution = await resolveCurrentHubActor();
+  if (actorResolution.status !== 'resolved') {
+    return NextResponse.json(
+      { configured: true, sent: false, error: 'Access denied.' },
+      { status: actorResolution.status === 'unavailable' ? 503 : 403 },
+    );
+  }
 
   const { data: followupData, error: followupError } = await supabase
     .from('followups')
@@ -37,6 +45,29 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ configured: true, sent: false, error: 'Follow-up not found.' }, { status: 404 });
   }
   const followup = followupData as FollowupRow;
+
+  if (!followup.call_id) {
+    return NextResponse.json(
+      { configured: true, sent: false, error: 'Access denied.' },
+      { status: 403 },
+    );
+  }
+  const authorization = await authorizeCallResource(supabase, {
+    actor: actorResolution.actor,
+    callId: followup.call_id,
+    action: 'followup.send',
+    resourceType: 'followup',
+    resourceId: id,
+    teamCapability: 'operations.admin',
+  });
+  if (authorization.status !== 'authorized') {
+    const status = authorization.status === 'unavailable' ? 503
+      : authorization.status === 'missing' ? 404 : 403;
+    return NextResponse.json(
+      { configured: true, sent: false, error: 'Access denied.' },
+      { status },
+    );
+  }
 
   if (followup.status !== 'draft') {
     return NextResponse.json(

@@ -15,10 +15,18 @@ import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase';
 import { isClaudeConfigured } from '@/lib/claude';
 import { runWeeklyDigest } from '@/lib/digest/runDigest';
+import { verifyCronRequest } from '@/lib/auth/machine';
 
 export const maxDuration = 60;
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = verifyCronRequest(request);
+  if (auth !== 'authorized') {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: auth === 'unconfigured' ? 503 : 401 },
+    );
+  }
   if (process.env.CRON_ENABLED !== 'true') {
     return NextResponse.json({ ran: false, reason: 'CRON_ENABLED is not set.' });
   }

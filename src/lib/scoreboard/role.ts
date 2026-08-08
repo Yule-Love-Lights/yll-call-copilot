@@ -4,10 +4,19 @@
 // most private outcome, never as "let them see everything."
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { parseAppUserRole } from '@/lib/auth/capabilities';
 
-export async function resolveRepRole(email: string | null | undefined, client: SupabaseClient): Promise<string | null> {
+export type ScoreboardRole = 'rep' | 'owner' | 'admin';
+
+export async function resolveRepRole(
+  email: string | null | undefined,
+  client: SupabaseClient,
+): Promise<ScoreboardRole | null> {
   if (!email) return null;
   const { data, error } = await client.from('app_users').select('role').eq('email', email.toLowerCase()).maybeSingle();
   if (error || !data) return null;
-  return (data as { role: string }).role;
+  const role = parseAppUserRole((data as { role?: unknown }).role);
+  if (role === 'owner' || role === 'admin') return role;
+  if (role === 'rep' || role === 'office') return 'rep';
+  return null;
 }

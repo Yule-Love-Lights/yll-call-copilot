@@ -3,17 +3,20 @@ import { NextRequest } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
   createServerClient: vi.fn(),
-  checkAllowlist: vi.fn(),
+  resolveHubActor: vi.fn(),
+  auditSensitiveRouteAccess: vi.fn(),
 }));
 
 vi.mock('@supabase/ssr', () => ({
   createServerClient: mocks.createServerClient,
 }));
 
-vi.mock('@/lib/auth/allowlist', () => ({
-  checkAllowlist: mocks.checkAllowlist,
-  shouldDenyAccess: (decision: string) =>
-    decision === 'denied' || decision === 'unconfigured',
+vi.mock('@/lib/auth/actor', () => ({
+  resolveHubActor: mocks.resolveHubActor,
+}));
+
+vi.mock('@/lib/auth/resource', () => ({
+  auditSensitiveRouteAccess: mocks.auditSensitiveRouteAccess,
 }));
 
 import { config, proxy } from './proxy';
@@ -37,15 +40,48 @@ function completeConfiguration() {
 function signedIn(email = 'jason@example.com') {
   mocks.createServerClient.mockReturnValue({
     auth: {
-      getUser: vi.fn(async () => ({ data: { user: { email } }, error: null })),
+      getUser: vi.fn(async () => ({
+        data: { user: { id: 'auth-user-1', email } },
+        error: null,
+      })),
     },
   });
 }
 
+function actorWith(capabilities: string[], role = 'office') {
+  return {
+    status: 'resolved',
+    actor: {
+      principalType: 'employee',
+      authUserId: 'auth-user-1',
+      employeeId: 'employee-1',
+      email: 'jason@example.com',
+      active: true,
+      role,
+      memberships: role === 'owner_admin'
+        ? ['office', 'advertising', 'installer', 'management']
+        : ['office'],
+      membershipVersion: null,
+      activeDepartmentContext: null,
+      capabilities,
+      source: 'legacy_app_users',
+    },
+  };
+}
+
+const OFFICE_CAPABILITIES = [
+  'office.tools.use',
+  'office.scoreboard.self',
+  'office.customer.search',
+  'office.calls.work',
+  'office.coaching.self',
+];
+
 describe('root authentication proxy', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.checkAllowlist.mockResolvedValue('allowed');
+    mocks.resolveHubActor.mockResolvedValue(actorWith(OFFICE_CAPABILITIES));
+    mocks.auditSensitiveRouteAccess.mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -63,7 +99,7 @@ describe('root authentication proxy', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('vary')).toBe('Cookie');
     expect(mocks.createServerClient).not.toHaveBeenCalled();
-    expect(mocks.checkAllowlist).not.toHaveBeenCalled();
+    expect(mocks.resolveHubActor).not.toHaveBeenCalled();
   });
 
   it('returns a generic 503 JSON error for a protected API', async () => {
@@ -82,7 +118,7 @@ describe('root authentication proxy', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
 
-  it('blocks partial configuration before session or allowlist work begins', async () => {
+  it('blocks partial configuration before session or actor work begins', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     completeConfiguration();
     vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', '');
@@ -91,7 +127,7 @@ describe('root authentication proxy', () => {
 
     expect(response.status).toBe(503);
     expect(mocks.createServerClient).not.toHaveBeenCalled();
-    expect(mocks.checkAllowlist).not.toHaveBeenCalled();
+    expect(mocks.resolveHubActor).not.toHaveBeenCalled();
   });
 
   it('keeps only public auth/recovery and health paths reachable without configuration', async () => {
@@ -114,7 +150,9 @@ describe('root authentication proxy', () => {
     vi.stubEnv('NODE_ENV', 'production');
     completeConfiguration();
 
-    const response = await proxy(request('/api/webhooks/ghl'));
+    const response = await proxy(
+      new NextRequest('https://ops.yulelovelights.com/api/webhooks/ghl', { method: 'POST' }),
+    );
 
     expect(response.headers.get('x-middleware-next')).toBe('1');
     expect(mocks.createServerClient).not.toHaveBeenCalled();
@@ -201,6 +239,51 @@ describe('root authentication proxy', () => {
     expect(response.headers.get('set-cookie')).toContain('Max-Age=0');
   });
 
+  it('forwards a refreshed Supabase cookie to the current route and the browser', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    completeConfiguration();
+    mocks.createServerClient.mockImplementation(
+      (
+        _url: string,
+        _key: string,
+        options: {
+          cookies: {
+            setAll: (
+              cookies: Array<{
+                name: string;
+                value: string;
+                options?: { path?: string };
+              }>,
+            ) => void;
+          };
+        },
+      ) => {
+        options.cookies.setAll([
+          { name: 'sb-session', value: 'refreshed-token', options: { path: '/' } },
+        ]);
+        return {
+          auth: {
+            getUser: vi.fn(async () => ({
+              data: { user: { id: 'auth-user-1', email: 'jason@example.com' } },
+              error: null,
+            })),
+          },
+        };
+      },
+    );
+
+    const response = await proxy(
+      new NextRequest('https://ops.yulelovelights.com/scoreboard', {
+        headers: { cookie: 'sb-session=stale-token' },
+      }),
+    );
+
+    expect(response.headers.get('x-middleware-request-cookie')).toContain(
+      'sb-session=refreshed-token',
+    );
+    expect(response.headers.get('set-cookie')).toContain('sb-session=refreshed-token');
+  });
+
   it('keeps GHL customer search and Twilio token minting behind staff auth', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     completeConfiguration();
@@ -218,18 +301,21 @@ describe('root authentication proxy', () => {
     expect(mocks.createServerClient).toHaveBeenCalledTimes(2);
   });
 
-  it('allows only a configured, signed-in, allowlisted request', async () => {
+  it('allows only a configured, signed-in actor with the declared capability', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     completeConfiguration();
     signedIn();
 
     const response = await proxy(request('/scoreboard'));
 
-    expect(mocks.checkAllowlist).toHaveBeenCalledWith('jason@example.com');
+    expect(mocks.resolveHubActor).toHaveBeenCalledWith({
+      id: 'auth-user-1',
+      email: 'jason@example.com',
+    });
     expect(response.headers.get('x-middleware-next')).toBe('1');
   });
 
-  it('fails closed when auth or allowlist dependencies throw', async () => {
+  it('fails closed when auth or actor dependencies throw', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     completeConfiguration();
     mocks.createServerClient.mockImplementationOnce(() => {
@@ -239,7 +325,7 @@ describe('root authentication proxy', () => {
     expect((await proxy(request('/scoreboard'))).status).toBe(503);
 
     signedIn();
-    mocks.checkAllowlist.mockRejectedValueOnce(new Error('allowlist unavailable'));
+    mocks.resolveHubActor.mockRejectedValueOnce(new Error('actor unavailable'));
     expect((await proxy(request('/scoreboard'))).status).toBe(503);
   });
 
@@ -258,19 +344,96 @@ describe('root authentication proxy', () => {
     expect((await proxy(request('/api/scoreboard'))).status).toBe(503);
   });
 
-  it('distinguishes a denied employee from an unavailable allowlist', async () => {
+  it('distinguishes a denied employee from an unavailable actor dependency', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     completeConfiguration();
     signedIn('stranger@example.com');
-    mocks.checkAllowlist.mockResolvedValueOnce('denied');
+    mocks.resolveHubActor.mockResolvedValueOnce({
+      status: 'denied',
+      reason: 'not_staff',
+    });
 
     const denied = await proxy(request('/api/scoreboard'));
     expect(denied.status).toBe(403);
-    expect(await denied.json()).toEqual({ error: 'Not on the staff list' });
+    expect(await denied.json()).toEqual({
+      error: {
+        code: 'ACCESS_DENIED',
+        message: 'You do not have access to this resource.',
+      },
+    });
 
-    mocks.checkAllowlist.mockResolvedValueOnce('unconfigured');
+    mocks.resolveHubActor.mockResolvedValueOnce({ status: 'unavailable' });
     const unavailable = await proxy(request('/api/scoreboard'));
     expect(unavailable.status).toBe(503);
+  });
+
+  it('denies an authenticated actor without the route capability', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    completeConfiguration();
+    signedIn('field@example.com');
+    mocks.resolveHubActor.mockResolvedValueOnce(actorWith(['installer.navigation'], 'installer'));
+
+    const response = await proxy(request('/api/scoreboard'));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: { code: 'ACCESS_DENIED' } });
+  });
+
+  it('enforces method-specific capabilities on a mixed-access route', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    completeConfiguration();
+    signedIn();
+
+    expect((await proxy(new NextRequest('https://ops.yulelovelights.com/api/rubric'))).status).toBe(200);
+
+    const write = await proxy(
+      new NextRequest('https://ops.yulelovelights.com/api/rubric', { method: 'POST' }),
+    );
+    expect(write.status).toBe(403);
+
+    mocks.resolveHubActor.mockResolvedValueOnce(
+      actorWith(['office.coaching.settings.manage'], 'owner_admin'),
+    );
+    const ownerWrite = await proxy(
+      new NextRequest('https://ops.yulelovelights.com/api/rubric', { method: 'POST' }),
+    );
+    expect(ownerWrite.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('denies unknown routes and undeclared methods instead of inheriting a prefix policy', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    completeConfiguration();
+
+    expect((await proxy(request('/api/health/private'))).status).toBe(403);
+    expect(
+      (
+        await proxy(
+          new NextRequest('https://ops.yulelovelights.com/api/health', { method: 'POST' }),
+        )
+      ).status,
+    ).toBe(403);
+    expect(mocks.createServerClient).not.toHaveBeenCalled();
+    expect(mocks.resolveHubActor).not.toHaveBeenCalled();
+  });
+
+  it('strips caller-supplied actor headers before forwarding an authorized request', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    completeConfiguration();
+    signedIn();
+
+    const response = await proxy(
+      new NextRequest('https://ops.yulelovelights.com/scoreboard', {
+        headers: {
+          'x-yll-actor-id': 'spoofed-owner',
+          'x-yll-actor-role': 'owner_admin',
+          'x-safe-header': 'preserved',
+        },
+      }),
+    );
+
+    expect(response.headers.get('x-middleware-request-x-yll-actor-id')).toBeNull();
+    expect(response.headers.get('x-middleware-request-x-yll-actor-role')).toBeNull();
+    expect(response.headers.get('x-middleware-request-x-safe-header')).toBe('preserved');
   });
 
   it('does not exclude dotted dynamic identifiers from the proxy matcher', () => {
@@ -278,7 +441,7 @@ describe('root authentication proxy', () => {
 
     expect(matcher.test('/api/leads/example.png')).toBe(true);
     expect(matcher.test('/call/customer.jpg')).toBe(true);
-    expect(matcher.test('/favicon.ico')).toBe(false);
+    expect(matcher.test('/favicon.ico')).toBe(true);
     expect(matcher.test('/_next/static/chunk.js')).toBe(false);
   });
 });

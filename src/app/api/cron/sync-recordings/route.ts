@@ -7,8 +7,8 @@
 // processes up to RECORDING_BATCH_SIZE pending recordings in this same
 // invocation. Same shape as /api/cron/brain-review: GET only (Vercel Cron
 // only ever issues GET), listed public in src/proxy.ts (no browser session
-// on a cron-triggered request), gated by CRON_ENABLED (off by default) —
-// same soft-kill-switch posture as the other cron/self-gated routes.
+// on a cron-triggered request). CRON_SECRET authenticates the caller;
+// CRON_ENABLED remains a separate off-by-default kill switch.
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
@@ -16,10 +16,18 @@ import { isHighLevelConfigured } from '@/lib/ghl/client';
 import { listRecentCallRecordings } from '@/lib/ghl/recordings';
 import { processPendingRecordings } from '@/lib/recordings/pipeline';
 import { RECORDING_BATCH_SIZE, resolveSyncWindowStart } from '@/lib/recordings/sync';
+import { verifyCronRequest } from '@/lib/auth/machine';
 
 export const maxDuration = 300;
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = verifyCronRequest(request);
+  if (auth !== 'authorized') {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: auth === 'unconfigured' ? 503 : 401 },
+    );
+  }
   if (process.env.CRON_ENABLED !== 'true') {
     return NextResponse.json({ ran: false, reason: 'CRON_ENABLED is not set.' });
   }

@@ -6,12 +6,15 @@
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
-import { getSessionEmail } from '@/lib/auth/session';
+import { hasCapability } from '@/lib/auth/capabilities';
+import { auditTeamResourceAccess, resolveCurrentHubActor } from '@/lib/auth/resource';
 import { isWithinCallingHours } from '@/lib/leads/callingHours';
+import { createDialGrant } from '@/lib/live/twilioVoice';
 import type { LeadRow } from '@/lib/leads/types';
 import type { LiveSessionMode } from '@/lib/live/types';
 
 const LIVE_SESSION_MODES: LiveSessionMode[] = ['twilio', 'simulator'];
+const DIAL_GRANT_TTL_MS = 5 * 60 * 1000;
 
 function validateStartBody(body: unknown): { valid: true; leadId: string; mode: LiveSessionMode } | { valid: false; error: string } {
   if (typeof body !== 'object' || body === null) {
@@ -42,6 +45,14 @@ export async function POST(request: Request) {
   const { leadId, mode } = validation;
 
   const supabase = getSupabaseServerClient()!;
+  const actorResolution = await resolveCurrentHubActor();
+  if (actorResolution.status !== 'resolved') {
+    return NextResponse.json(
+      { configured: true, saved: false, error: 'Access denied.' },
+      { status: actorResolution.status === 'unavailable' ? 503 : 403 },
+    );
+  }
+  const actor = actorResolution.actor;
 
   const { data: leadData, error: leadError } = await supabase.from('leads').select('*').eq('id', leadId).maybeSingle();
   if (leadError) {
@@ -55,6 +66,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ configured: true, saved: false, error: 'Lead not found.' }, { status: 404 });
   }
   const lead = leadData as LeadRow;
+  if (
+    lead.claimed_by &&
+    lead.claimed_by.toLowerCase() !== actor.email &&
+    !hasCapability(actor, 'operations.admin')
+  ) {
+    return NextResponse.json(
+      { configured: true, saved: false, error: 'Access denied.' },
+      { status: 403 },
+    );
+  }
+  if (
+    lead.claimed_by &&
+    lead.claimed_by.toLowerCase() !== actor.email &&
+    !(await auditTeamResourceAccess(supabase, {
+      actor,
+      action: 'live_session.start_override',
+      resourceType: 'lead',
+      resourceId: lead.id,
+      ownerEmail: lead.claimed_by,
+    }))
+  ) {
+    return NextResponse.json(
+      { configured: true, saved: false, error: 'Could not audit this access.' },
+      { status: 503 },
+    );
+  }
 
   // TCPA calling-hours gate — a real phone call must not be PLACED outside
   // 8am-9pm in the contact's own local time. The simulator is exempt: no
@@ -67,7 +104,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const rep_email = await getSessionEmail();
+  const rep_email = actor.email;
   const { data: callData, error: callError } = await supabase
     .from('calls')
     .insert({
@@ -84,9 +121,18 @@ export async function POST(request: Request) {
   }
   const callId = (callData as { id: string }).id;
 
+  const dial = mode === 'twilio' ? createDialGrant() : null;
   const { data: sessionData, error: sessionError } = await supabase
     .from('live_sessions')
-    .insert({ call_id: callId, mode })
+    .insert({
+      call_id: callId,
+      mode,
+      dial_grant_hash: dial?.hash ?? null,
+      dial_actor_auth_user_id: dial ? actor.authUserId : null,
+      dial_grant_expires_at: dial
+        ? new Date(Date.now() + DIAL_GRANT_TTL_MS).toISOString()
+        : null,
+    })
     .select('id')
     .single();
   if (sessionError) {
@@ -98,5 +144,11 @@ export async function POST(request: Request) {
   }
   const sessionId = (sessionData as { id: string }).id;
 
-  return NextResponse.json({ configured: true, saved: true, sessionId, callId });
+  return NextResponse.json({
+    configured: true,
+    saved: true,
+    sessionId,
+    callId,
+    dialGrant: dial?.grant ?? null,
+  });
 }

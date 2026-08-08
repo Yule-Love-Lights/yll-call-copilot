@@ -14,25 +14,24 @@
 // (./simulator.ts) is the verified demo path; this is the parallel path for
 // once the accounts exist.
 
+import { createHash, randomBytes } from 'node:crypto';
 import twilio from 'twilio';
 
 const { AccessToken } = twilio.jwt;
 const { VoiceGrant } = AccessToken;
 
-// The four credentials needed to mint a Voice access token and dial out.
-// TWILIO_AUTH_TOKEN is checked separately (verifyTwilioSignature) since it
-// only matters for validating inbound webhook signatures, not for placing a
-// call -- a deliberate addition beyond the brief's six-var list, because
-// "validate X-Twilio-Signature when configured" needs a credential to
-// validate against and the Account SID/API key pair cannot do that (Twilio
-// signs webhook requests with the Auth Token specifically).
+// A dial path is configured only when it can both mint a token and validate
+// Twilio's callback signature. Partial configuration must not expose an
+// unchecked webhook.
 export function isTwilioConfigured(): boolean {
   return !!(
     process.env.TWILIO_ACCOUNT_SID &&
     process.env.TWILIO_API_KEY_SID &&
     process.env.TWILIO_API_KEY_SECRET &&
     process.env.TWILIO_TWIML_APP_SID &&
-    process.env.TWILIO_CALLER_ID
+    process.env.TWILIO_CALLER_ID &&
+    process.env.TWILIO_AUTH_TOKEN &&
+    process.env.LIVE_BRIDGE_URL
   );
 }
 
@@ -118,11 +117,69 @@ export type VerifySignatureInput = {
 
 export function verifyTwilioSignature(input: VerifySignatureInput): boolean {
   const authToken = process.env.TWILIO_AUTH_TOKEN;
-  // No auth token configured -- there is no live account to validate
-  // against yet, so let the (already env-gated) webhook through unchecked.
-  // Once a real account + TWILIO_AUTH_TOKEN exist, every request is
-  // verified.
-  if (!authToken) return true;
+  if (!authToken) return false;
   if (!input.signature) return false;
   return twilio.validateRequest(authToken, input.signature, input.url, input.params);
+}
+
+const STREAM_GRANT_BYTES = 32;
+
+export function createMediaStreamGrant(): { grant: string; hash: string } {
+  const grant = randomBytes(STREAM_GRANT_BYTES).toString('base64url');
+  return { grant, hash: hashMediaStreamGrant(grant) };
+}
+
+export function hashMediaStreamGrant(grant: string): string {
+  return createHash('sha256').update(grant, 'utf8').digest('hex');
+}
+
+// Twilio does not support query parameters on a Media Stream URL. Give every
+// call a unique path instead: Twilio signs that exact path during the
+// WebSocket upgrade, and the bridge consumes the random grant once. The
+// session id in the path is also checked against Twilio's first `start`
+// message before any Deepgram connection is opened.
+export function buildLiveBridgeStreamUrl(
+  baseUrl: string,
+  sessionId: string,
+  streamGrant = createMediaStreamGrant().grant,
+): string {
+  const base = new URL(baseUrl);
+  if (
+    base.protocol !== 'wss:' ||
+    base.username ||
+    base.password ||
+    base.search ||
+    base.hash ||
+    !sessionId.trim() ||
+    !/^[A-Za-z0-9_-]{43}$/.test(streamGrant)
+  ) {
+    throw new Error('Invalid live bridge stream URL configuration');
+  }
+
+  const basePath = base.pathname.replace(/\/+$/, '');
+  base.pathname = `${basePath}/streams/${encodeURIComponent(sessionId)}/${streamGrant}`;
+  return base.toString();
+}
+
+export function createDialGrant(): { grant: string; hash: string } {
+  const grant = randomBytes(32).toString('base64url');
+  return { grant, hash: hashDialGrant(grant) };
+}
+
+export function hashDialGrant(grant: string): string {
+  return createHash('sha256').update(grant, 'utf8').digest('hex');
+}
+
+export function normalizeTwilioClientIdentity(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (!normalized.toLowerCase().startsWith('client:')) return null;
+  const identity = normalized.slice('client:'.length).trim();
+  return identity || null;
+}
+
+// Voice SDK identities allow only alphanumeric and underscore characters.
+// Hash the immutable Auth UUID instead of leaking it or passing UUID hyphens.
+export function twilioIdentityForAuthUserId(authUserId: string): string {
+  return `yll_${createHash('sha256').update(authUserId, 'utf8').digest('hex')}`;
 }
