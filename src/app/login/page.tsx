@@ -27,8 +27,9 @@ export default async function LoginPage({
           <LoginForm denied={denied === '1'} />
         ) : (
           <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
-            Supabase not configured — set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
-            and SUPABASE_SERVICE_ROLE_KEY in .env.local.
+            {process.env.NODE_ENV === 'development'
+              ? 'Supabase is not configured. Set the three Supabase variables in .env.local.'
+              : 'Authentication is temporarily unavailable. Please try again later.'}
           </div>
         )}
       </div>

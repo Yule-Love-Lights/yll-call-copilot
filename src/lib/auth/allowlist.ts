@@ -13,8 +13,7 @@ export async function checkAllowlist(
   email: string | null | undefined,
   client: SupabaseClient | null = getSupabaseServerClient(),
 ): Promise<AllowlistDecision> {
-  // No Supabase env means the whole app runs unauthenticated (dev
-  // degradation, same philosophy as the rest of the app).
+  // The proxy treats this as dependency unavailability and fails closed.
   if (!client) return 'unconfigured';
   if (!email) return 'denied';
 
@@ -26,21 +25,18 @@ export async function checkAllowlist(
     .eq('email', email.toLowerCase())
     .maybeSingle();
 
-  // Fail closed: a query error denies access rather than letting an
-  // unverified user through.
-  if (error || !data) return 'denied';
+  // Keep dependency failure distinct from a legitimate missing row so the
+  // proxy can return a generic 503 instead of misreporting it as access denial.
+  if (error) return 'unconfigured';
+  if (!data) return 'denied';
   return 'allowed';
 }
 
 // The actual access policy src/proxy.ts consults. 'unconfigured' means
 // checkAllowlist() could not even run the check (getSupabaseServerClient()
-// returned null — SUPABASE_SERVICE_ROLE_KEY missing or wrong). proxy.ts only
-// reaches checkAllowlist() after its OWN separate bailout for "the whole app
-// has zero Supabase config" (NEXT_PUBLIC_SUPABASE_URL/ANON_KEY both absent),
-// so by the time this runs, a real signed-in session already exists —
-// 'unconfigured' here can only be the narrower, non-legitimate case of a
-// broken service-role key or a failed query, which must deny access the
-// same as an explicit 'denied', not silently grant it.
+// returned null or the allowlist dependency failed). It must deny access just
+// like an explicit rejection, while the proxy presents it as service
+// unavailability rather than revealing internal configuration details.
 export function shouldDenyAccess(decision: AllowlistDecision): boolean {
   return decision === 'denied' || decision === 'unconfigured';
 }

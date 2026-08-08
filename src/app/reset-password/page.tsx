@@ -24,8 +24,9 @@ export default function ResetPasswordPage() {
           <ResetPasswordForm />
         ) : (
           <div className="rounded-2xl border border-[rgba(122,94,32,0.3)] bg-[rgba(232,184,98,0.12)] px-4 py-3 text-sm font-medium text-[var(--brand-gold-deep)]">
-            Supabase not configured — set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
-            and SUPABASE_SERVICE_ROLE_KEY in .env.local.
+            {process.env.NODE_ENV === 'development'
+              ? 'Supabase is not configured. Set the three Supabase variables in .env.local.'
+              : 'Authentication is temporarily unavailable. Please try again later.'}
           </div>
         )}
       </div>

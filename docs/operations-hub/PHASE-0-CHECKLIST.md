@@ -2,7 +2,7 @@
 
 Status: **foundation started; field-user provisioning blocked**
 Date: 2026-08-07
-Branch base: Hub `master@f6cc06bcc9009a8d4357b0adcb31e16ae150d8cc`
+Branch base: Hub `master@a317e66c3f13c0d4b22c68d40810fc2c3d794c32`
 
 This checklist records the actual repository baseline and the safety gates that
 must precede Advertising or Installer accounts. It does not authorize Hub-owned
@@ -21,7 +21,6 @@ was built for a small office allowlist:
   field employee could reach office-only surfaces;
 - `app_users.role` is unconstrained, and existing `role !== 'rep'` checks can
   turn an unexpected role string into elevated access;
-- missing public Supabase configuration currently bypasses the proxy gate;
 - all 31 tables defined by the checked-in migrations lack RLS policies, and the
   server commonly uses a service-role client that bypasses future RLS.
 
@@ -55,8 +54,13 @@ only the honestly named local pin check.
 
 ## 3. Identity and API authorization
 
-- [ ] Production configuration fails closed when Supabase auth or authorization
-      dependencies are missing.
+- [x] Production configuration fails closed when Supabase auth or authorization
+      dependencies are missing. The request-time resolver rejects blank,
+      partial, malformed, and insecure production configuration; protected
+      pages and all non-health APIs return generic non-cacheable 503 responses
+      before Supabase is called. The matcher excludes only Next internals and
+      the known favicon, so dotted dynamic IDs cannot skip the gate. There is
+      no missing-configuration bypass, including in local development.
 - [ ] `app_users.role` is replaced or constrained; arbitrary values never imply
       privilege.
 - [ ] One centralized actor resolver returns immutable employee ID, active

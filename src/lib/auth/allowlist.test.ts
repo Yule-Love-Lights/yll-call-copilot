@@ -30,9 +30,9 @@ describe('checkAllowlist', () => {
     expect(await checkAllowlist('stranger@example.com', client)).toBe('denied');
   });
 
-  it('returns denied (fail closed) when the query errors', async () => {
+  it('returns unconfigured (fail closed) when the query dependency errors', async () => {
     const { client } = fakeClient({ data: null, error: { message: 'boom' } });
-    expect(await checkAllowlist('jason@example.com', client)).toBe('denied');
+    expect(await checkAllowlist('jason@example.com', client)).toBe('unconfigured');
   });
 
   it('returns denied when the signed-in user has no email', async () => {
@@ -67,15 +67,8 @@ describe('checkAllowlist', () => {
   });
 });
 
-// H4: src/proxy.ts used to only special-case 'denied', letting 'unconfigured'
-// fall through to full access. By the time proxy.ts ever calls
-// checkAllowlist(), it has already confirmed NEXT_PUBLIC_SUPABASE_URL/
-// ANON_KEY exist (its own separate "app has zero Supabase config" bailout
-// runs first) — so 'unconfigured' at that point can only mean the narrower,
-// non-legitimate case: SUPABASE_SERVICE_ROLE_KEY is missing, wrong, or the
-// allowlist query itself errored. That must deny, not grant, access. This is
-// the actual policy decision proxy.ts consults; it must never quietly
-// change to fail open again.
+// H4: 'unconfigured' represents an unavailable authorization dependency. It
+// must deny and must never quietly become an allow decision.
 describe('shouldDenyAccess', () => {
   it('denies an explicit "denied" decision', () => {
     expect(shouldDenyAccess('denied')).toBe(true);
