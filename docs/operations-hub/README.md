@@ -28,6 +28,8 @@ human-merged, and the byte-identical Hub mirror is now present.
 11. `PHASE-0-AUTHORIZATION-INVENTORY.md` — current Hub-local actor, route,
     machine-auth coverage, deployment requirements, and remaining release
     blocks.
+12. `PHASE-0-RLS-RUNBOOK.md` — the API-only database boundary, CI proof,
+    hosted preflight, safe rollout order, and remaining identity tests.
 
 ## Scoped authority
 

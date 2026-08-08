@@ -57,6 +57,11 @@ declare
   unexpected_routines text[];
   unexpected_triggers text[];
 begin
+  if current_user <> 'postgres' then
+    raise exception
+      'Application migrations must run as postgres so default ACLs stay deterministic';
+  end if;
+
   if not exists (
     select 1
     from pg_roles
@@ -186,6 +191,26 @@ begin
 
   if exists (
     select 1
+    from pg_publication publication
+    where publication.puballtables
+  ) then
+    raise exception
+      'An all-tables publication would expose Hub tables';
+  end if;
+
+  if exists (
+    select 1
+    from pg_publication_namespace publication_namespace
+    join pg_namespace namespace
+      on namespace.oid = publication_namespace.pnnspid
+    where namespace.nspname = 'public'
+  ) then
+    raise exception
+      'A public-schema publication would expose Hub tables';
+  end if;
+
+  if exists (
+    select 1
     from pg_publication_tables publication
     where publication.schemaname = 'public'
       and publication.tablename = any(expected_tables)
@@ -288,3 +313,6 @@ alter default privileges for role postgres in schema public
 alter default privileges for role postgres in schema public
   revoke all privileges on sequences
   from public, anon, authenticated, service_role;
+
+reset lock_timeout;
+reset statement_timeout;

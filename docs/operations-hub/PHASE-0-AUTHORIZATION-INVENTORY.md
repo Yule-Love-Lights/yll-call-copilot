@@ -1,8 +1,10 @@
 # Operations Hub Phase 0 authorization inventory
 
-Status: **route capability gate implemented; resource/RLS work remains; field provisioning blocked**
+Status: **route and database base-role gates implemented; resource work remains; field provisioning blocked**
 Date: 2026-08-07
-Stacked base: PR #41 commit `754e4d64b3a6528067b0467d5dc52f9e96d60325`
+Merged base: PRs #41 and #42 at
+`master@d5910b9482b3a15388c033eb51854e97be154e3e`; database hardening is in
+draft PR #43.
 
 This document records what the Phase 0 capability branch actually enforces.
 It does not amend the byte-mirrored integration contract and does not authorize
@@ -65,8 +67,10 @@ This slice binds call updates, live-session reads/end/segments, follow-up
 edits/sends, and coaching ratings to the owning employee. Owner/Admin team
 overrides are explicit and fail closed unless their sensitive-access audit is
 durable; a team member cannot impersonate another rep's coaching rating.
-Remaining service-role handlers and every RLS policy still require the work in
-section 5 before field launch.
+Remaining service-role handlers and future identity-specific RLS policies still
+require the work in section 5 before field launch. PR #43 closes direct
+database access for every browser role; it intentionally does not make a
+service-role handler safe.
 
 ## 3. Machine callers
 
@@ -144,12 +148,38 @@ This slice does **not** clear the field-user release stop:
    immutable employee/auth link. A role string never grants privilege alone.
 4. The additive Hub employee, membership, active-state, audit, and integration
    schema has not landed. Phone OTP and revocation have not landed.
-5. Existing-table RLS/default-deny policies and real impersonated-role tests
-   have not landed. Service-role handlers need resource-level enforcement for
-   every route whose policy declares `self`, `assigned`, or `resource` scope.
+5. PR #43 enables and forces RLS on all 31 existing tables, removes client
+   schema/table/column/sequence access, and runs real `anon`, `authenticated`,
+   and `service_role` impersonation in CI. Hosted preflight and semantic
+   identity/persona tests remain. Service-role handlers still need
+   resource-level enforcement for every route whose policy declares `self`,
+   `assigned`, or `resource` scope.
 6. HighLevel's legacy query-secret compatibility path must be removed after the
    workflow is reconfigured for signed delivery or a secret header.
 7. Open owner decisions for cached sessions, deactivated-device writes, and
    placement/photo visibility remain protective-default deny.
 
 Until these gates pass, no Advertising or Installer account may be provisioned.
+
+## 6. Next resource-authorization slice
+
+The PR #43 adversarial review found these existing Office blockers. RLS cannot
+protect them because their handlers intentionally use `service_role`:
+
+1. `live/start` can create a dial grant for an unclaimed, dismissed, or
+   completed lead, and the Twilio callback does not revalidate current lead
+   state and claimant before dialing.
+2. Lead detail and queue reads can expose another rep's claimed customer PII,
+   call notes, and follow-ups.
+3. Lead claim can write `claimed_by = null` when session identity resolution
+   fails, creating an ownerless claimed lead.
+4. Manual call save can operate on an unclaimed/dismissed/completed lead and
+   then mark it done, corrupting queue state and employee statistics.
+5. The recordings list is team-global but currently uses the ordinary calls
+   capability rather than a pipeline/admin read capability.
+
+The next branch must centralize lead-work authorization, bind ordinary reps to
+an active self-claim, make owner/admin overrides explicit and durably audited,
+revalidate the claim immediately before Twilio dialing, and add race/negative
+tests. Queue/inbound sharing and scoreboard team visibility must use truthful
+route-scope declarations rather than the coarse legacy `CALLS` constant.

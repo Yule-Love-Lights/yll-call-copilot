@@ -1,10 +1,10 @@
 # Operations Hub Phase 0 safety checklist
 
-Status: **foundation started; field-user provisioning blocked**
+Status: **RLS base-role gate implemented on PR #43; field-user provisioning blocked**
 Date: 2026-08-07
-Branch base: Hub `master@a317e66c3f13c0d4b22c68d40810fc2c3d794c32`
-Authorization slice stacked on PR #41 at
-`754e4d64b3a6528067b0467d5dc52f9e96d60325`.
+Branch base: Hub `master@d5910b9482b3a15388c033eb51854e97be154e3e`
+after human-authorized merges of PRs #41 and #42. Database hardening is in
+draft PR #43.
 
 This checklist records the actual repository baseline and the safety gates that
 must precede Advertising or Installer accounts. It does not authorize Hub-owned
@@ -23,10 +23,13 @@ was built for a small office allowlist:
 - owner/admin runtime access now requires the server-only Naldo/Jason Auth UUID
   ceiling and audited team access on the protected call/live resources, but
   production IDs and the final additive employee/auth link still need review;
-- route policies now inventory resource scope, but all service-role handlers
-  and tables still need the RLS/resource-authorization gates below;
-- all 31 tables defined by the checked-in migrations lack RLS policies, and the
-  server commonly uses a service-role client that bypasses future RLS.
+- route policies now inventory resource scope, but remaining service-role
+  handlers and the hosted database rollout still need the authorization gates
+  below;
+- PR #43 enables and forces RLS on all 31 tables with zero client policies and
+  removes client schema/table/column/sequence access. The server still uses a
+  service-role client that bypasses RLS, so the handler resource audit remains
+  a field-launch gate.
 
 Field provisioning remains blocked until the capability, API-authorization,
 RLS, and impersonated-role gates below pass.
@@ -120,53 +123,67 @@ resource-scope, audit, identity-projection, and cross-repository gaps.
 
 ## 4. Existing-table RLS checklist
 
-Baseline in all checked-in migrations for the 31 tables below: RLS is not
-enabled, no policies are defined, and no impersonated-role database tests
-exist. The live Supabase database was not inspected in this audit. The
-application primarily uses a service-role client, so API capability checks
-remain mandatory even after RLS is added.
+PR #43 establishes an API-only database boundary for the 31 current tables.
+Clean CI applies every migration to a fresh Supabase PostgreSQL database and
+uses real `SET ROLE` pgTAP tests. It also rejects unreviewed application views,
+routines, triggers, policies, publications, tables, and sequences.
 
-For each table, check all four gates before marking complete: RLS enabled;
-anonymous/authenticated default-deny verified; least-privilege policies (if any)
-reviewed; impersonated-role tests passing.
+The `Policy review` column is checked because the reviewed policy set is
+intentionally empty. The `Base-role test` column covers `anon`,
+`authenticated`, and `service_role`, including a temporary-grant test that
+proves RLS independently of ACLs.
 
-| Table | RLS | Default deny | Reviewed policies | Impersonation tests |
+| Table | RLS + FORCE | Client default deny | Policy review | Base-role test |
 |---|---|---|---|---|
-| `app_users` | [ ] | [ ] | [ ] | [ ] |
-| `contacts_cache` | [ ] | [ ] | [ ] | [ ] |
-| `ghl_sync_log` | [ ] | [ ] | [ ] | [ ] |
-| `verticals` | [ ] | [ ] | [ ] | [ ] |
-| `playbook_versions` | [ ] | [ ] | [ ] | [ ] |
-| `documents` | [ ] | [ ] | [ ] | [ ] |
-| `transcripts` | [ ] | [ ] | [ ] | [ ] |
-| `learnings` | [ ] | [ ] | [ ] | [ ] |
-| `playbook_proposals` | [ ] | [ ] | [ ] | [ ] |
-| `ingest_jobs` | [ ] | [ ] | [ ] | [ ] |
-| `leads` | [ ] | [ ] | [ ] | [ ] |
-| `calls` | [ ] | [ ] | [ ] | [ ] |
-| `followups` | [ ] | [ ] | [ ] | [ ] |
-| `events_log` | [ ] | [ ] | [ ] | [ ] |
-| `live_sessions` | [ ] | [ ] | [ ] | [ ] |
-| `coaching_events` | [ ] | [ ] | [ ] | [ ] |
-| `brain_reviews` | [ ] | [ ] | [ ] | [ ] |
-| `call_recordings` | [ ] | [ ] | [ ] | [ ] |
-| `recording_sync_state` | [ ] | [ ] | [ ] | [ ] |
-| `rubric_versions` | [ ] | [ ] | [ ] | [ ] |
-| `call_scores` | [ ] | [ ] | [ ] | [ ] |
-| `feedback_cards` | [ ] | [ ] | [ ] | [ ] |
-| `weekly_digests` | [ ] | [ ] | [ ] | [ ] |
-| `coach_settings` | [ ] | [ ] | [ ] | [ ] |
-| `inbound_emails` | [ ] | [ ] | [ ] | [ ] |
-| `email_reply_drafts` | [ ] | [ ] | [ ] | [ ] |
-| `second_mile_touches` | [ ] | [ ] | [ ] | [ ] |
-| `second_mile_scans` | [ ] | [ ] | [ ] | [ ] |
-| `offer_versions` | [ ] | [ ] | [ ] | [ ] |
-| `brain_insights` | [ ] | [ ] | [ ] | [ ] |
-| `practice_sessions` | [ ] | [ ] | [ ] | [ ] |
+| `app_users` | [x] | [x] | [x] | [x] |
+| `contacts_cache` | [x] | [x] | [x] | [x] |
+| `ghl_sync_log` | [x] | [x] | [x] | [x] |
+| `verticals` | [x] | [x] | [x] | [x] |
+| `playbook_versions` | [x] | [x] | [x] | [x] |
+| `documents` | [x] | [x] | [x] | [x] |
+| `transcripts` | [x] | [x] | [x] | [x] |
+| `learnings` | [x] | [x] | [x] | [x] |
+| `playbook_proposals` | [x] | [x] | [x] | [x] |
+| `ingest_jobs` | [x] | [x] | [x] | [x] |
+| `leads` | [x] | [x] | [x] | [x] |
+| `calls` | [x] | [x] | [x] | [x] |
+| `followups` | [x] | [x] | [x] | [x] |
+| `events_log` | [x] | [x] | [x] | [x] |
+| `live_sessions` | [x] | [x] | [x] | [x] |
+| `coaching_events` | [x] | [x] | [x] | [x] |
+| `brain_reviews` | [x] | [x] | [x] | [x] |
+| `call_recordings` | [x] | [x] | [x] | [x] |
+| `recording_sync_state` | [x] | [x] | [x] | [x] |
+| `rubric_versions` | [x] | [x] | [x] | [x] |
+| `call_scores` | [x] | [x] | [x] | [x] |
+| `feedback_cards` | [x] | [x] | [x] | [x] |
+| `weekly_digests` | [x] | [x] | [x] | [x] |
+| `coach_settings` | [x] | [x] | [x] | [x] |
+| `inbound_emails` | [x] | [x] | [x] | [x] |
+| `email_reply_drafts` | [x] | [x] | [x] | [x] |
+| `second_mile_touches` | [x] | [x] | [x] | [x] |
+| `second_mile_scans` | [x] | [x] | [x] | [x] |
+| `offer_versions` | [x] | [x] | [x] | [x] |
+| `brain_insights` | [x] | [x] | [x] | [x] |
+| `practice_sessions` | [x] | [x] | [x] | [x] |
 
-Required impersonated identities: logged out, inactive, self, wrong department,
-stale membership, unlinked identity, Office, Advertising, Installer,
-Owner/Admin, and unprovisioned Manager.
+Claims shaped like inactive, self, wrong-department, stale-membership,
+unlinked, Office, Advertising, Installer, Owner/Admin, and Manager identities
+are also verified unable to override database default deny. That is not the
+semantic persona gate. The following remain blocked until the additive
+identity and membership schema exists:
+
+- [ ] immutable self-versus-other employee tests;
+- [ ] active/inactive and linked/unlinked identity tests;
+- [ ] current/stale multi-membership and department-context tests;
+- [ ] Office, Advertising, Installer, Owner/Admin, and unprovisioned Manager
+      server-plus-database integration tests;
+- [ ] hosted owner/ACL/policy/routine/trigger/publication preflight and
+      PostgreSQL-major-version verification;
+- [ ] full-stack PostgREST denial smoke with real `anon` and authenticated
+      tokens.
+
+See `PHASE-0-RLS-RUNBOOK.md` for the exact proof boundary and rollout steps.
 
 ## 5. Additive Hub-owned schema, after authorization design
 
@@ -189,7 +206,8 @@ ledger, compensation result, pay-period close, or payroll export.
 2. Production fail-closed configuration helper and tests.
 3. Central actor/capability model; inventory and protect every existing page and
    API before field access.
-4. RLS/default-deny migrations plus a real Supabase impersonation harness.
+4. RLS/default-deny migrations plus a real Supabase base-role impersonation
+   harness (implemented in PR #43; hosted and semantic-persona gates remain).
 5. Additive Hub identity/audit/integration scaffolding.
 6. Vendor Quote-owned schemas; add version health and deploy-skew smoke tests.
 7. Only after all above gates: phone OTP and controlled field-user provisioning.

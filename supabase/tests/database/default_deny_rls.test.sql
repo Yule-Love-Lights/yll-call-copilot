@@ -122,6 +122,24 @@ select is(
   'Hub application tables are absent from database publications'
 );
 
+select is(
+  (select count(*)::bigint from pg_publication where puballtables),
+  0::bigint,
+  'no all-tables publication can capture future Hub tables'
+);
+
+select is(
+  (
+    select count(*)::bigint
+    from pg_publication_namespace publication_namespace
+    join pg_namespace namespace
+      on namespace.oid = publication_namespace.pnnspid
+    where namespace.nspname = 'public'
+  ),
+  0::bigint,
+  'no public-schema publication can capture future Hub tables'
+);
+
 select ok(
   c.relrowsecurity,
   format('%I has row-level security enabled', expected.table_name)
@@ -153,8 +171,12 @@ select ok(
   not has_table_privilege('anon', format('public.%I', table_name), 'SELECT')
     and not has_table_privilege('anon', format('public.%I', table_name), 'INSERT')
     and not has_table_privilege('anon', format('public.%I', table_name), 'UPDATE')
-    and not has_table_privilege('anon', format('public.%I', table_name), 'DELETE'),
-  format('anon has no DML privileges on %I', table_name)
+    and not has_table_privilege('anon', format('public.%I', table_name), 'DELETE')
+    and not has_table_privilege('anon', format('public.%I', table_name), 'TRUNCATE')
+    and not has_table_privilege('anon', format('public.%I', table_name), 'REFERENCES')
+    and not has_table_privilege('anon', format('public.%I', table_name), 'TRIGGER')
+    and not has_table_privilege('anon', format('public.%I', table_name), 'MAINTAIN'),
+  format('anon has no table privileges on %I', table_name)
 )
 from expected_hub_tables
 order by table_name;
@@ -173,8 +195,12 @@ select ok(
   not has_table_privilege('authenticated', format('public.%I', table_name), 'SELECT')
     and not has_table_privilege('authenticated', format('public.%I', table_name), 'INSERT')
     and not has_table_privilege('authenticated', format('public.%I', table_name), 'UPDATE')
-    and not has_table_privilege('authenticated', format('public.%I', table_name), 'DELETE'),
-  format('authenticated has no DML privileges on %I', table_name)
+    and not has_table_privilege('authenticated', format('public.%I', table_name), 'DELETE')
+    and not has_table_privilege('authenticated', format('public.%I', table_name), 'TRUNCATE')
+    and not has_table_privilege('authenticated', format('public.%I', table_name), 'REFERENCES')
+    and not has_table_privilege('authenticated', format('public.%I', table_name), 'TRIGGER')
+    and not has_table_privilege('authenticated', format('public.%I', table_name), 'MAINTAIN'),
+  format('authenticated has no table privileges on %I', table_name)
 )
 from expected_hub_tables
 order by table_name;
@@ -194,8 +220,11 @@ select ok(
     and has_table_privilege('service_role', format('public.%I', table_name), 'INSERT')
     and has_table_privilege('service_role', format('public.%I', table_name), 'UPDATE')
     and has_table_privilege('service_role', format('public.%I', table_name), 'DELETE')
-    and not has_table_privilege('service_role', format('public.%I', table_name), 'TRUNCATE'),
-  format('service_role has DML but not destructive DDL-like access on %I', table_name)
+    and not has_table_privilege('service_role', format('public.%I', table_name), 'TRUNCATE')
+    and not has_table_privilege('service_role', format('public.%I', table_name), 'REFERENCES')
+    and not has_table_privilege('service_role', format('public.%I', table_name), 'TRIGGER')
+    and not has_table_privilege('service_role', format('public.%I', table_name), 'MAINTAIN'),
+  format('service_role has only compatibility DML on %I', table_name)
 )
 from expected_hub_tables
 order by table_name;
@@ -203,6 +232,16 @@ order by table_name;
 select ok(
   (select rolbypassrls from pg_roles where rolname = 'service_role'),
   'service_role is the explicit RLS-bypass server role'
+);
+
+select ok(
+  not (select rolsuper or rolbypassrls from pg_roles where rolname = 'anon')
+    and not (
+      select rolsuper or rolbypassrls
+      from pg_roles
+      where rolname = 'authenticated'
+    ),
+  'user-facing database roles cannot bypass RLS'
 );
 
 select ok(
@@ -283,42 +322,52 @@ select throws_ok(
 -- membership rows land in the next slice. The assertions prove that no
 -- caller-supplied persona claim can bypass today's API-only boundary.
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000002","role":"authenticated","employee_status":"inactive"}';
+set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000002';
 select is((select count(*) from public.app_users), 0::bigint,
   'an inactive-shaped JWT claim remains default-denied');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000003","role":"authenticated","employee_id":"self","department":"office"}';
+set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000003';
 select is((select count(*) from public.app_users), 0::bigint,
   'a self-shaped JWT claim remains default-denied');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000004","role":"authenticated","department":"wrong"}';
+set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000004';
 select is((select count(*) from public.app_users), 0::bigint,
   'a wrong-department-shaped JWT claim remains default-denied');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000005","role":"authenticated","membership_version":"stale"}';
+set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000005';
 select is((select count(*) from public.app_users), 0::bigint,
   'a stale-membership-shaped JWT claim remains default-denied');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000006","role":"authenticated","employee_id":null}';
+set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000006';
 select is((select count(*) from public.app_users), 0::bigint,
   'an unlinked-identity-shaped JWT claim remains default-denied');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000007","role":"authenticated","department":"office"}';
+set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000007';
 select is((select count(*) from public.app_users), 0::bigint,
   'an Office-shaped JWT claim remains default-denied');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000008","role":"authenticated","department":"advertising"}';
+set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000008';
 select is((select count(*) from public.app_users), 0::bigint,
   'an Advertising-shaped JWT claim remains default-denied');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000009","role":"authenticated","department":"installer"}';
+set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000009';
 select is((select count(*) from public.app_users), 0::bigint,
   'an Installer-shaped JWT claim remains default-denied');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000010","role":"authenticated","role_name":"owner_admin"}';
+set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000010';
 select is((select count(*) from public.app_users), 0::bigint,
   'an Owner/Admin-shaped JWT claim remains default-denied');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000011","role":"authenticated","role_name":"manager"}';
+set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000011';
 select is((select count(*) from public.app_users), 0::bigint,
   'an unprovisioned-Manager-shaped JWT claim remains default-denied');
 reset role;
