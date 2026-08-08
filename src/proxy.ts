@@ -1,81 +1,25 @@
-// Staff-only gate for every route. Next 16 renamed the middleware file
-// convention to proxy (and with the src/ layout it lives here, next to app/).
-// Flow: refresh the Supabase session from cookies, require a signed-in user,
-// then require that user's email to be in app_users (the staff allowlist).
-// Pages redirect to /login; API routes get JSON errors. Missing or invalid
-// Supabase configuration fails closed for every protected or machine request.
+// Central request authorization boundary. Every app page and route method is
+// declared in routePolicy.ts. Unknown paths/methods deny by default. Employee
+// requests resolve one immutable Hub actor and require explicit capabilities;
+// webhook/cron/Twilio callers proceed only to their route-local authentication.
 
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { checkAllowlist, shouldDenyAccess } from '@/lib/auth/allowlist';
+import { resolveHubActor, type AuthenticatedUserIdentity } from '@/lib/auth/actor';
 import { resolveServerAuthConfiguration } from '@/lib/auth/config';
-
-// /api/webhooks/ghl has no user session (GoHighLevel calls it directly) —
-// it authenticates itself with a shared-secret query param instead (see
-// that route), checked entirely inside the route, not here.
-//
-// /api/twilio/voice is the same shape: Twilio calls it directly with no
-// browser session, and validates itself via the X-Twilio-Signature header
-// (see that route and src/lib/live/twilioVoice.ts). /api/twilio/whisper is
-// the same again -- Twilio requests it directly (as the Number noun's
-// whisper `url`) once the customer leg answers, validated the same way.
-//
-// /api/live/segment has two callers: the browser (simulator mode, which
-// keeps its normal staff session and is checked the same way inside that
-// route) and scripts/live-bridge.mjs (Twilio mode's standalone bridge
-// process, no browser session at all) — public here so the bridge can reach
-// it, with the route itself requiring either a signed-in session or the
-// x-live-bridge-secret header.
-//
-// /api/cron/brain-review is the same shape again: Vercel Cron calls it
-// directly with no browser session (see vercel.json), gated inside the
-// route by CRON_ENABLED (off by default) rather than a session.
-//
-// /api/cron/second-mile is the same shape again: Vercel Cron calls it
-// directly with no browser session (see vercel.json), gated inside the
-// route by CRON_ENABLED (off by default) rather than a session.
-// /api/cron/weekly-digest is the same shape as /api/cron/brain-review:
-// Vercel Cron calls it directly with no browser session, gated inside the
-// route by CRON_ENABLED.
-// /api/cron/score-calls is the same shape again: Vercel Cron calls it
-// directly with no browser session (see vercel.json), gated inside the
-// route by CRON_ENABLED (off by default) rather than a session.
-// /api/cron/sync-recordings is the same shape once more: the nightly
-// recordings sync (Workstream 1), also Vercel-Cron-called with no browser
-// session, also gated by CRON_ENABLED.
-//
-// /forgot-password and /reset-password are auth pages like /login: a
-// signed-out visitor must be able to reach them to recover their account,
-// so they're exempted here the same way rather than redirected to /login
-// in a loop.
-const PUBLIC_AUTH_PATHS = [
-  '/login',
-  '/forgot-password',
-  '/reset-password',
-  '/api/health',
-];
-
-const MACHINE_PATHS = [
-  '/api/webhooks/ghl',
-  '/api/twilio/voice',
-  '/api/twilio/whisper',
-  '/api/live/segment',
-  '/api/cron/brain-review',
-  '/api/cron/second-mile',
-  '/api/cron/weekly-digest',
-  '/api/cron/score-calls',
-  '/api/cron/sync-recordings',
-];
-
-function matchesPath(pathname: string, paths: readonly string[]): boolean {
-  const normalizedPath = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
-  return paths.includes(normalizedPath);
-}
+import { auditSensitiveRouteAccess } from '@/lib/auth/resource';
+import {
+  actorMeetsRouteRequirement,
+  isPublicRuntimeAsset,
+  resolveRoutePolicy,
+} from '@/lib/auth/routePolicy';
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  if (isPublicRuntimeAsset(pathname)) return NextResponse.next();
+  const routePolicy = resolveRoutePolicy(pathname, request.method);
 
-  if (matchesPath(pathname, PUBLIC_AUTH_PATHS)) {
+  if (routePolicy?.requirement.kind === 'public') {
     return NextResponse.next();
   }
 
@@ -83,15 +27,24 @@ export async function proxy(request: NextRequest) {
   const authConfiguration = resolveServerAuthConfiguration();
   if (!authConfiguration.ok) return authenticationUnavailable(isApi);
 
-  // Machine callers do not have staff cookies, but configuration must be
-  // valid before their route-specific authentication and persistence runs.
-  if (matchesPath(pathname, MACHINE_PATHS)) return NextResponse.next();
+  // Undeclared paths and methods never inherit access from a neighboring route.
+  if (!routePolicy) return authorizationDenied(isApi);
+
+  // Machine callers do not have employee cookies. Configuration must still be
+  // valid before their endpoint-specific authentication and persistence run.
+  if (routePolicy.requirement.kind === 'route_authenticated') {
+    return NextResponse.next();
+  }
 
   // Standard @supabase/ssr pattern: mirror refreshed auth cookies onto both
-  // the forwarded request and the response.
-  let response = NextResponse.next({ request });
-  let userEmail: string | null | undefined;
-  let hasUser = false;
+  // the forwarded request and the response. Strip actor-like inbound headers;
+  // downstream code must resolve an actor rather than trust caller input.
+  const forwardedHeaders = new Headers(request.headers);
+  for (const header of [...forwardedHeaders.keys()]) {
+    if (header.toLowerCase().startsWith('x-yll-actor-')) forwardedHeaders.delete(header);
+  }
+  let response = NextResponse.next({ request: { headers: forwardedHeaders } });
+  let authenticatedUser: AuthenticatedUserIdentity | null = null;
   try {
     const supabase = createServerClient(authConfiguration.url, authConfiguration.anonKey, {
       cookies: {
@@ -100,7 +53,8 @@ export async function proxy(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          response = NextResponse.next({ request });
+          forwardedHeaders.set('cookie', request.cookies.toString());
+          response = NextResponse.next({ request: { headers: forwardedHeaders } });
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options),
           );
@@ -115,17 +69,16 @@ export async function proxy(request: NextRequest) {
     if (error && !isSignedOutAuthError(error)) {
       return authenticationUnavailable(isApi, response);
     }
-    hasUser = !!user;
-    userEmail = user?.email;
+    authenticatedUser = user;
   } catch (error) {
     if (isSignedOutAuthError(error)) {
-      hasUser = false;
+      authenticatedUser = null;
     } else {
       return authenticationUnavailable(isApi, response);
     }
   }
 
-  if (!hasUser) {
+  if (!authenticatedUser) {
     if (isApi) {
       return privateResponse(
         NextResponse.json({ error: 'Not signed in' }, { status: 401 }),
@@ -138,25 +91,31 @@ export async function proxy(request: NextRequest) {
     );
   }
 
-  let decision: Awaited<ReturnType<typeof checkAllowlist>>;
+  let actorResolution: Awaited<ReturnType<typeof resolveHubActor>>;
   try {
-    decision = await checkAllowlist(userEmail);
+    actorResolution = await resolveHubActor(authenticatedUser);
   } catch {
     return authenticationUnavailable(isApi, response);
   }
-  // Both an explicit denial and an unavailable allowlist dependency must
-  // deny; the latter receives a generic service-unavailable response.
-  if (shouldDenyAccess(decision)) {
-    if (decision === 'unconfigured') return authenticationUnavailable(isApi, response);
-    if (isApi) {
-      return privateResponse(
-        NextResponse.json({ error: 'Not on the staff list' }, { status: 403 }),
-        response,
-      );
-    }
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('denied', '1');
-    return privateResponse(NextResponse.redirect(loginUrl), response);
+  if (actorResolution.status === 'unavailable') {
+    return authenticationUnavailable(isApi, response);
+  }
+  if (actorResolution.status === 'denied') {
+    return authorizationDenied(isApi, response);
+  }
+  if (!actorMeetsRouteRequirement(actorResolution.actor, routePolicy.requirement)) {
+    return authorizationDenied(isApi, response);
+  }
+  if (
+    routePolicy.requirement.auditBeforeFieldLaunch &&
+    actorResolution.actor.role === 'owner_admin' &&
+    !(await auditSensitiveRouteAccess({
+      actor: actorResolution.actor,
+      method: routePolicy.method,
+      routeTemplate: routePolicy.template,
+    }))
+  ) {
+    return authenticationUnavailable(isApi, response);
   }
 
   return response;
@@ -208,9 +167,29 @@ function authenticationUnavailable(
   return privateResponse(response, cookieSource);
 }
 
+function authorizationDenied(
+  isApi: boolean,
+  cookieSource?: NextResponse,
+): NextResponse {
+  const response = isApi
+    ? NextResponse.json(
+        {
+          error: {
+            code: 'ACCESS_DENIED',
+            message: 'You do not have access to this resource.',
+          },
+        },
+        { status: 403 },
+      )
+    : new NextResponse('You do not have access to this resource.', {
+        status: 403,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      });
+  return privateResponse(response, cookieSource);
+}
+
 export const config = {
-  // Exclude only Next internals and the one known public asset. A dynamic API
-  // or page identifier ending in an image/font extension must still cross the
-  // authorization boundary.
-  matcher: ['/((?!_next/|favicon\\.ico$).*)'],
+  // Exclude only Next internals. Public runtime assets pass through the exact
+  // registry above; dotted dynamic identifiers still cross authorization.
+  matcher: ['/((?!_next/).*)'],
 };

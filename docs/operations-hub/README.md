@@ -25,6 +25,9 @@ human-merged, and the byte-identical Hub mirror is now present.
 8. `SOURCE-PINS.md` — the exact source revisions reconciled here.
 9. `CLAUDE-FINAL-REVIEW-HANDOFF.md` — historical final-review prompt.
 10. `PHASE-0-CHECKLIST.md` — live safety gates and the field-provisioning stop.
+11. `PHASE-0-AUTHORIZATION-INVENTORY.md` — current Hub-local actor, route,
+    machine-auth coverage, deployment requirements, and remaining release
+    blocks.
 
 ## Scoped authority
 

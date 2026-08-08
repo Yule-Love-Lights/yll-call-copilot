@@ -5,14 +5,28 @@
 // account exists yet) -- the client falls back to simulator mode.
 
 import { NextResponse } from 'next/server';
-import { getSessionEmail } from '@/lib/auth/session';
-import { buildVoiceAccessToken, isTwilioConfigured } from '@/lib/live/twilioVoice';
+import { resolveCurrentHubActor } from '@/lib/auth/resource';
+import {
+  buildVoiceAccessToken,
+  isTwilioConfigured,
+  twilioIdentityForAuthUserId,
+} from '@/lib/live/twilioVoice';
 
 export async function GET() {
   if (!isTwilioConfigured()) {
     return NextResponse.json({ configured: false });
   }
 
-  const identity = (await getSessionEmail()) ?? 'rep';
-  return NextResponse.json(buildVoiceAccessToken(identity));
+  const actorResolution = await resolveCurrentHubActor();
+  if (actorResolution.status !== 'resolved') {
+    return NextResponse.json(
+      { error: 'Access denied.' },
+      { status: actorResolution.status === 'unavailable' ? 503 : 403 },
+    );
+  }
+  return NextResponse.json(
+    buildVoiceAccessToken(
+      twilioIdentityForAuthUserId(actorResolution.actor.authUserId),
+    ),
+  );
 }

@@ -37,9 +37,22 @@ function loadEnvLocal() {
   return env;
 }
 
-const [email, password, role = 'rep'] = process.argv.slice(2);
+const [email, password, requestedRole = 'rep'] = process.argv.slice(2);
 if (!email || !password) {
   console.error('Usage: node scripts/create-user.mjs <email> <temp-password> [role]');
+  process.exit(1);
+}
+
+// This is a legacy Office bootstrap script, not the future field provisioning
+// path. Keep the database input closed so a typo or an unsupported role cannot
+// become elevated through old `role !== "rep"` assumptions. Advertising,
+// Installer, and Manager provisioning remains blocked by the Phase 0 gates.
+const role = requestedRole.trim().toLowerCase();
+const BOOTSTRAP_ROLES = new Set(['rep', 'office']);
+if (!BOOTSTRAP_ROLES.has(role)) {
+  console.error(
+    `Unsupported bootstrap role "${requestedRole}". Allowed roles: rep, office. Owner/Admin requires the audited immutable-ID provisioning path.`,
+  );
   process.exit(1);
 }
 

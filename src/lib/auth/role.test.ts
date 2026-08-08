@@ -54,9 +54,22 @@ describe('resolveStaffRole', () => {
     expect(await resolveStaffRole(client, 'naldo@yulelovelights.com')).toBe('rep');
   });
 
-  it('queries app_users by the exact email given', async () => {
+  it('queries app_users by a normalized email', async () => {
     const { client, eq } = fakeClient({ data: { role: 'admin' }, error: null });
     await resolveStaffRole(client, 'Naldo@YuleLoveLights.com');
-    expect(eq).toHaveBeenCalledWith('email', 'Naldo@YuleLoveLights.com');
+    expect(eq).toHaveBeenCalledWith('email', 'naldo@yulelovelights.com');
+  });
+
+  it.each(['coach', 'manager', 'installer', 'advertising', 'manger', 'disabled'])(
+    'never elevates non-legacy-admin role %j',
+    async role => {
+      const { client } = fakeClient({ data: { role }, error: null });
+      expect(await resolveStaffRole(client, 'person@yulelovelights.com')).toBe('rep');
+    },
+  );
+
+  it('maps the planned Office role to the least-privileged legacy rep behavior', async () => {
+    const { client } = fakeClient({ data: { role: 'office' }, error: null });
+    expect(await resolveStaffRole(client, 'person@yulelovelights.com')).toBe('rep');
   });
 });

@@ -14,6 +14,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
 import { isClaudeConfigured } from '@/lib/claude';
+import { authorizeCallResource, resolveCurrentHubActor } from '@/lib/auth/resource';
 import { processTranscriptBatch } from '@/lib/transcripts/process';
 import type { LiveSessionRow } from '@/lib/live/types';
 import type { CallRow, LeadRow } from '@/lib/leads/types';
@@ -31,6 +32,13 @@ export async function POST(request: Request) {
   }
 
   const supabase = getSupabaseServerClient()!;
+  const actorResolution = await resolveCurrentHubActor();
+  if (actorResolution.status !== 'resolved') {
+    return NextResponse.json(
+      { configured: true, saved: false, error: 'Access denied.' },
+      { status: actorResolution.status === 'unavailable' ? 503 : 403 },
+    );
+  }
 
   const { data: sessionData, error: sessionError } = await supabase
     .from('live_sessions')
@@ -48,6 +56,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ configured: true, saved: false, error: 'Live session not found.' }, { status: 404 });
   }
   const session = sessionData as LiveSessionRow;
+
+  const authorization = await authorizeCallResource(supabase, {
+    actor: actorResolution.actor,
+    callId: session.call_id,
+    action: 'live_session.end',
+    resourceType: 'live_session',
+    resourceId: sessionId,
+    teamCapability: 'operations.admin',
+  });
+  if (authorization.status !== 'authorized') {
+    const status = authorization.status === 'unavailable' ? 503
+      : authorization.status === 'missing' ? 404 : 403;
+    return NextResponse.json(
+      { configured: true, saved: false, error: 'Access denied.' },
+      { status },
+    );
+  }
 
   if (session.status === 'ended') {
     return NextResponse.json({ configured: true, saved: true, alreadyEnded: true, callId: session.call_id });

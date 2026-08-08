@@ -4,17 +4,15 @@
 // signed-in email + role + coach_settings row, then calls these.
 
 export type BoardScope = 'own' | 'all';
+export type BoardViewerRole = 'rep' | 'owner' | 'admin';
 
-// 'rep' is the only role that ever gets narrowed to its own row — every
-// other role (owner, admin, whatever app_users.role holds) sees the whole
-// board once it's team-visible, and always sees everything even during
-// onboarding (they're the one running the rollout). A role we can't resolve
-// (query failed, email not found) fails to the more private option, same
-// "fail closed" convention as src/lib/auth/allowlist.ts's checkAllowlist.
-export function resolveBoardScope(role: string | null, teamBoardEnabled: boolean): BoardScope {
+// Only a resolved closed role participates in team visibility. An unresolved,
+// field, Manager, or arbitrary role remains own-only even when the board flag
+// is enabled; the proxy separately denies non-Office actors from this route.
+export function resolveBoardScope(role: BoardViewerRole | null, teamBoardEnabled: boolean): BoardScope {
+  if (role !== 'rep' && role !== 'owner' && role !== 'admin') return 'own';
   if (teamBoardEnabled) return 'all';
-  const isKnownNonRep = role !== null && role !== 'rep';
-  return isKnownNonRep ? 'all' : 'own';
+  return role === 'owner' || role === 'admin' ? 'all' : 'own';
 }
 
 const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;

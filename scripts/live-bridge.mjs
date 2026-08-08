@@ -14,10 +14,11 @@
 // path; this is the parallel path for once the accounts exist.
 //
 // Run: node scripts/live-bridge.mjs
-// Reads DEEPGRAM_API_KEY, LIVE_BRIDGE_SECRET, LIVE_APP_BASE_URL, and
-// LIVE_BRIDGE_PORT from the shell env or .env.local (same manual loader
-// scripts/create-user.mjs uses -- this is a plain Node script, not part of
-// the Next.js build, so it does not get automatic env loading).
+// Reads DEEPGRAM_API_KEY, LIVE_BRIDGE_SECRET, LIVE_BRIDGE_URL,
+// TWILIO_AUTH_TOKEN, LIVE_APP_BASE_URL, and LIVE_BRIDGE_PORT from the shell
+// env or .env.local (same manual loader scripts/create-user.mjs uses -- this
+// is a plain Node script, not part of the Next.js build, so it does not get
+// automatic env loading).
 
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -25,6 +26,13 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { DefaultDeepgramClient } from '@deepgram/sdk';
+import {
+  authorizeMediaStreamUpgrade,
+  consumeDurableMediaStreamGrant,
+  isAllowedBridgeAppBaseUrl,
+  mediaStreamStartMatches,
+  postLiveSegment,
+} from './live-bridge-auth.mjs';
 
 function loadEnvLocal() {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -57,6 +65,8 @@ function envVar(name, fallback) {
 
 const DEEPGRAM_API_KEY = envVar('DEEPGRAM_API_KEY');
 const LIVE_BRIDGE_SECRET = envVar('LIVE_BRIDGE_SECRET');
+const LIVE_BRIDGE_URL = envVar('LIVE_BRIDGE_URL');
+const TWILIO_AUTH_TOKEN = envVar('TWILIO_AUTH_TOKEN');
 const LIVE_APP_BASE_URL = envVar('LIVE_APP_BASE_URL', 'http://localhost:3000');
 const PORT = Number(process.env.PORT || envVar('LIVE_BRIDGE_PORT', '8787'));
 
@@ -64,10 +74,26 @@ if (!DEEPGRAM_API_KEY) {
   console.error('DEEPGRAM_API_KEY is not set (checked shell env and .env.local) -- the bridge cannot transcribe without it.');
   process.exit(1);
 }
-if (!LIVE_BRIDGE_SECRET) {
+if (
+  !LIVE_BRIDGE_SECRET ||
+  LIVE_BRIDGE_SECRET !== LIVE_BRIDGE_SECRET.trim() ||
+  LIVE_BRIDGE_SECRET.length < 16
+) {
   console.error(
-    'LIVE_BRIDGE_SECRET is not set (checked shell env and .env.local) -- set the same value the Next.js app has, or POST /api/live/segment will reject every segment this bridge sends.',
+    'LIVE_BRIDGE_SECRET must be an unpadded value of at least 16 characters (checked shell env and .env.local) and must match the Next.js app.',
   );
+  process.exit(1);
+}
+if (!LIVE_BRIDGE_URL) {
+  console.error('LIVE_BRIDGE_URL is not set -- the bridge cannot validate Twilio\'s exact public WebSocket URL.');
+  process.exit(1);
+}
+if (!TWILIO_AUTH_TOKEN) {
+  console.error('TWILIO_AUTH_TOKEN is not set -- the bridge rejects every unsigned WebSocket upgrade.');
+  process.exit(1);
+}
+if (!isAllowedBridgeAppBaseUrl(LIVE_APP_BASE_URL)) {
+  console.error('LIVE_APP_BASE_URL must use https://, except loopback http:// is allowed for local development.');
   process.exit(1);
 }
 
@@ -86,15 +112,16 @@ const deepgram = new DefaultDeepgramClient({ apiKey: DEEPGRAM_API_KEY });
 const SILENCE_REPORT_THRESHOLD_MS = 1500;
 
 async function postSegment(sessionId, speaker, text, silenceMs) {
-  try {
-    const res = await fetch(`${LIVE_APP_BASE_URL}/api/live/segment`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-live-bridge-secret': LIVE_BRIDGE_SECRET },
-      body: JSON.stringify({ sessionId, speaker, text, silenceMs }),
-    });
-    if (!res.ok) console.error(`POST /api/live/segment -> HTTP ${res.status}`);
-  } catch (err) {
-    console.error('POST /api/live/segment failed:', err instanceof Error ? err.message : err);
+  const result = await postLiveSegment({
+    appBaseUrl: LIVE_APP_BASE_URL,
+    bridgeSecret: LIVE_BRIDGE_SECRET,
+    sessionId,
+    speaker,
+    text,
+    silenceMs,
+  });
+  if (result !== 'saved') {
+    console.error(`POST /api/live/segment failed closed: ${result}`);
   }
 }
 
@@ -108,8 +135,9 @@ async function postSegment(sessionId, speaker, text, silenceMs) {
 // if speaker labels come out swapped once a real account exists.
 const TRACK_TO_SPEAKER = { inbound: 'rep', outbound: 'customer' };
 
-function handleTwilioConnection(ws) {
+function handleTwilioConnection(ws, expectedSessionId) {
   let sessionId = null;
+  let streamStarted = false;
   let currentSpeaker = 'customer';
   let lastFinalAt = null;
   let deepgramSocketPromise = null;
@@ -168,12 +196,21 @@ function handleTwilioConnection(ws) {
 
     try {
       if (event.event === 'start') {
-        sessionId = event.start?.customParameters?.sessionId ?? null;
-        if (!sessionId) console.error('Twilio stream started with no sessionId custom parameter -- cannot post segments for this call.');
+        if (!mediaStreamStartMatches(event, expectedSessionId, streamStarted)) {
+          console.error('Twilio stream start did not match its signed session path.');
+          ws.close(1008, 'Invalid stream session');
+          return;
+        }
+        sessionId = expectedSessionId;
+        streamStarted = true;
         return;
       }
 
       if (event.event === 'media') {
+        if (!streamStarted) {
+          ws.close(1008, 'Stream start required');
+          return;
+        }
         const track = event.media?.track;
         currentSpeaker = TRACK_TO_SPEAKER[track] ?? 'customer';
         const socket = await ensureDeepgramSocket();
@@ -206,11 +243,66 @@ function handleTwilioConnection(ws) {
 // unhealthy if nothing answers, and the same server both serves that 200 and
 // upgrades the Twilio Media Stream connection on one port. GET / -> "ok".
 const httpServer = createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('yll-call-copilot live-coaching bridge: ok\n');
+  if (req.method === 'GET' && req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('yll-call-copilot live-coaching bridge: ok\n');
+    return;
+  }
+  res.writeHead(404, { 'Content-Type': 'text/plain' });
+  res.end('not found\n');
 });
-const wss = new WebSocketServer({ server: httpServer });
-wss.on('connection', handleTwilioConnection);
+const wss = new WebSocketServer({ noServer: true });
+
+function rejectUpgrade(socket, statusCode, message) {
+  const body = `${message}\n`;
+  const statusText = statusCode === 503 ? 'Service Unavailable' : 'Unauthorized';
+  socket.write(
+    `HTTP/1.1 ${statusCode} ${statusText}\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`,
+  );
+  socket.destroy();
+}
+
+httpServer.on('upgrade', async (request, socket, head) => {
+  const rawSignature = request.headers['x-twilio-signature'];
+  const signature = Array.isArray(rawSignature) ? rawSignature[0] : rawSignature;
+  const authorization = authorizeMediaStreamUpgrade({
+    requestUrl: request.url,
+    signature,
+    publicBridgeUrl: LIVE_BRIDGE_URL,
+    authToken: TWILIO_AUTH_TOKEN,
+  });
+  if (!authorization.ok) {
+    console.warn(`Rejected live bridge WebSocket upgrade: ${authorization.reason}`);
+    rejectUpgrade(socket, 401, 'Unauthorized');
+    return;
+  }
+
+  // The signature proves this exact path came from Twilio. The Hub then
+  // atomically consumes the path's random grant in the shared database. No
+  // process-local cache is trusted, so restart and multi-replica replays fail.
+  socket.pause();
+  const durableAuthorization = await consumeDurableMediaStreamGrant({
+    appBaseUrl: LIVE_APP_BASE_URL,
+    bridgeSecret: LIVE_BRIDGE_SECRET,
+    sessionId: authorization.sessionId,
+    streamGrant: authorization.streamGrant,
+  });
+  if (durableAuthorization !== 'authorized') {
+    rejectUpgrade(
+      socket,
+      durableAuthorization === 'unavailable' ? 503 : 401,
+      durableAuthorization === 'unavailable' ? 'Service unavailable' : 'Unauthorized',
+    );
+    return;
+  }
+  if (socket.destroyed) return;
+  socket.resume();
+
+  wss.handleUpgrade(request, socket, head, ws => {
+    handleTwilioConnection(ws, authorization.sessionId);
+  });
+});
+
 httpServer.listen(PORT, () => {
   console.log(`Live coaching bridge listening on :${PORT} (HTTP health + WebSocket upgrade).`);
   console.log('Hosted: point LIVE_BRIDGE_URL at the public wss:// URL of this service. Local: put a TLS tunnel in front of this port.');

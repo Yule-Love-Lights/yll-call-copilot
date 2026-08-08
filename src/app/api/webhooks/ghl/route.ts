@@ -1,7 +1,8 @@
-// POST /api/webhooks/ghl?key=... — GoHighLevel webhook receiver. Exempt from
-// the staff-session auth in src/proxy.ts (a webhook has no user session);
-// authenticated instead by a shared secret query param checked here against
-// GHL_WEBHOOK_SECRET. Always ack close to 200 once past the secret check —
+// POST /api/webhooks/ghl — GoHighLevel webhook receiver. Exempt from the
+// employee session in src/proxy.ts (a webhook has no user session); verified
+// using HighLevel's X-GHL-Signature over the raw body. A constant-time legacy
+// shared secret remains temporarily compatible with the private workflow URL.
+// Always ack close to 200 once past the authentication check —
 // GHL retries on a non-2xx, and an unrecognized event type is expected
 // traffic (this app only cares about inbound calls/messages), not an error.
 //
@@ -15,19 +16,23 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
 import { mapGhlWebhookPayload } from '@/lib/leads/webhook';
+import { authenticateGhlWebhook, buildGhlWebhookEventKey } from '@/lib/auth/ghlWebhook';
 
 export async function POST(request: Request) {
-  const key = new URL(request.url).searchParams.get('key');
-  const expected = process.env.GHL_WEBHOOK_SECRET;
-  if (!expected || key !== expected) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const rawBody = await request.text();
+  const authentication = authenticateGhlWebhook(request, rawBody);
+  if (authentication !== 'authorized') {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: authentication === 'unconfigured' ? 503 : 401 },
+    );
   }
 
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ configured: false });
   }
 
-  const payload = await request.json().catch(() => null);
+  const payload = parseJson(rawBody);
   const event = mapGhlWebhookPayload(payload);
   if (!event.recognized) {
     return NextResponse.json({ configured: true, received: true, logged: false });
@@ -52,9 +57,18 @@ export async function POST(request: Request) {
 
   const { error } = await supabase.from('events_log').insert({
     kind: 'inbound_call',
+    source_event_key: buildGhlWebhookEventKey(rawBody),
     detail: { contactId: event.contactId, phone: event.phone, name: event.name, channel: event.channel, leadId, verticalSlug },
   });
   if (error) {
+    if ((error as { code?: unknown }).code === '23505') {
+      return NextResponse.json({
+        configured: true,
+        received: true,
+        logged: false,
+        duplicate: true,
+      });
+    }
     if (isMissingTableError(error)) {
       return NextResponse.json({ configured: true, migrated: false, reason: 'Run migration 0004 first.' });
     }
@@ -63,4 +77,12 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ configured: true, received: true, logged: true });
+}
+
+function parseJson(rawBody: string): unknown {
+  try {
+    return JSON.parse(rawBody);
+  } catch {
+    return null;
+  }
 }

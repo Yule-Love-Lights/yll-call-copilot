@@ -6,7 +6,16 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import twilio from 'twilio';
-import { buildVoiceAccessToken, buildVoiceTwiml, buildWhisperTwiml, CONSENT_LINE, isTwilioConfigured, verifyTwilioSignature } from './twilioVoice';
+import {
+  buildLiveBridgeStreamUrl,
+  buildVoiceAccessToken,
+  buildVoiceTwiml,
+  buildWhisperTwiml,
+  CONSENT_LINE,
+  isTwilioConfigured,
+  twilioIdentityForAuthUserId,
+  verifyTwilioSignature,
+} from './twilioVoice';
 
 const TWILIO_ENV_KEYS = [
   'TWILIO_ACCOUNT_SID',
@@ -15,6 +24,7 @@ const TWILIO_ENV_KEYS = [
   'TWILIO_TWIML_APP_SID',
   'TWILIO_CALLER_ID',
   'TWILIO_AUTH_TOKEN',
+  'LIVE_BRIDGE_URL',
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -48,11 +58,33 @@ describe('isTwilioConfigured', () => {
     process.env.TWILIO_API_KEY_SECRET = 'secret';
     process.env.TWILIO_TWIML_APP_SID = 'APxxx';
     process.env.TWILIO_CALLER_ID = '+15551234567';
+    process.env.TWILIO_AUTH_TOKEN = 'auth-token';
+    process.env.LIVE_BRIDGE_URL = 'wss://bridge.example.com';
     expect(isTwilioConfigured()).toBe(true);
   });
 });
 
+describe('buildLiveBridgeStreamUrl', () => {
+  it('builds a unique path that binds Twilio\'s signed upgrade to one session', () => {
+    const grant = 'a'.repeat(43);
+    expect(buildLiveBridgeStreamUrl('wss://bridge.example.com/media', 'sess_123', grant)).toBe(
+      `wss://bridge.example.com/media/streams/sess_123/${grant}`,
+    );
+  });
+
+  it('rejects insecure URLs, query strings, and malformed grants', () => {
+    expect(() => buildLiveBridgeStreamUrl('ws://bridge.example.com', 'sess_123', 'a'.repeat(43))).toThrow();
+    expect(() => buildLiveBridgeStreamUrl('wss://bridge.example.com?key=value', 'sess_123', 'a'.repeat(43))).toThrow();
+    expect(() => buildLiveBridgeStreamUrl('wss://bridge.example.com', 'sess_123', 'short')).toThrow();
+  });
+});
+
 describe('buildVoiceAccessToken', () => {
+  it('derives a stable Voice-safe identity from an immutable Auth user id', () => {
+    const identity = twilioIdentityForAuthUserId('123e4567-e89b-12d3-a456-426614174000');
+    expect(identity).toMatch(/^yll_[a-f0-9]{64}$/);
+    expect(identity).toBe(twilioIdentityForAuthUserId('123e4567-e89b-12d3-a456-426614174000'));
+  });
   it('returns {configured:false} when Twilio env is absent', () => {
     expect(buildVoiceAccessToken('rep@example.com')).toEqual({ configured: false });
   });
@@ -63,6 +95,8 @@ describe('buildVoiceAccessToken', () => {
     process.env.TWILIO_API_KEY_SECRET = 'secret';
     process.env.TWILIO_TWIML_APP_SID = 'APxxx';
     process.env.TWILIO_CALLER_ID = '+15551234567';
+    process.env.TWILIO_AUTH_TOKEN = 'auth-token';
+    process.env.LIVE_BRIDGE_URL = 'wss://bridge.example.com';
 
     const result = buildVoiceAccessToken('rep@example.com');
     expect(result.configured).toBe(true);
@@ -133,8 +167,8 @@ describe('buildWhisperTwiml', () => {
 });
 
 describe('verifyTwilioSignature', () => {
-  it('passes everything through when TWILIO_AUTH_TOKEN is unset (no live account to validate against yet)', () => {
-    expect(verifyTwilioSignature({ url: 'https://example.com/api/twilio/voice', params: {}, signature: null })).toBe(true);
+  it('fails closed when TWILIO_AUTH_TOKEN is unset', () => {
+    expect(verifyTwilioSignature({ url: 'https://example.com/api/twilio/voice', params: {}, signature: null })).toBe(false);
   });
 
   it('rejects a missing signature once TWILIO_AUTH_TOKEN is set', () => {

@@ -59,9 +59,11 @@ function fakeSupabase(opts: { lastSyncedAt?: string | null } = {}) {
 
 describe('GET /api/cron/sync-recordings', () => {
   const originalCronEnabled = process.env.CRON_ENABLED;
+  const originalCronSecret = process.env.CRON_SECRET;
 
   beforeEach(() => {
     process.env.CRON_ENABLED = 'true';
+    process.env.CRON_SECRET = 'test-cron-secret-value';
     isSupabaseConfiguredMock.mockReturnValue(true);
     isHighLevelConfiguredMock.mockReturnValue(true);
     processPendingRecordingsMock.mockReset().mockResolvedValue({ done: 0, skipped: 0, failed: 0 });
@@ -70,6 +72,7 @@ describe('GET /api/cron/sync-recordings', () => {
 
   afterEach(() => {
     process.env.CRON_ENABLED = originalCronEnabled;
+    process.env.CRON_SECRET = originalCronSecret;
     vi.useRealTimers();
   });
 
@@ -89,7 +92,11 @@ describe('GET /api/cron/sync-recordings', () => {
       return [];
     });
 
-    const res = await GET();
+    const res = await GET(
+      new Request('https://ops.example.com/api/cron/sync-recordings', {
+        headers: { authorization: 'Bearer test-cron-secret-value' },
+      }),
+    );
     const json = await res.json();
 
     expect(json.ran).toBe(true);

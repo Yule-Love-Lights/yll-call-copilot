@@ -22,8 +22,8 @@ describe('resolveBoardScope', () => {
     expect(resolveBoardScope(null, false)).toBe('own');
   });
 
-  it('an unresolved role still sees everything once the board is on (the switch wins)', () => {
-    expect(resolveBoardScope(null, true)).toBe('all');
+  it('an unresolved role stays private even when the board is on', () => {
+    expect(resolveBoardScope(null, true)).toBe('own');
   });
 });
 

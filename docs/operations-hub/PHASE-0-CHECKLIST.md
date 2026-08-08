@@ -3,6 +3,8 @@
 Status: **foundation started; field-user provisioning blocked**
 Date: 2026-08-07
 Branch base: Hub `master@a317e66c3f13c0d4b22c68d40810fc2c3d794c32`
+Authorization slice stacked on PR #41 at
+`754e4d64b3a6528067b0467d5dc52f9e96d60325`.
 
 This checklist records the actual repository baseline and the safety gates that
 must precede Advertising or Installer accounts. It does not authorize Hub-owned
@@ -15,12 +17,14 @@ was built for a small office allowlist:
 
 - login is email/password, while the planned Operations Hub identity is phone
   number plus OTP;
-- `src/proxy.ts` authorizes an email by presence in `app_users`, not by a
-  department/capability model;
-- most pages and APIs rely only on that global allowlist, so a newly allowlisted
-  field employee could reach office-only surfaces;
-- `app_users.role` is unconstrained, and existing `role !== 'rep'` checks can
-  turn an unexpected role string into elevated access;
+- the new actor resolver still uses `app_users` as a bootstrap identity source;
+  its inferred membership has no canonical `membership_version` or Quote-owned
+  active-context projection;
+- owner/admin runtime access now requires the server-only Naldo/Jason Auth UUID
+  ceiling and audited team access on the protected call/live resources, but
+  production IDs and the final additive employee/auth link still need review;
+- route policies now inventory resource scope, but all service-role handlers
+  and tables still need the RLS/resource-authorization gates below;
 - all 31 tables defined by the checked-in migrations lack RLS policies, and the
   server commonly uses a service-role client that bypasses future RLS.
 
@@ -58,17 +62,31 @@ only the honestly named local pin check.
       dependencies are missing. The request-time resolver rejects blank,
       partial, malformed, and insecure production configuration; protected
       pages and all non-health APIs return generic non-cacheable 503 responses
-      before Supabase is called. The matcher excludes only Next internals and
-      the known favicon, so dotted dynamic IDs cannot skip the gate. There is
+      before Supabase is called. The matcher excludes only Next internals; the
+      favicon passes through an exact public-runtime asset registry, so dotted
+      dynamic IDs cannot skip the gate. There is
       no missing-configuration bypass, including in local development.
-- [ ] `app_users.role` is replaced or constrained; arbitrary values never imply
-      privilege.
-- [ ] One centralized actor resolver returns immutable employee ID, active
-      status, memberships, active department context, and explicit capabilities.
-- [ ] Every page and API endpoint declares required capabilities server-side.
-- [ ] Existing office routes are denied to Advertising and Installer roles.
+- [x] `app_users.role` is constrained at every authorization boundary; a closed
+      parser, compatibility helpers, and the bootstrap script ensure arbitrary
+      values never imply privilege.
+- [x] A centralized email-linked bootstrap actor resolver returns the current
+      `app_users.id`, row-presence status, inferred membership,
+      null/version-marked active-context fields, and explicit Hub-local
+      capabilities. It is intentionally not described as final immutable
+      identity linkage.
+- [ ] Additive Hub identity plus the Quote-owned current-context projection
+      replace those bootstrap inferences with effective active state,
+      memberships, `membership_version`, and canonical context freshness.
+- [x] Every current page and API handler method declares required capabilities
+      server-side; an exhaustive filesystem test rejects undeclared additions.
+- [x] Existing office routes are denied to Advertising and Installer roles.
 - [ ] Owner/Admin is provisioned only for Naldo and Jason in V1.
-- [ ] Manager capabilities are testable but Manager remains unprovisioned.
+      Runtime access already fails closed against
+      `HUB_OWNER_ADMIN_AUTH_USER_IDS`, and the generic bootstrap script cannot
+      create an elevated role; this remains unchecked until the two production
+      UUIDs and audited provisioning record are verified.
+- [x] Manager is present in the closed design vocabulary and negative tests but
+      every Manager actor claim is denied in V1.
 - [ ] Phone OTP, invite, recovery, phone reassignment, deactivation, and session
       revocation rules are implemented and audited.
 - [ ] Codex-side decisions 16 (OTP provider/recovery), 18 (cached-session and
@@ -77,14 +95,28 @@ only the honestly named local pin check.
 - [ ] P18 cached-session grace and deactivated-device pending-write behavior is
       owner-ruled, then implemented and audited. Until then, field provisioning
       remains blocked; the Hub must not silently accept or drop queued writes.
-- [ ] Five public cron routes use authenticated requests rather than
-      `CRON_ENABLED` alone.
+- [x] Five cron routes require Vercel's `Authorization: Bearer $CRON_SECRET`
+      credential before evaluating the separate `CRON_ENABLED` kill switch.
+- [x] Outbound Twilio calls use an actor-bound, expiring, one-time database
+      grant; destination/session are derived server-side and customer-local
+      calling hours are rechecked before atomic consumption.
+- [x] The public Media Streams upgrade validates Twilio's signature against a
+      unique session-bound `wss://` path, rejects replay, and requires a
+      matching first `start` event before opening Deepgram.
+- [x] HighLevel signed webhook retries/replays are race-safely deduplicated by
+      a persisted unique source digest.
+- [ ] Production preflight and signed postdeploy smoke are run for cron,
+      HighLevel, Twilio, and the live bridge. `npm run verify:auth-config`
+      validates variable presence/shape before deploy; live endpoint evidence
+      is still required.
 - [ ] Legacy `src/lib/quoteTool.ts` remains read-only; new integration uses only
       the canonical `/api/ops/v1` boundary.
 
-Baseline audit: 72 API route files exist; only 12 explicitly resolve a role.
-Authorization coverage must be inventoried endpoint-by-endpoint before any
-field identity is enabled.
+Current inventory: 24 pages and 73 API route files (80 handler methods) are
+declared in `src/lib/auth/routePolicy.ts`. The 12 legacy route-level role
+lookups now return only closed least-privileged values. See
+`PHASE-0-AUTHORIZATION-INVENTORY.md` for the capability matrix and remaining
+resource-scope, audit, identity-projection, and cross-repository gaps.
 
 ## 4. Existing-table RLS checklist
 

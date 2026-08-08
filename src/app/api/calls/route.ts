@@ -24,7 +24,12 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
 import { isClaudeConfigured } from '@/lib/claude';
-import { getSessionEmail } from '@/lib/auth/session';
+import { hasCapability } from '@/lib/auth/capabilities';
+import {
+  auditTeamResourceAccess,
+  decideOwnedResourceAccess,
+  resolveCurrentHubActor,
+} from '@/lib/auth/resource';
 import { validateCallInput } from '@/lib/leads/calls';
 import { generateFollowups } from '@/lib/leads/followups';
 import { FOLLOWUP_OUTCOMES, type LeadRow } from '@/lib/leads/types';
@@ -46,6 +51,14 @@ export async function POST(request: Request) {
   const input = validation.input;
 
   const supabase = getSupabaseServerClient()!;
+  const actorResolution = await resolveCurrentHubActor();
+  if (actorResolution.status !== 'resolved') {
+    return NextResponse.json(
+      { configured: true, saved: false, error: 'Access denied.' },
+      { status: actorResolution.status === 'unavailable' ? 503 : 403 },
+    );
+  }
+  const actor = actorResolution.actor;
 
   const { data: leadData, error: leadError } = await supabase.from('leads').select('*').eq('id', input.leadId).maybeSingle();
   if (leadError) {
@@ -59,6 +72,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ configured: true, saved: false, error: 'Lead not found.' }, { status: 404 });
   }
   const lead = leadData as LeadRow;
+
+  if (
+    lead.claimed_by &&
+    lead.claimed_by.toLowerCase() !== actor.email &&
+    !hasCapability(actor, 'operations.admin')
+  ) {
+    return NextResponse.json(
+      { configured: true, saved: false, error: 'Access denied.' },
+      { status: 403 },
+    );
+  }
+  if (
+    lead.claimed_by &&
+    lead.claimed_by.toLowerCase() !== actor.email &&
+    !(await auditTeamResourceAccess(supabase, {
+      actor,
+      action: 'lead.call_override',
+      resourceType: 'lead',
+      resourceId: lead.id,
+      ownerEmail: lead.claimed_by,
+    }))
+  ) {
+    return NextResponse.json(
+      { configured: true, saved: false, error: 'Could not audit this access.' },
+      { status: 503 },
+    );
+  }
 
   // Resolve the matched vertical (best-effort) for extraction + follow-up
   // grounding. A lead with no vertical_slug match (e.g. a fresh inbound-
@@ -129,12 +169,12 @@ export async function POST(request: Request) {
 
   // 2. The call itself — update the live session's row if we have its id,
   // otherwise insert a fresh one (see the file-header comment).
-  const rep_email = await getSessionEmail();
+  const rep_email = actor.email;
   let callId: string;
   if (input.callId) {
     const { data: existingCallData, error: existingCallError } = await supabase
       .from('calls')
-      .select('id')
+      .select('id, lead_id, rep_email')
       .eq('id', input.callId)
       .maybeSingle();
     if (existingCallError) {
@@ -144,16 +184,49 @@ export async function POST(request: Request) {
     if (!existingCallData) {
       return NextResponse.json({ configured: true, saved: false, error: 'Call not found.' }, { status: 404 });
     }
+    const existingCall = existingCallData as {
+      id: string;
+      lead_id: string | null;
+      rep_email: string | null;
+    };
+    if (existingCall.lead_id !== lead.id) {
+      return NextResponse.json(
+        { configured: true, saved: false, error: 'Call does not belong to this lead.' },
+        { status: 409 },
+      );
+    }
+    const access = decideOwnedResourceAccess(actor, existingCall.rep_email);
+    if (access === 'denied') {
+      return NextResponse.json(
+        { configured: true, saved: false, error: 'Access denied.' },
+        { status: 403 },
+      );
+    }
+    if (
+      access === 'team' &&
+      !(await auditTeamResourceAccess(supabase, {
+        actor,
+        action: 'call.update',
+        resourceType: 'call',
+        resourceId: input.callId,
+        ownerEmail: existingCall.rep_email as string,
+      }))
+    ) {
+      return NextResponse.json(
+        { configured: true, saved: false, error: 'Could not audit this access.' },
+        { status: 503 },
+      );
+    }
 
     const { error: updateError } = await supabase
       .from('calls')
       .update({
-        rep_email,
         outcome: input.outcome,
         notes: input.notes,
         ended_at: new Date().toISOString(),
       })
-      .eq('id', input.callId);
+      .eq('id', input.callId)
+      .eq('rep_email', existingCall.rep_email);
     if (updateError) {
       console.error('Update call failed:', updateError);
       return NextResponse.json({ configured: true, saved: false, error: 'Could not save the call.' }, { status: 500 });

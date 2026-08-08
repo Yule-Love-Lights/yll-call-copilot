@@ -7,6 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
+import { authorizeCallResource, resolveCurrentHubActor } from '@/lib/auth/resource';
 import type { CoachingEventRow, LiveSessionRow } from '@/lib/live/types';
 
 export async function GET(request: Request) {
@@ -22,6 +23,13 @@ export async function GET(request: Request) {
   const afterMs = Number(url.searchParams.get('afterMs') ?? '0');
 
   const supabase = getSupabaseServerClient()!;
+  const actorResolution = await resolveCurrentHubActor();
+  if (actorResolution.status !== 'resolved') {
+    return NextResponse.json(
+      { configured: true, error: 'Access denied.' },
+      { status: actorResolution.status === 'unavailable' ? 503 : 403 },
+    );
+  }
 
   const { data: sessionData, error: sessionError } = await supabase
     .from('live_sessions')
@@ -39,6 +47,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ configured: true, error: 'Live session not found.' }, { status: 404 });
   }
   const session = sessionData as LiveSessionRow;
+
+  const authorization = await authorizeCallResource(supabase, {
+    actor: actorResolution.actor,
+    callId: session.call_id,
+    action: 'live_events.read',
+    resourceType: 'live_session',
+    resourceId: sessionId,
+    teamCapability: 'operations.admin',
+  });
+  if (authorization.status !== 'authorized') {
+    const status = authorization.status === 'unavailable' ? 503
+      : authorization.status === 'missing' ? 404 : 403;
+    return NextResponse.json({ configured: true, error: 'Access denied.' }, { status });
+  }
 
   const { data: eventsData, error: eventsError } = await supabase
     .from('coaching_events')

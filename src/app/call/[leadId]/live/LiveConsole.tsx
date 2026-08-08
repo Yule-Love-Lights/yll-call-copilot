@@ -134,12 +134,15 @@ export default function LiveConsole({ leadId }: { leadId: string }) {
   }
 
   // UNTESTED against a live account -- see src/lib/live/twilioVoice.ts.
-  async function startTwilio(newSessionId: string, token: string) {
+  async function startTwilio(token: string, dialGrant: string) {
     const { Device } = await import('@twilio/voice-sdk');
     const device = new Device(token, {});
     deviceRef.current = device;
     await device.register();
-    await device.connect({ params: { To: lead?.phone ?? '', sessionId: newSessionId } });
+    // The destination and session are resolved server-side from this opaque,
+    // one-time grant. Never send a customer number as a caller-controlled
+    // Twilio parameter.
+    await device.connect({ params: { dialGrant } });
   }
 
   async function onStart() {
@@ -152,6 +155,9 @@ export default function LiveConsole({ leadId }: { leadId: string }) {
     try {
       const tokenRes = await fetch('/api/twilio/token');
       const tokenJson = await tokenRes.json();
+      if (!tokenRes.ok) {
+        throw new Error(tokenJson.error ?? 'Could not authorize the phone client.');
+      }
       const chosenMode: Mode = tokenJson.configured ? 'twilio' : 'simulator';
 
       const startRes = await fetch('/api/live/start', {
@@ -171,7 +177,8 @@ export default function LiveConsole({ leadId }: { leadId: string }) {
       setPhase('active');
 
       if (chosenMode === 'twilio') {
-        await startTwilio(startJson.sessionId, tokenJson.token);
+        if (!startJson.dialGrant) throw new Error('The dial authorization is missing.');
+        await startTwilio(tokenJson.token, startJson.dialGrant);
       } else {
         startSimulator(startJson.sessionId);
       }

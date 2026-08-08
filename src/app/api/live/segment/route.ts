@@ -7,16 +7,22 @@
 //
 // Auth: this is the one live/* route the standalone bridge
 // (scripts/live-bridge.mjs) calls directly with no browser session, so it is
-// exempt from the staff-session gate in src/proxy.ts (see PUBLIC_PATHS
-// there) and instead authenticates itself here: either the
-// x-live-bridge-secret header matches LIVE_BRIDGE_SECRET, or (the common
-// case -- the browser driving the simulator) a signed-in staff session,
-// checked the same way every other route relies on the proxy to have
-// already checked it.
+// classified as route-authenticated in the central policy and authenticates
+// itself here: either a constant-time x-live-bridge-secret match, or a fully
+// resolved Office actor with office.calls.work. Browser actors are also
+// checked against the call that owns the requested live session.
 
 import { NextResponse } from 'next/server';
-import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
-import { getSessionEmail } from '@/lib/auth/session';
+import {
+  getSupabaseAuthServerClient,
+  getSupabaseServerClient,
+  isMissingTableError,
+  isSupabaseConfigured,
+} from '@/lib/supabase';
+import { resolveHubActor } from '@/lib/auth/actor';
+import { hasCapability, type HubActor } from '@/lib/auth/capabilities';
+import { verifyHeaderSecret } from '@/lib/auth/machine';
+import { auditTeamResourceAccess, decideOwnedResourceAccess } from '@/lib/auth/resource';
 import { generateCoachCard } from '@/lib/live/card';
 import { createLiveEngineState, detectTriggers, type LiveEngineState, type Segment, type TriggerType } from '@/lib/live/engine';
 import type { LiveSessionRow } from '@/lib/live/types';
@@ -43,24 +49,48 @@ function validateSegmentBody(
   return { valid: true, sessionId, speaker, text, silenceMs };
 }
 
-async function isAuthorized(request: Request): Promise<boolean> {
-  const bridgeSecret = process.env.LIVE_BRIDGE_SECRET;
-  const provided = request.headers.get('x-live-bridge-secret');
-  if (bridgeSecret && provided === bridgeSecret) return true;
+type SegmentPrincipal =
+  | { status: 'authorized'; kind: 'bridge' }
+  | { status: 'authorized'; kind: 'employee'; actor: HubActor }
+  | { status: 'denied' }
+  | { status: 'unavailable' };
 
-  // Not the bridge -- this path is public in src/proxy.ts only so the
-  // bridge (no browser session) can reach it, so fall back to requiring the
-  // same signed-in staff session every other route gets for free.
-  const email = await getSessionEmail();
-  return !!email;
+async function resolveSegmentPrincipal(request: Request): Promise<SegmentPrincipal> {
+  const provided = request.headers.get('x-live-bridge-secret');
+  if (provided) {
+    const bridgeDecision = verifyHeaderSecret(
+      request,
+      'x-live-bridge-secret',
+      process.env.LIVE_BRIDGE_SECRET,
+    );
+    if (bridgeDecision === 'authorized') return { status: 'authorized', kind: 'bridge' };
+    return { status: bridgeDecision === 'unconfigured' ? 'unavailable' : 'denied' };
+  }
+
+  const authClient = await getSupabaseAuthServerClient();
+  if (!authClient) return { status: 'unavailable' };
+  const { data, error } = await authClient.auth.getUser();
+  if (error) return { status: 'unavailable' };
+  if (!data.user) return { status: 'denied' };
+
+  const actorResolution = await resolveHubActor(data.user);
+  if (actorResolution.status !== 'resolved') return actorResolution;
+  if (!hasCapability(actorResolution.actor, 'office.calls.work')) {
+    return { status: 'denied' };
+  }
+  return { status: 'authorized', kind: 'employee', actor: actorResolution.actor };
 }
 
 export async function POST(request: Request) {
   if (!isSupabaseConfigured()) {
-    return NextResponse.json({ configured: false, saved: false, reason: 'Supabase not configured.' });
+    return NextResponse.json({ error: 'Service unavailable' }, { status: 503 });
   }
 
-  if (!(await isAuthorized(request))) {
+  const principal = await resolveSegmentPrincipal(request);
+  if (principal.status !== 'authorized') {
+    if (principal.status === 'unavailable') {
+      return NextResponse.json({ error: 'Service unavailable' }, { status: 503 });
+    }
     return NextResponse.json({ error: 'Not signed in' }, { status: 401 });
   }
 
@@ -89,6 +119,61 @@ export async function POST(request: Request) {
     return NextResponse.json({ configured: true, saved: false, error: 'Live session not found.' }, { status: 404 });
   }
   const session = sessionData as LiveSessionRow;
+
+  // A bridge secret alone cannot create transcript data for an arbitrary or
+  // simulator session. The signed WebSocket grant must already have been
+  // durably and atomically consumed for this Twilio session.
+  if (
+    principal.kind === 'bridge' &&
+    (session.mode !== 'twilio' || !session.media_stream_started_at)
+  ) {
+    return NextResponse.json(
+      { configured: true, saved: false, error: 'Stream authorization required.' },
+      { status: 403 },
+    );
+  }
+
+  if (principal.kind === 'employee') {
+    const { data: ownerData, error: ownerError } = await supabase
+      .from('calls')
+      .select('rep_email')
+      .eq('id', session.call_id)
+      .maybeSingle();
+    if (ownerError) {
+      console.error('Load live session owner failed:', ownerError);
+      return NextResponse.json(
+        { configured: true, saved: false, error: 'Could not authorize this live session.' },
+        { status: 500 },
+      );
+    }
+    const ownerEmail = (ownerData as { rep_email?: unknown } | null)?.rep_email;
+    const access = decideOwnedResourceAccess(
+      principal.actor,
+      ownerEmail,
+      'operations.admin',
+    );
+    if (access === 'denied') {
+      return NextResponse.json(
+        { configured: true, saved: false, error: 'Access denied.' },
+        { status: 403 },
+      );
+    }
+    if (
+      access === 'team' &&
+      !(await auditTeamResourceAccess(supabase, {
+        actor: principal.actor,
+        action: 'live_segment.write',
+        resourceType: 'live_session',
+        resourceId: sessionId,
+        ownerEmail: ownerEmail as string,
+      }))
+    ) {
+      return NextResponse.json(
+        { configured: true, saved: false, error: 'Could not audit this access.' },
+        { status: 503 },
+      );
+    }
+  }
 
   if (session.status !== 'active') {
     return NextResponse.json({ configured: true, saved: false, ended: true });

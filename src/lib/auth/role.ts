@@ -1,20 +1,24 @@
-// Resolves the signed-in staff member's app_users role for routes that gate
-// on it. 'rep' is the default and least-privileged role; anything else
-// (owner, admin) may read team-wide coaching data and edit shared settings.
-// A missing row, missing email, or lookup failure resolves to 'rep' so a
-// gap fails closed. Duplicated byte-identical across sibling branches the
-// same way src/lib/quoteTool.ts is; git merges identical additions cleanly.
+// Compatibility helper for existing handlers while the proxy enforces the
+// centralized capability policy. Only the closed legacy admin values may
+// survive this boundary; field, Manager, unknown, and failed lookups all
+// degrade to the least-privileged Office role.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { parseAppUserRole } from './capabilities';
 
-export async function resolveStaffRole(supabase: SupabaseClient, email: string | null): Promise<string> {
+export type LegacyStaffRole = 'rep' | 'owner' | 'admin';
+
+export async function resolveStaffRole(
+  supabase: SupabaseClient,
+  email: string | null,
+): Promise<LegacyStaffRole> {
   if (!email) return 'rep';
   const { data, error } = await supabase
     .from('app_users')
     .select('role')
-    .eq('email', email)
+    .eq('email', email.toLowerCase())
     .maybeSingle();
   if (error || !data) return 'rep';
-  const role = (data as { role?: string }).role;
-  return role && role.trim() ? role : 'rep';
+  const role = parseAppUserRole((data as { role?: unknown }).role);
+  return role === 'owner' || role === 'admin' ? role : 'rep';
 }

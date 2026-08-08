@@ -9,10 +9,9 @@
 // POST /api/twilio/voice in the first place).
 //
 // Twilio calls this directly (no browser session) -- exempt from the
-// staff-session gate in src/proxy.ts (see PUBLIC_PATHS there) and validated
+// employee-session gate in src/proxy.ts (see routePolicy.ts) and validated
 // the same way as /api/twilio/voice: X-Twilio-Signature, checked via
-// verifyTwilioSignature (a no-op until TWILIO_AUTH_TOKEN is set -- there is
-// no live account yet).
+// verifyTwilioSignature. Missing TWILIO_AUTH_TOKEN fails closed.
 
 import { NextResponse } from 'next/server';
 import { buildWhisperTwiml, verifyTwilioSignature } from '@/lib/live/twilioVoice';
