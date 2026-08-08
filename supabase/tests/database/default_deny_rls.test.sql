@@ -1,0 +1,288 @@
+begin;
+
+create extension if not exists pgtap with schema extensions;
+set search_path = extensions, public;
+
+select no_plan();
+
+create temporary table expected_hub_tables (
+  table_name text primary key
+) on commit drop;
+
+insert into expected_hub_tables (table_name) values
+  ('app_users'),
+  ('brain_insights'),
+  ('brain_reviews'),
+  ('call_recordings'),
+  ('call_scores'),
+  ('calls'),
+  ('coach_settings'),
+  ('coaching_events'),
+  ('contacts_cache'),
+  ('documents'),
+  ('email_reply_drafts'),
+  ('events_log'),
+  ('feedback_cards'),
+  ('followups'),
+  ('ghl_sync_log'),
+  ('inbound_emails'),
+  ('ingest_jobs'),
+  ('leads'),
+  ('learnings'),
+  ('live_sessions'),
+  ('offer_versions'),
+  ('playbook_proposals'),
+  ('playbook_versions'),
+  ('practice_sessions'),
+  ('recording_sync_state'),
+  ('rubric_versions'),
+  ('second_mile_scans'),
+  ('second_mile_touches'),
+  ('transcripts'),
+  ('verticals'),
+  ('weekly_digests');
+
+select set_eq(
+  $sql$
+    select c.relname::text
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relkind in ('r', 'p')
+      and not exists (
+        select 1
+        from pg_depend d
+        where d.classid = 'pg_class'::regclass
+          and d.objid = c.oid
+          and d.deptype = 'e'
+      )
+  $sql$,
+  $sql$ select table_name from expected_hub_tables $sql$,
+  'the reviewed public-table manifest is exact'
+);
+
+select ok(
+  c.relrowsecurity,
+  format('%I has row-level security enabled', expected.table_name)
+)
+from expected_hub_tables expected
+join pg_class c on c.oid = format('public.%I', expected.table_name)::regclass
+order by expected.table_name;
+
+select ok(
+  c.relforcerowsecurity,
+  format('%I forces row-level security for non-bypass owners', expected.table_name)
+)
+from expected_hub_tables expected
+join pg_class c on c.oid = format('public.%I', expected.table_name)::regclass
+order by expected.table_name;
+
+select is(
+  (
+    select count(*)::bigint
+    from pg_policies policies
+    join expected_hub_tables expected on expected.table_name = policies.tablename
+    where policies.schemaname = 'public'
+  ),
+  0::bigint,
+  'legacy application tables have zero client allow policies'
+);
+
+select ok(
+  not has_table_privilege('anon', format('public.%I', table_name), 'SELECT')
+    and not has_table_privilege('anon', format('public.%I', table_name), 'INSERT')
+    and not has_table_privilege('anon', format('public.%I', table_name), 'UPDATE')
+    and not has_table_privilege('anon', format('public.%I', table_name), 'DELETE'),
+  format('anon has no DML privileges on %I', table_name)
+)
+from expected_hub_tables
+order by table_name;
+
+select ok(
+  not has_table_privilege('authenticated', format('public.%I', table_name), 'SELECT')
+    and not has_table_privilege('authenticated', format('public.%I', table_name), 'INSERT')
+    and not has_table_privilege('authenticated', format('public.%I', table_name), 'UPDATE')
+    and not has_table_privilege('authenticated', format('public.%I', table_name), 'DELETE'),
+  format('authenticated has no DML privileges on %I', table_name)
+)
+from expected_hub_tables
+order by table_name;
+
+select ok(
+  has_table_privilege('service_role', format('public.%I', table_name), 'SELECT')
+    and has_table_privilege('service_role', format('public.%I', table_name), 'INSERT')
+    and has_table_privilege('service_role', format('public.%I', table_name), 'UPDATE')
+    and has_table_privilege('service_role', format('public.%I', table_name), 'DELETE')
+    and not has_table_privilege('service_role', format('public.%I', table_name), 'TRUNCATE'),
+  format('service_role has DML but not destructive DDL-like access on %I', table_name)
+)
+from expected_hub_tables
+order by table_name;
+
+select ok(
+  (select rolbypassrls from pg_roles where rolname = 'service_role'),
+  'service_role is the explicit RLS-bypass server role'
+);
+
+select ok(
+  not has_sequence_privilege('anon', 'public.ghl_sync_log_id_seq', 'USAGE')
+    and not has_sequence_privilege('anon', 'public.events_log_id_seq', 'USAGE'),
+  'anon cannot consume Hub identity sequences'
+);
+
+select ok(
+  not has_sequence_privilege('authenticated', 'public.ghl_sync_log_id_seq', 'USAGE')
+    and not has_sequence_privilege('authenticated', 'public.events_log_id_seq', 'USAGE'),
+  'authenticated cannot consume Hub identity sequences'
+);
+
+select ok(
+  has_sequence_privilege('service_role', 'public.ghl_sync_log_id_seq', 'USAGE')
+    and has_sequence_privilege('service_role', 'public.events_log_id_seq', 'USAGE')
+    and not has_sequence_privilege('service_role', 'public.ghl_sync_log_id_seq', 'UPDATE')
+    and not has_sequence_privilege('service_role', 'public.events_log_id_seq', 'UPDATE'),
+  'service_role can consume but cannot reset Hub identity sequences'
+);
+
+select ok(
+  not has_schema_privilege('anon', 'public', 'CREATE')
+    and not has_schema_privilege('authenticated', 'public', 'CREATE')
+    and not has_schema_privilege('service_role', 'public', 'CREATE'),
+  'runtime roles cannot create objects in the public schema'
+);
+
+insert into public.app_users (email, role)
+values ('rls-probe@example.invalid', 'rep');
+
+-- These transaction-local grants prove the RLS layer independently of the
+-- ACL layer. They disappear on rollback.
+grant select, insert, update, delete on table public.app_users
+  to anon, authenticated;
+
+set local role anon;
+select is(
+  (select count(*) from public.app_users where email = 'rls-probe@example.invalid'),
+  0::bigint,
+  'logged-out role cannot read a row even with a temporary table grant'
+);
+select throws_ok(
+  $sql$
+    insert into public.app_users (email, role)
+    values ('anon-bypass@example.invalid', 'rep')
+  $sql$,
+  '42501',
+  null,
+  'logged-out role cannot insert a row even with a temporary table grant'
+);
+reset role;
+
+set local role authenticated;
+set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000001';
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated"}';
+select is(
+  (select count(*) from public.app_users where email = 'rls-probe@example.invalid'),
+  0::bigint,
+  'authenticated JWT cannot read a row even with a temporary table grant'
+);
+select throws_ok(
+  $sql$
+    insert into public.app_users (email, role)
+    values ('authenticated-bypass@example.invalid', 'rep')
+  $sql$,
+  '42501',
+  null,
+  'authenticated JWT cannot insert a row even with a temporary table grant'
+);
+
+-- These labels are deliberately claims-shaped only: immutable employee and
+-- membership rows land in the next slice. The assertions prove that no
+-- caller-supplied persona claim can bypass today's API-only boundary.
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000002","role":"authenticated","employee_status":"inactive"}';
+select is((select count(*) from public.app_users), 0::bigint,
+  'an inactive-shaped JWT claim remains default-denied');
+
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000003","role":"authenticated","employee_id":"self","department":"office"}';
+select is((select count(*) from public.app_users), 0::bigint,
+  'a self-shaped JWT claim remains default-denied');
+
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000004","role":"authenticated","department":"wrong"}';
+select is((select count(*) from public.app_users), 0::bigint,
+  'a wrong-department-shaped JWT claim remains default-denied');
+
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000005","role":"authenticated","membership_version":"stale"}';
+select is((select count(*) from public.app_users), 0::bigint,
+  'a stale-membership-shaped JWT claim remains default-denied');
+
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000006","role":"authenticated","employee_id":null}';
+select is((select count(*) from public.app_users), 0::bigint,
+  'an unlinked-identity-shaped JWT claim remains default-denied');
+
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000007","role":"authenticated","department":"office"}';
+select is((select count(*) from public.app_users), 0::bigint,
+  'an Office-shaped JWT claim remains default-denied');
+
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000008","role":"authenticated","department":"advertising"}';
+select is((select count(*) from public.app_users), 0::bigint,
+  'an Advertising-shaped JWT claim remains default-denied');
+
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000009","role":"authenticated","department":"installer"}';
+select is((select count(*) from public.app_users), 0::bigint,
+  'an Installer-shaped JWT claim remains default-denied');
+
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000010","role":"authenticated","role_name":"owner_admin"}';
+select is((select count(*) from public.app_users), 0::bigint,
+  'an Owner/Admin-shaped JWT claim remains default-denied');
+
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000011","role":"authenticated","role_name":"manager"}';
+select is((select count(*) from public.app_users), 0::bigint,
+  'an unprovisioned-Manager-shaped JWT claim remains default-denied');
+reset role;
+
+set local role service_role;
+select is(
+  (select count(*) from public.app_users where email = 'rls-probe@example.invalid'),
+  1::bigint,
+  'service_role can read through the server-only RLS bypass'
+);
+select lives_ok(
+  $sql$
+    insert into public.app_users (email, role)
+    values ('rls-service-role@example.invalid', 'rep')
+  $sql$,
+  'service_role retains the DML needed by server handlers'
+);
+reset role;
+
+-- A future migration must explicitly opt every object into server access.
+create table public.phase0_future_table_probe (
+  id bigint generated always as identity primary key
+);
+create function public.phase0_future_function_probe()
+returns integer
+language sql
+immutable
+as $function$ select 1 $function$;
+
+select ok(
+  not has_table_privilege('anon', 'public.phase0_future_table_probe', 'SELECT')
+    and not has_table_privilege('authenticated', 'public.phase0_future_table_probe', 'SELECT')
+    and not has_table_privilege('service_role', 'public.phase0_future_table_probe', 'SELECT'),
+  'future tables start inaccessible to every API role'
+);
+
+select ok(
+  not has_sequence_privilege('anon', 'public.phase0_future_table_probe_id_seq', 'USAGE')
+    and not has_sequence_privilege('authenticated', 'public.phase0_future_table_probe_id_seq', 'USAGE')
+    and not has_sequence_privilege('service_role', 'public.phase0_future_table_probe_id_seq', 'USAGE'),
+  'future sequences start inaccessible to every API role'
+);
+
+select ok(
+  not has_function_privilege('anon', 'public.phase0_future_function_probe()', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'public.phase0_future_function_probe()', 'EXECUTE')
+    and not has_function_privilege('service_role', 'public.phase0_future_function_probe()', 'EXECUTE'),
+  'future functions start inaccessible to every API role'
+);
+
+select * from finish();
+rollback;

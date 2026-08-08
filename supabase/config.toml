@@ -1,0 +1,9 @@
+# Local database-security harness only. Before linking this repository to a
+# hosted Supabase project, verify the hosted PostgreSQL major version.
+project_id = "yll-call-copilot-local-security"
+
+[db]
+major_version = 17
+
+[db.seed]
+enabled = false

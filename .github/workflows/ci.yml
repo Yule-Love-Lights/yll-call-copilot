@@ -48,3 +48,30 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  database-security:
+    name: Supabase RLS and role impersonation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out Hub repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Set up pinned Supabase CLI
+        uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520
+        with:
+          version: 2.112.0
+
+      - name: Apply migrations to a fresh local Supabase database
+        run: supabase db start
+
+      - name: Run pgTAP default-deny and impersonation tests
+        run: supabase test db --local
+
+      - name: Stop and remove the local database
+        if: always()
+        continue-on-error: true
+        run: supabase stop --no-backup
