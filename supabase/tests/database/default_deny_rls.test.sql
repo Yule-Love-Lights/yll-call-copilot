@@ -48,7 +48,7 @@ select set_eq(
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public'
-      and c.relkind in ('r', 'p')
+      and c.relkind in ('r', 'p', 'v', 'm', 'f')
       and not exists (
         select 1
         from pg_depend d
@@ -59,6 +59,67 @@ select set_eq(
   $sql$,
   $sql$ select table_name from expected_hub_tables $sql$,
   'the reviewed public-table manifest is exact'
+);
+
+select set_eq(
+  $sql$
+    select c.relname::text
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relkind = 'S'
+      and not exists (
+        select 1
+        from pg_depend d
+        where d.classid = 'pg_class'::regclass
+          and d.objid = c.oid
+          and d.deptype = 'e'
+      )
+  $sql$,
+  $sql$ values ('events_log_id_seq'::text), ('ghl_sync_log_id_seq'::text) $sql$,
+  'the reviewed public-sequence manifest is exact'
+);
+
+select is(
+  (
+    select count(*)::bigint
+    from pg_proc routine
+    join pg_namespace namespace on namespace.oid = routine.pronamespace
+    where namespace.nspname = 'public'
+      and not exists (
+        select 1
+        from pg_depend dependency
+        where dependency.classid = 'pg_proc'::regclass
+          and dependency.objid = routine.oid
+          and dependency.deptype = 'e'
+      )
+  ),
+  0::bigint,
+  'no unreviewed application routine can bypass table RLS'
+);
+
+select is(
+  (
+    select count(*)::bigint
+    from pg_trigger trigger_record
+    join pg_class relation on relation.oid = trigger_record.tgrelid
+    join pg_namespace namespace on namespace.oid = relation.relnamespace
+    where namespace.nspname = 'public'
+      and not trigger_record.tgisinternal
+  ),
+  0::bigint,
+  'no unreviewed application trigger can run with server writes'
+);
+
+select is(
+  (
+    select count(*)::bigint
+    from pg_publication_tables publication
+    join expected_hub_tables expected on expected.table_name = publication.tablename
+    where publication.schemaname = 'public'
+  ),
+  0::bigint,
+  'Hub application tables are absent from database publications'
 );
 
 select ok(
@@ -99,11 +160,31 @@ from expected_hub_tables
 order by table_name;
 
 select ok(
+  not has_any_column_privilege('anon', format('public.%I', table_name), 'SELECT')
+    and not has_any_column_privilege('anon', format('public.%I', table_name), 'INSERT')
+    and not has_any_column_privilege('anon', format('public.%I', table_name), 'UPDATE')
+    and not has_any_column_privilege('anon', format('public.%I', table_name), 'REFERENCES'),
+  format('anon has no historical column-level privileges on %I', table_name)
+)
+from expected_hub_tables
+order by table_name;
+
+select ok(
   not has_table_privilege('authenticated', format('public.%I', table_name), 'SELECT')
     and not has_table_privilege('authenticated', format('public.%I', table_name), 'INSERT')
     and not has_table_privilege('authenticated', format('public.%I', table_name), 'UPDATE')
     and not has_table_privilege('authenticated', format('public.%I', table_name), 'DELETE'),
   format('authenticated has no DML privileges on %I', table_name)
+)
+from expected_hub_tables
+order by table_name;
+
+select ok(
+  not has_any_column_privilege('authenticated', format('public.%I', table_name), 'SELECT')
+    and not has_any_column_privilege('authenticated', format('public.%I', table_name), 'INSERT')
+    and not has_any_column_privilege('authenticated', format('public.%I', table_name), 'UPDATE')
+    and not has_any_column_privilege('authenticated', format('public.%I', table_name), 'REFERENCES'),
+  format('authenticated has no historical column-level privileges on %I', table_name)
 )
 from expected_hub_tables
 order by table_name;
@@ -145,10 +226,13 @@ select ok(
 );
 
 select ok(
-  not has_schema_privilege('anon', 'public', 'CREATE')
+  not has_schema_privilege('anon', 'public', 'USAGE')
+    and not has_schema_privilege('anon', 'public', 'CREATE')
+    and not has_schema_privilege('authenticated', 'public', 'USAGE')
     and not has_schema_privilege('authenticated', 'public', 'CREATE')
+    and has_schema_privilege('service_role', 'public', 'USAGE')
     and not has_schema_privilege('service_role', 'public', 'CREATE'),
-  'runtime roles cannot create objects in the public schema'
+  'only service_role can resolve public-schema application objects'
 );
 
 insert into public.app_users (email, role)
@@ -156,6 +240,7 @@ values ('rls-probe@example.invalid', 'rep');
 
 -- These transaction-local grants prove the RLS layer independently of the
 -- ACL layer. They disappear on rollback.
+grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on table public.app_users
   to anon, authenticated;
 
@@ -278,10 +363,18 @@ select ok(
 );
 
 select ok(
-  not has_function_privilege('anon', 'public.phase0_future_function_probe()', 'EXECUTE')
-    and not has_function_privilege('authenticated', 'public.phase0_future_function_probe()', 'EXECUTE')
-    and not has_function_privilege('service_role', 'public.phase0_future_function_probe()', 'EXECUTE'),
-  'future functions start inaccessible to every API role'
+  not has_function_privilege('anon', 'public.phase0_future_function_probe()', 'EXECUTE'),
+  'future functions start inaccessible to anon'
+);
+
+select ok(
+  not has_function_privilege('authenticated', 'public.phase0_future_function_probe()', 'EXECUTE'),
+  'future functions start inaccessible to authenticated'
+);
+
+select ok(
+  not has_function_privilege('service_role', 'public.phase0_future_function_probe()', 'EXECUTE'),
+  'future functions start inaccessible to service_role until explicitly reviewed'
 );
 
 select * from finish();

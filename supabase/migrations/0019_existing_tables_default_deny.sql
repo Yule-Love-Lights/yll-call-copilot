@@ -44,9 +44,18 @@ declare
     'verticals',
     'weekly_digests'
   ];
+  expected_sequences constant text[] := array[
+    'events_log_id_seq',
+    'ghl_sync_log_id_seq'
+  ];
   table_name text;
+  column_list text;
   missing_tables text[];
-  unexpected_tables text[];
+  missing_sequences text[];
+  unexpected_relations text[];
+  unexpected_sequences text[];
+  unexpected_routines text[];
+  unexpected_triggers text[];
 begin
   if not exists (
     select 1
@@ -78,13 +87,32 @@ begin
     raise exception 'Missing expected Hub tables: %', missing_tables;
   end if;
 
+  select array_agg(name order by name)
+  into missing_sequences
+  from unnest(expected_sequences) as expected(name)
+  where not exists (
+    select 1
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = expected.name
+      and c.relkind = 'S'
+  );
+
+  if coalesce(cardinality(missing_sequences), 0) > 0 then
+    raise exception 'Missing expected Hub sequences: %', missing_sequences;
+  end if;
+
   select array_agg(c.relname::text order by c.relname)
-  into unexpected_tables
+  into unexpected_relations
   from pg_class c
   join pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'public'
-    and c.relkind in ('r', 'p')
-    and not (c.relname = any(expected_tables))
+    and c.relkind in ('r', 'p', 'v', 'm', 'f')
+    and not (
+      c.relkind in ('r', 'p')
+      and c.relname = any(expected_tables)
+    )
     and not exists (
       select 1
       from pg_depend d
@@ -93,10 +121,77 @@ begin
         and d.deptype = 'e'
     );
 
-  if coalesce(cardinality(unexpected_tables), 0) > 0 then
+  if coalesce(cardinality(unexpected_relations), 0) > 0 then
     raise exception
-      'Unreviewed non-extension public tables: %',
-      unexpected_tables;
+      'Unreviewed non-extension public relations: %',
+      unexpected_relations;
+  end if;
+
+  select array_agg(c.relname::text order by c.relname)
+  into unexpected_sequences
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relkind = 'S'
+    and not (c.relname = any(expected_sequences))
+    and not exists (
+      select 1
+      from pg_depend d
+      where d.classid = 'pg_class'::regclass
+        and d.objid = c.oid
+        and d.deptype = 'e'
+    );
+
+  if coalesce(cardinality(unexpected_sequences), 0) > 0 then
+    raise exception
+      'Unreviewed non-extension public sequences: %',
+      unexpected_sequences;
+  end if;
+
+  select array_agg(p.oid::regprocedure::text order by p.oid::regprocedure::text)
+  into unexpected_routines
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and not exists (
+      select 1
+      from pg_depend d
+      where d.classid = 'pg_proc'::regclass
+        and d.objid = p.oid
+        and d.deptype = 'e'
+    );
+
+  if coalesce(cardinality(unexpected_routines), 0) > 0 then
+    raise exception
+      'Unreviewed non-extension public routines: %',
+      unexpected_routines;
+  end if;
+
+  select array_agg(
+    format('%I.%I', c.relname, t.tgname)
+    order by c.relname, t.tgname
+  )
+  into unexpected_triggers
+  from pg_trigger t
+  join pg_class c on c.oid = t.tgrelid
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and not t.tgisinternal;
+
+  if coalesce(cardinality(unexpected_triggers), 0) > 0 then
+    raise exception
+      'Unreviewed non-internal public triggers: %',
+      unexpected_triggers;
+  end if;
+
+  if exists (
+    select 1
+    from pg_publication_tables publication
+    where publication.schemaname = 'public'
+      and publication.tablename = any(expected_tables)
+  ) then
+    raise exception
+      'Hub tables are unexpectedly exposed through a publication';
   end if;
 
   if exists (
@@ -127,6 +222,22 @@ begin
       table_name
     );
 
+    -- Table-level revokes do not erase historical per-column grants.
+    select string_agg(format('%I', attribute.attname), ', ' order by attribute.attnum)
+    into column_list
+    from pg_attribute attribute
+    where attribute.attrelid = format('public.%I', table_name)::regclass
+      and attribute.attnum > 0
+      and not attribute.attisdropped;
+
+    execute format(
+      'revoke select (%1$s), insert (%1$s), update (%1$s), references (%1$s)
+         on table public.%2$I
+         from public, anon, authenticated, service_role',
+      column_list,
+      table_name
+    );
+
     -- The current application performs these operations only after its
     -- server-side capability and resource checks.
     execute format(
@@ -148,15 +259,22 @@ grant usage, select
               public.events_log_id_seq
   to service_role;
 
--- API roles need schema visibility for normal PostgREST error handling, but no
--- application role needs to create database objects at runtime.
-revoke create on schema public
+-- Browser sessions use the Auth service, not the public Data API. Denying
+-- schema usage also closes any extension-owned view or routine that happens to
+-- live in public; the server role alone can resolve application objects.
+revoke all privileges on schema public
   from public, anon, authenticated, service_role;
 grant usage on schema public
-  to anon, authenticated, service_role;
+  to service_role;
 
 -- PostgreSQL grants PUBLIC function execution by default. The repository has
 -- no application RPC functions today; future functions must opt in explicitly.
+-- The global revoke is required because per-schema defaults are additive and
+-- cannot cancel PostgreSQL's built-in PUBLIC EXECUTE default by themselves.
+alter default privileges for role postgres
+  revoke execute on functions
+  from public;
+
 alter default privileges for role postgres in schema public
   revoke all privileges on functions
   from public, anon, authenticated, service_role;
