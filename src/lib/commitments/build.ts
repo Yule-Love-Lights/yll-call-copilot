@@ -13,9 +13,12 @@ import type { CommitmentRow, RawCommitment } from './types';
 // key: it stays stable across a re-extraction of the same transcript even
 // though Claude is not byte-deterministic about wording. A re-extraction
 // that happens to reorder same-kind commitments updates existing rows'
-// detail text in place rather than creating a duplicate or a third row --
-// an accepted tradeoff for this slice, since no later slice depends on a
-// specific commitment always keeping the same row id.
+// detail text in place rather than creating a duplicate or a third row.
+// That reorder is only safe while every existing row for the transcript is
+// still 'open' -- persistCommitments refuses the whole write outright once
+// any row has moved off 'open', because relabeling a RESOLVED row this way
+// would mislabel a real employee's accountability record (see the #217
+// review finding documented in persist.ts).
 export function buildCommitmentRows(raw: RawCommitment[], calledAt: string | null): CommitmentRow[] {
   const seenPerKind = new Map<string, number>();
   return raw.map(r => {

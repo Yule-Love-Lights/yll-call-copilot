@@ -60,7 +60,7 @@ describe('selectBackfillCandidates', () => {
 describe('backfillCommitments', () => {
   beforeEach(() => {
     extractRawCommitmentsMock.mockReset().mockResolvedValue([]);
-    persistCommitmentsMock.mockReset().mockResolvedValue(undefined);
+    persistCommitmentsMock.mockReset().mockResolvedValue({ ok: true });
   });
 
   it('extracts and persists for each candidate transcript not already processed', async () => {
@@ -72,7 +72,7 @@ describe('backfillCommitments', () => {
     expect(extractRawCommitmentsMock).toHaveBeenCalledWith(t2.raw_text, 'Holiday Lighting');
     expect(persistCommitmentsMock).toHaveBeenCalledTimes(1);
     expect(persistCommitmentsMock).toHaveBeenCalledWith(supabase, 't2', null, null, []);
-    expect(result).toEqual({ done: 1, skipped: 0, failed: 0 });
+    expect(result).toEqual({ done: 1, skipped: 0, failed: 0, refused: 0 });
   });
 
   it('a transcript with zero commitments still counts as done, not failed', async () => {
@@ -81,7 +81,7 @@ describe('backfillCommitments', () => {
 
     const result = await backfillCommitments(supabase, 'Holiday Lighting', 10);
 
-    expect(result).toEqual({ done: 1, skipped: 0, failed: 0 });
+    expect(result).toEqual({ done: 1, skipped: 0, failed: 0, refused: 0 });
   });
 
   it('counts a failed extraction without stopping the batch', async () => {
@@ -90,7 +90,18 @@ describe('backfillCommitments', () => {
 
     const result = await backfillCommitments(supabase, 'Holiday Lighting', 10);
 
-    expect(result).toEqual({ done: 1, skipped: 0, failed: 1 });
+    expect(result).toEqual({ done: 1, skipped: 0, failed: 1, refused: 0 });
+  });
+
+  it('counts a persist refusal separately from done/failed, without stopping the batch', async () => {
+    persistCommitmentsMock
+      .mockResolvedValueOnce({ ok: false, reason: 'has_resolved_commitments' })
+      .mockResolvedValueOnce({ ok: true });
+    const supabase = fakeSupabase([t1, t2]);
+
+    const result = await backfillCommitments(supabase, 'Holiday Lighting', 10);
+
+    expect(result).toEqual({ done: 1, skipped: 0, failed: 0, refused: 1 });
   });
 
   it('returns all-zero when there are no candidate transcripts', async () => {
@@ -98,6 +109,6 @@ describe('backfillCommitments', () => {
 
     const result = await backfillCommitments(supabase, 'Holiday Lighting', 10);
 
-    expect(result).toEqual({ done: 0, skipped: 0, failed: 0 });
+    expect(result).toEqual({ done: 0, skipped: 0, failed: 0, refused: 0 });
   });
 });

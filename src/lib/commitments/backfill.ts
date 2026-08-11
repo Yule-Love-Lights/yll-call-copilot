@@ -31,7 +31,7 @@ export type BackfillCandidate = {
   ghl_contact_id: string | null;
 };
 
-export type BackfillResult = { done: number; skipped: number; failed: number };
+export type BackfillResult = { done: number; skipped: number; failed: number; refused: number };
 
 // Pure selection, mirroring selectScoreCandidates: drop transcripts that
 // already have at least one commitment row, then cap at `limit`.
@@ -54,12 +54,12 @@ export async function backfillCommitments(
     .order('called_at', { ascending: false, nullsFirst: false })
     .limit(CANDIDATE_WINDOW);
   if (transcriptsError) {
-    if (isMissingTableError(transcriptsError)) return { done: 0, skipped: 0, failed: 0 };
+    if (isMissingTableError(transcriptsError)) return { done: 0, skipped: 0, failed: 0, refused: 0 };
     console.error('Load candidate transcripts for commitment backfill failed:', transcriptsError);
-    return { done: 0, skipped: 0, failed: 0 };
+    return { done: 0, skipped: 0, failed: 0, refused: 0 };
   }
   const candidates = (transcriptRows ?? []) as BackfillCandidate[];
-  if (candidates.length === 0) return { done: 0, skipped: 0, failed: 0 };
+  if (candidates.length === 0) return { done: 0, skipped: 0, failed: 0, refused: 0 };
 
   const candidateIds = candidates.map(c => c.id);
   const { data: existingRows, error: existingError } = await supabase
@@ -68,27 +68,39 @@ export async function backfillCommitments(
     .in('transcript_id', candidateIds);
   if (existingError && !isMissingTableError(existingError)) {
     console.error('Load already-extracted transcript ids for commitment backfill failed:', existingError);
-    return { done: 0, skipped: 0, failed: 0 };
+    return { done: 0, skipped: 0, failed: 0, refused: 0 };
   }
   const alreadyExtracted = new Set((existingRows ?? []).map(r => (r as { transcript_id: string }).transcript_id));
 
   const selected = selectBackfillCandidates(candidates, alreadyExtracted, limit);
   const skipped = candidates.length - alreadyExtracted.size - selected.length;
-  if (selected.length === 0) return { done: 0, skipped: Math.max(0, skipped), failed: 0 };
+  if (selected.length === 0) return { done: 0, skipped: Math.max(0, skipped), failed: 0, refused: 0 };
 
   let done = 0;
   let failed = 0;
+  let refused = 0;
   for (const t of selected) {
     try {
       const raw = await extractRawCommitments(t.raw_text, verticalName);
       const rows = buildCommitmentRows(raw, t.called_at);
-      await persistCommitments(supabase, t.id, t.rep_email, t.ghl_contact_id, rows);
-      done++;
+      // This candidate list already excludes every transcript_id that has
+      // ANY existing call_commitments row (open or resolved), so the
+      // refusal branch below is not expected to fire through this normal
+      // selection path -- it exists because persistCommitments is also
+      // callable directly (a forced re-extraction bypassing candidate
+      // selection), and this call site must still handle that result
+      // honestly rather than assuming it can never happen.
+      const result = await persistCommitments(supabase, t.id, t.rep_email, t.ghl_contact_id, rows);
+      if (result.ok) {
+        done++;
+      } else {
+        refused++;
+      }
     } catch (err) {
       console.error(`Failed to extract commitments for transcript ${t.id}:`, err);
       failed++;
     }
   }
 
-  return { done, skipped: Math.max(0, skipped), failed };
+  return { done, skipped: Math.max(0, skipped), failed, refused };
 }

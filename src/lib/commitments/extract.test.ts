@@ -75,6 +75,19 @@ describe('extractRawCommitments', () => {
       expect(call.system).toMatch(/not a rep commitment/i);
     });
 
+    it('instructs the model not to extract something the rep already did as an open commitment', async () => {
+      createMock.mockResolvedValue({
+        content: [{ type: 'tool_use', id: 'toolu_1', name: 'emit_commitments', input: { commitments: [] } }],
+        stop_reason: 'tool_use',
+      });
+
+      await extractRawCommitments('Rep: I sent you that quote yesterday, did you get it? Customer: let me check.', 'Holiday Lighting');
+
+      const call = createMock.mock.calls[0][0];
+      expect(call.system).toMatch(/already done/i);
+      expect(call.system).toMatch(/completed action/i);
+    });
+
     it('returns an empty array for a transcript with no commitments, without error', async () => {
       createMock.mockResolvedValue({
         content: [{ type: 'tool_use', id: 'toolu_1', name: 'emit_commitments', input: { commitments: [] } }],
