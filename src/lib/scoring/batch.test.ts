@@ -118,6 +118,7 @@ type TranscriptRow = {
   called_at: string | null;
   utterances: null;
   rep_email?: string | null;
+  metric_scope: 'performance' | 'training';
 };
 
 function fakeScoringSupabase(opts: { transcripts: TranscriptRow[]; callsRepEmailById?: Record<string, string | null> }) {
@@ -126,18 +127,29 @@ function fakeScoringSupabase(opts: { transcripts: TranscriptRow[]; callsRepEmail
 
   const from = vi.fn((table: string) => {
     if (table === 'transcripts') {
-      return {
-        select: () => ({
-          order: () => ({
-            limit: () => Promise.resolve({ data: opts.transcripts, error: null }),
+      const filters: [string, unknown][] = [];
+      const builder = {
+        eq: (column: string, value: unknown) => {
+          filters.push([column, value]);
+          return builder;
+        },
+        order: () => ({
+          limit: () => Promise.resolve({
+            data: opts.transcripts.filter(row =>
+              filters.every(([column, value]) => (row as unknown as Record<string, unknown>)[column] === value),
+            ),
+            error: null,
           }),
         }),
+      };
+      return {
+        select: () => builder,
       };
     }
     if (table === 'call_scores') {
       return {
         select: () => ({
-          in: () => Promise.resolve({ data: [], error: null }),
+          eq: () => ({ in: () => Promise.resolve({ data: [], error: null }) }),
         }),
         upsert: (row: Record<string, unknown>) => {
           upserts.push(row);
@@ -146,16 +158,20 @@ function fakeScoringSupabase(opts: { transcripts: TranscriptRow[]; callsRepEmail
       };
     }
     if (table === 'calls') {
+      let transcriptId = '';
+      const builder = {
+        eq: (column: string, value: string) => {
+          if (column === 'transcript_id') transcriptId = value;
+          return builder;
+        },
+        maybeSingle: () => {
+          callsQueriedIds.push(transcriptId);
+          const repEmail = opts.callsRepEmailById?.[transcriptId];
+          return Promise.resolve({ data: repEmail !== undefined ? { rep_email: repEmail } : null, error: null });
+        },
+      };
       return {
-        select: () => ({
-          eq: (_col: string, id: string) => ({
-            maybeSingle: () => {
-              callsQueriedIds.push(id);
-              const repEmail = opts.callsRepEmailById?.[id];
-              return Promise.resolve({ data: repEmail !== undefined ? { rep_email: repEmail } : null, error: null });
-            },
-          }),
-        }),
+        select: () => builder,
       };
     }
     if (table === 'verticals') {
@@ -216,6 +232,7 @@ describe('scoreNextBatch — rep_email attribution (fix 2)', () => {
           called_at: '2026-07-01T00:00:00Z',
           utterances: null,
           rep_email: 'Jake@YuleLoveLights.com',
+          metric_scope: 'performance',
         },
       ],
     });
@@ -240,6 +257,7 @@ describe('scoreNextBatch — rep_email attribution (fix 2)', () => {
           called_at: '2026-07-01T00:00:00Z',
           utterances: null,
           rep_email: null,
+          metric_scope: 'performance',
         },
       ],
       callsRepEmailById: { t2: 'Pat@YuleLoveLights.com' },
@@ -256,7 +274,7 @@ describe('scoreNextBatch — rep_email attribution (fix 2)', () => {
   it('stores null rep_email when neither transcripts nor calls has one', async () => {
     const { client, upserts } = fakeScoringSupabase({
       transcripts: [
-        { id: 't3', raw_text: REAL_CALL_TEXT, vertical_id: null, called_at: '2026-07-01T00:00:00Z', utterances: null, rep_email: null },
+        { id: 't3', raw_text: REAL_CALL_TEXT, vertical_id: null, called_at: '2026-07-01T00:00:00Z', utterances: null, rep_email: null, metric_scope: 'performance' },
       ],
       callsRepEmailById: { t3: null },
     });
@@ -264,5 +282,19 @@ describe('scoreNextBatch — rep_email attribution (fix 2)', () => {
     await scoreNextBatch(client, 8);
 
     expect(upserts[0].rep_email).toBeNull();
+  });
+
+  it('never scores or writes a training transcript', async () => {
+    const { client, upserts } = fakeScoringSupabase({
+      transcripts: [
+        { id: 'training', raw_text: REAL_CALL_TEXT, vertical_id: null, called_at: '2026-07-01T00:00:00Z', utterances: null, rep_email: 'rep@example.com', metric_scope: 'training' },
+      ],
+    });
+
+    const result = await scoreNextBatch(client, 8);
+
+    expect(result).toEqual({ scored: 0, skipped: 0, failed: 0 });
+    expect(scoreCallMock).not.toHaveBeenCalled();
+    expect(upserts).toEqual([]);
   });
 });

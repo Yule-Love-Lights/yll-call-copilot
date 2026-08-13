@@ -194,11 +194,14 @@ export async function sendConversationMessage(input: SendMessageInput): Promise<
     input.type === 'Email'
       ? { type: 'Email', contactId: input.contactId, locationId, subject: input.subject, html: input.html }
       : { type: 'SMS', contactId: input.contactId, locationId, message: input.message };
-  const json = await ghlFetch<{ messageId?: string; conversationId?: string }>('/conversations/messages', {
+  const json = await ghlFetch<{ messageId?: string }>('/conversations/messages', {
     method: 'POST',
     body: JSON.stringify(body),
   });
-  return { messageId: json.messageId ?? json.conversationId ?? null };
+  // A conversation id is shared by many messages and is not delivery
+  // evidence for this exact send attempt. Return only the provider's message
+  // id; callers must treat a 2xx response without one as uncertain.
+  return { messageId: json.messageId ?? null };
 }
 
 // ─── Mapper: HighLevel → CrmContact ───────────────────────────────────────
@@ -221,6 +224,7 @@ function toCrmContact(hl: HighLevelContact): CrmContact {
     state: hl.state,
     postalCode: hl.postalCode,
     dnd: hl.dnd,
+    dndSettings: hl.dndSettings,
     tags: hl.tags,
     timezone: hl.timezone,
   };

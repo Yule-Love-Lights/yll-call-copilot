@@ -56,7 +56,10 @@ export type LoadCallScoresResult = { ok: true; rows: CallScoreRow[] } | { ok: fa
 // a rep's data never leaves the DB for anyone else in that case, rather than
 // relying on the UI to hide it after the fact.
 export async function loadCallScores(supabase: SupabaseClient, params: { repEmail?: string } = {}): Promise<LoadCallScoresResult> {
-  let query = supabase.from('call_scores').select('rep_email, overall, experience_score, sales, hospitality, win, called_at');
+  let query = supabase
+    .from('call_scores')
+    .select('rep_email, overall, experience_score, sales, hospitality, win, called_at')
+    .eq('metric_scope', 'performance');
   if (params.repEmail) query = query.eq('rep_email', params.repEmail);
   const { data, error } = await query;
   if (error) {

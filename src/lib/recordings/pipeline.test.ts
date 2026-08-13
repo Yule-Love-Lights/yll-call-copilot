@@ -284,6 +284,7 @@ describe('processOneRecording', () => {
       outcome: 'booked',
       outcome_source: 'quote_tool',
       ghl_contact_id: 'c1',
+      metric_scope: 'performance',
       rep_email: 'rep@yulelovelights.com',
       direction: 'inbound',
       duration_seconds: 120,

@@ -7,7 +7,7 @@
 // POST /api/calls to save.
 
 import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { CALL_OUTCOMES, FOLLOWUP_OUTCOMES, type CallOutcome } from '@/lib/leads/types';
 
 type LeadDetail = {
@@ -54,7 +54,7 @@ type Followup = {
   toAddress: string;
   subject: string | null;
   body: string;
-  status: 'draft' | 'approved_sent' | 'failed';
+  status: 'draft' | 'sending' | 'approved_sent' | 'failed' | 'send_unknown';
   createdAt: string;
   sentAt: string | null;
 };
@@ -66,6 +66,10 @@ type DetailResponse = {
   error?: string;
   sendEnabled?: boolean;
   callableNow?: boolean;
+  callPermissionVerified?: boolean;
+  canWork?: boolean;
+  canManageFollowups?: boolean;
+  liveCallingEnabled?: boolean;
   lead?: LeadDetail;
   contact?: Contact | null;
   contactUrl?: string | null;
@@ -74,6 +78,12 @@ type DetailResponse = {
   playbook?: Playbook | null;
   topObjections?: TopObjection[];
   latestCall?: { id: string; outcome: CallOutcome | null; notes: string | null; startedAt: string } | null;
+  liveAttempt?: {
+    sessionId: string;
+    callId: string;
+    status: 'starting' | 'active' | 'pending_outcome';
+    startedAt: string;
+  } | null;
   followups?: Followup[];
 };
 
@@ -93,6 +103,58 @@ const primaryButtonClass =
   'rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300';
 const secondaryButtonClass =
   'rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900';
+
+function apiErrorMessage(value: unknown, fallback: string): string {
+  if (typeof value === 'string' && value.trim()) return value;
+  if (value && typeof value === 'object') {
+    const message = (value as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) return message;
+  }
+  return fallback;
+}
+
+type SavedCompletion = {
+  completionRequestId: string;
+  sessionId: string | null;
+  outcome: CallOutcome | null;
+  notes: string;
+  transcript: string;
+};
+
+function loadSavedCompletion(leadId: string): SavedCompletion {
+  const fresh = {
+    completionRequestId: crypto.randomUUID(),
+    sessionId: null,
+    outcome: null,
+    notes: '',
+    transcript: '',
+  } satisfies SavedCompletion;
+  if (typeof window === 'undefined') return fresh;
+  try {
+    const saved = sessionStorage.getItem(`yll-call-completion:${leadId}`);
+    if (!saved) return fresh;
+    const parsed = JSON.parse(saved) as {
+      completionRequestId?: unknown;
+      sessionId?: unknown;
+      outcome?: unknown;
+      notes?: unknown;
+      transcript?: unknown;
+    };
+    return {
+      completionRequestId: typeof parsed.completionRequestId === 'string'
+        ? parsed.completionRequestId
+        : fresh.completionRequestId,
+      sessionId: typeof parsed.sessionId === 'string' ? parsed.sessionId : null,
+      outcome: (CALL_OUTCOMES as string[]).includes(String(parsed.outcome))
+        ? parsed.outcome as CallOutcome
+        : null,
+      notes: typeof parsed.notes === 'string' ? parsed.notes : '',
+      transcript: typeof parsed.transcript === 'string' ? parsed.transcript : '',
+    };
+  } catch {
+    return fresh;
+  }
+}
 
 function ContactCard({
   lead,
@@ -219,7 +281,17 @@ function PlaybookPanel({
   );
 }
 
-function FollowupCard({ followup, sendEnabled, onSaved }: { followup: Followup; sendEnabled: boolean; onSaved: () => void }) {
+function FollowupCard({
+  followup,
+  sendEnabled,
+  canManage,
+  onSaved,
+}: {
+  followup: Followup;
+  sendEnabled: boolean;
+  canManage: boolean;
+  onSaved: () => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [subject, setSubject] = useState(followup.subject ?? '');
   const [body, setBody] = useState(followup.body);
@@ -238,11 +310,13 @@ function FollowupCard({ followup, sendEnabled, onSaved }: { followup: Followup; 
       });
       const json = await res.json();
       if (!json.saved) {
-        setError(json.error ?? 'Could not save.');
+        setError(apiErrorMessage(json.error, 'Could not save.'));
         return;
       }
       setEditing(false);
       onSaved();
+    } catch {
+      setError('Could not save the draft. Check your connection and try again.');
     } finally {
       setSaving(false);
     }
@@ -255,9 +329,11 @@ function FollowupCard({ followup, sendEnabled, onSaved }: { followup: Followup; 
       const res = await fetch(`/api/followups/${followup.id}/send`, { method: 'POST' });
       const json = await res.json();
       if (!json.sent) {
-        setError(json.error ?? json.reason ?? 'Could not send.');
+        setError(apiErrorMessage(json.error ?? json.reason, 'Could not send.'));
       }
       onSaved();
+    } catch {
+      setError('Delivery could not be confirmed. Refresh before taking another action.');
     } finally {
       setSending(false);
     }
@@ -267,7 +343,9 @@ function FollowupCard({ followup, sendEnabled, onSaved }: { followup: Followup; 
     <div className="flex flex-col gap-2 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium uppercase text-zinc-500">{followup.kind}</span>
-        <span className="text-xs text-zinc-400">{followup.toAddress}</span>
+        <span className="text-xs text-zinc-400">
+          {followup.toAddress || (followup.kind === 'sms' ? 'Phone hidden' : 'Email hidden')}
+        </span>
       </div>
 
       {editing ? (
@@ -302,20 +380,28 @@ function FollowupCard({ followup, sendEnabled, onSaved }: { followup: Followup; 
                 : 'text-zinc-500'
           }`}
         >
-          {followup.status === 'approved_sent' ? 'Sent' : followup.status === 'failed' ? 'Failed to send' : 'Draft'}
+          {followup.status === 'approved_sent'
+            ? 'Sent'
+            : followup.status === 'failed'
+              ? 'Failed to send'
+              : followup.status === 'sending'
+                ? 'Sending'
+                : followup.status === 'send_unknown'
+                  ? 'Delivery needs review'
+                  : 'Draft'}
         </span>
 
-        {followup.status === 'draft' && !editing && (
+        {canManage && followup.status === 'draft' && !editing && (
           <button onClick={() => setEditing(true)} className="text-sm text-blue-600 hover:underline dark:text-blue-400">
             Edit
           </button>
         )}
 
-        {followup.status !== 'approved_sent' && (
+        {canManage && followup.status === 'draft' && (
           <button
             onClick={onSend}
             disabled={sending || !sendEnabled || editing}
-            title={sendEnabled ? undefined : 'Sending disabled - set GHL_SEND_ENABLED=true'}
+            title={sendEnabled ? undefined : 'Sending is not available yet. The draft is saved for review.'}
             className={`ml-auto ${primaryButtonClass}`}
           >
             {sending ? 'Sending…' : 'Send via GHL'}
@@ -327,23 +413,47 @@ function FollowupCard({ followup, sendEnabled, onSaved }: { followup: Followup; 
   );
 }
 
-export default function CallConsole({ leadId, initialCallId = null }: { leadId: string; initialCallId?: string | null }) {
-  const router = useRouter();
+export default function CallConsole({ leadId }: { leadId: string }) {
+  const [savedCompletion] = useState(() => loadSavedCompletion(leadId));
   const [data, setData] = useState<DetailResponse | null>(null);
   const [status, setStatus] = useState<'loading' | 'done' | 'error'>('loading');
 
-  const [outcome, setOutcome] = useState<CallOutcome | null>(null);
-  const [notes, setNotes] = useState('');
-  const [transcript, setTranscript] = useState('');
+  const [outcome, setOutcome] = useState<CallOutcome | null>(savedCompletion.outcome);
+  const [notes, setNotes] = useState(savedCompletion.notes);
+  const [transcript, setTranscript] = useState(savedCompletion.transcript);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  // The call POST /api/live/end just created, carried here via ?callId= so
-  // the first save updates it instead of inserting a second `calls` row.
-  // Cleared after a successful save: logging a second outcome for this same
-  // lead later in this page's lifetime should insert a fresh call, not keep
-  // overwriting the live-coached one.
-  const [pendingCallId, setPendingCallId] = useState<string | null>(initialCallId);
+  const [releasing, setReleasing] = useState(false);
+  const completionStorageKey = `yll-call-completion:${leadId}`;
+  const [completionRequestId, setCompletionRequestId] = useState(savedCompletion.completionRequestId);
+  const hasPersistedCompletionRetry = savedCompletion.outcome !== null
+    && completionRequestId === savedCompletion.completionRequestId;
+
+  // A pending live call may already be terminal in the database when a
+  // post-processing retry is needed. Persisting its exact session ID keeps
+  // that retry bound to the original call after a refresh.
+  const effectiveSessionId = data?.liveAttempt?.status === 'pending_outcome'
+    ? data.liveAttempt.sessionId
+    : hasPersistedCompletionRetry
+      ? savedCompletion.sessionId
+      : null;
+
+  useEffect(() => {
+    if (!outcome) return;
+    try {
+      sessionStorage.setItem(completionStorageKey, JSON.stringify({
+        completionRequestId,
+        sessionId: effectiveSessionId,
+        outcome,
+        notes,
+        transcript,
+      }));
+    } catch {
+      // The database remains idempotent within this page even if browser
+      // storage is unavailable.
+    }
+  }, [completionRequestId, completionStorageKey, effectiveSessionId, notes, outcome, transcript]);
 
   const load = useCallback(() => {
     return fetch(`/api/leads/${leadId}`)
@@ -359,19 +469,11 @@ export default function CallConsole({ leadId, initialCallId = null }: { leadId: 
     load();
   }, [load]);
 
-  // A stale ?callId= surviving in the URL (a refresh, browser back/forward,
-  // or a restored tab on this same /call/[leadId]?callId=X after that call
-  // already saved) must not re-arm as an update target once the lead itself
-  // shows as already 'done' -- logging a new outcome at that point should
-  // insert a fresh call, never UPDATE the one that finished it. Derived at
-  // use rather than corrected via an effect (no setState-in-effect this
-  // way); stripping the param from the URL on save below closes the more
-  // common case (a fresh reload of the SAME tab), this covers a stale tab
-  // that never reloaded.
-  const effectiveCallId = data?.lead?.status === 'done' ? null : pendingCallId;
-
   async function onSave() {
-    if (!outcome) return;
+    const canRetryCommittedCompletion = data?.canManageFollowups === true
+      && data.lead?.status === 'done'
+      && hasPersistedCompletionRetry;
+    if (!outcome || (data?.canWork !== true && !canRetryCommittedCompletion)) return;
     setSaving(true);
     setSaveMessage(null);
     setSaveError(null);
@@ -384,27 +486,15 @@ export default function CallConsole({ leadId, initialCallId = null }: { leadId: 
           outcome,
           notes,
           transcript: transcript || undefined,
-          callId: effectiveCallId ?? undefined,
-          // The lead's own source says whether this call started as an
-          // inbound webhook hit (see GET /api/inbound/recent) or one of the
-          // queue's outbound sources — previously every insert here
-          // hardcoded 'outbound' regardless, permanently mislabeling every
-          // inbound-originated call.
-          direction: data?.lead?.source === 'inbound' ? 'inbound' : 'outbound',
+          sessionId: effectiveSessionId ?? undefined,
+          completionRequestId,
         }),
       });
       const json = await res.json();
       if (!json.saved) {
-        setSaveError(json.error ?? json.reason ?? 'Could not save the call.');
+        setSaveError(apiErrorMessage(json.error ?? json.reason, 'Could not save the call.'));
         return;
       }
-      setPendingCallId(null);
-      // Strip ?callId= now that it has done its job -- otherwise a later
-      // refresh or back/forward navigation on this same URL re-arms
-      // pendingCallId to the call we just finished, and a second, separate
-      // outcome logged in this tab would silently UPDATE it instead of
-      // inserting a fresh row (see POST /api/calls's callId branch).
-      router.replace(`/call/${leadId}`);
 
       const parts = ['Call saved.'];
       if (json.transcript?.created) {
@@ -419,6 +509,19 @@ export default function CallConsole({ leadId, initialCallId = null }: { leadId: 
       } else if (json.followups?.reason && (FOLLOWUP_OUTCOMES as string[]).includes(outcome)) {
         parts.push(json.followups.reason);
       }
+      if (json.postProcessingComplete === false) {
+        parts.push('Some transcript or follow-up work still needs a retry. Your saved request is being kept on this device.');
+        setSaveMessage(parts.join(' '));
+        setSaveError('Call saved, but follow-up processing is incomplete. Press “Save call” again to retry safely.');
+        return;
+      }
+
+      setCompletionRequestId(crypto.randomUUID());
+      try {
+        sessionStorage.removeItem(completionStorageKey);
+      } catch {
+        // Successful complete server response is authoritative.
+      }
       setSaveMessage(parts.join(' '));
       setNotes('');
       setTranscript('');
@@ -432,6 +535,28 @@ export default function CallConsole({ leadId, initialCallId = null }: { leadId: 
       setSaveError('Could not save the call — check your connection and try again. Your notes have not been lost.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function releaseClaim() {
+    setReleasing(true);
+    setSaveError(null);
+    try {
+      const response = await fetch(`/api/leads/${leadId}/decide`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'dismiss' }),
+      });
+      const json = await response.json().catch(() => null);
+      if (!response.ok || !json?.decided) {
+        setSaveError(apiErrorMessage(json?.error ?? json?.reason, 'Could not release this lead.'));
+        return;
+      }
+      await load();
+    } catch {
+      setSaveError('Could not release this lead. Check your connection and try again.');
+    } finally {
+      setReleasing(false);
     }
   }
 
@@ -450,13 +575,63 @@ export default function CallConsole({ leadId, initialCallId = null }: { leadId: 
 
   const lead = data.lead;
   const sendEnabled = data.sendEnabled === true;
+  const canFinishPendingLiveCall = data.canWork === true && data.liveAttempt?.status === 'pending_outcome';
+  const canManageFollowups = data.canManageFollowups === true;
+  const canRetryCommittedCompletion = canManageFollowups
+    && lead.status === 'done'
+    && hasPersistedCompletionRetry;
+  // Finishing an owned call records what already happened and contacts no
+  // customer. Quiet hours govern phone disclosure/new calling, not outcome
+  // entry, so a call crossing 9pm can still be completed.
+  const canWork = (data.canWork === true && (
+    data.callPermissionVerified === true || canFinishPendingLiveCall
+  )) || canRetryCommittedCompletion;
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm text-zinc-500">
+          {canWork ? 'Assigned to you' : 'Read-only view'}
+        </span>
+        {canWork && data.liveCallingEnabled === true && data.liveAttempt?.status !== 'pending_outcome' && (
+          <Link href={`/call/${leadId}/live`} className="text-sm text-blue-600 hover:underline dark:text-blue-400">
+            {data.liveAttempt ? 'Return to live call →' : 'Live coaching →'}
+          </Link>
+        )}
+      </div>
+      {data.liveAttempt?.status === 'pending_outcome' && (
+        <div className="rounded-md border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-200">
+          This live call ended and still needs an outcome. Saving below will finish that exact call.
+        </div>
+      )}
+      {(data.liveAttempt?.status === 'starting' || data.liveAttempt?.status === 'active') && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+          A live call is still open. Return to live coaching to end it before recording an outcome.
+        </div>
+      )}
       {data.callableNow === false && (
         <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
           Outside calling hours for this contact right now (TCPA quiet hours: 8am-9pm their local time).
         </div>
+      )}
+      {data.callPermissionVerified !== true && (
+        <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
+          {canRetryCommittedCompletion
+            ? 'The call is already saved. You can safely retry its remaining transcript or follow-up processing.'
+            : canFinishPendingLiveCall
+            ? 'New calling is blocked, but you can still save the outcome for the call that already ended.'
+            : 'Calling is blocked because the customer\'s current call permission could not be positively verified.'}
+        </div>
+      )}
+      {data.canWork === true && data.callPermissionVerified !== true && !canFinishPendingLiveCall && !canRetryCommittedCompletion && (
+        <button
+          type="button"
+          onClick={releaseClaim}
+          disabled={releasing}
+          className={`${secondaryButtonClass} self-start`}
+        >
+          {releasing ? 'Releasing…' : 'Release this lead'}
+        </button>
       )}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1.2fr)]">
         <ContactCard lead={lead} contact={data.contact} contactUrl={data.contactUrl} quoteStage={data.quoteStage} />
@@ -472,6 +647,7 @@ export default function CallConsole({ leadId, initialCallId = null }: { leadId: 
                   key={o}
                   type="button"
                   onClick={() => setOutcome(o)}
+                  disabled={!canWork}
                   className={`rounded-md border px-3 py-2 text-sm font-medium ${
                     outcome === o
                       ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
@@ -486,7 +662,7 @@ export default function CallConsole({ leadId, initialCallId = null }: { leadId: 
             <label className="mt-2 text-sm font-semibold" htmlFor="notes">
               Notes
             </label>
-            <textarea id="notes" value={notes} onChange={e => setNotes(e.target.value)} rows={4} className={inputClass} />
+            <textarea id="notes" value={notes} onChange={e => setNotes(e.target.value)} rows={4} disabled={!canWork} className={inputClass} />
 
             <label className="text-sm font-semibold" htmlFor="transcript">
               Paste transcript (optional)
@@ -495,12 +671,17 @@ export default function CallConsole({ leadId, initialCallId = null }: { leadId: 
               id="transcript"
               value={transcript}
               onChange={e => setTranscript(e.target.value)}
+              disabled={!canWork || effectiveSessionId !== null}
               rows={6}
               placeholder="Paste the full call transcript here to extract learnings."
               className={inputClass}
             />
 
-            <button onClick={onSave} disabled={saving || !outcome} className={primaryButtonClass}>
+            <button
+              onClick={onSave}
+              disabled={saving || !outcome || !canWork || data.liveAttempt?.status === 'starting' || data.liveAttempt?.status === 'active'}
+              className={primaryButtonClass}
+            >
               {saving ? 'Saving…' : 'Save call'}
             </button>
             {saveMessage && <p className="text-sm text-zinc-500">{saveMessage}</p>}
@@ -511,7 +692,13 @@ export default function CallConsole({ leadId, initialCallId = null }: { leadId: 
             <div className={cardClass}>
               <h2 className="text-sm font-semibold">Follow-up drafts</h2>
               {data.followups!.map(f => (
-                <FollowupCard key={f.id} followup={f} sendEnabled={sendEnabled} onSaved={load} />
+                <FollowupCard
+                  key={f.id}
+                  followup={f}
+                  sendEnabled={sendEnabled}
+                  canManage={canManageFollowups}
+                  onSaved={load}
+                />
               ))}
             </div>
           )}

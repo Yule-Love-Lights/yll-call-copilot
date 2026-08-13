@@ -42,29 +42,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid stream authorization' }, { status: 400 });
   }
 
-  const now = new Date().toISOString();
   const supabase = getSupabaseServerClient()!;
-  const { data, error } = await supabase
-    .from('live_sessions')
-    .update({ media_stream_started_at: now })
-    .eq('id', sessionId)
-    .eq('mode', 'twilio')
-    .eq('status', 'active')
-    .eq('media_stream_grant_hash', hashMediaStreamGrant(streamGrant))
-    .is('media_stream_started_at', null)
-    .gt('media_stream_grant_expires_at', now)
-    .select('id');
+  const { data, error } = await supabase.rpc('consume_authorized_live_stream', {
+    p_session_id: sessionId,
+    p_media_stream_grant_hash: hashMediaStreamGrant(streamGrant),
+  });
 
   if (error) {
     console.error('Consume Media Stream grant failed:', error);
     return NextResponse.json({ error: 'Service unavailable' }, { status: 503 });
   }
-  if (!data || data.length !== 1) {
+  const result = (Array.isArray(data) ? data[0] : data) as { result_code?: string; session_id?: string } | null;
+  if (!result || !['authorized', 'already_authorized'].includes(result.result_code ?? '')) {
     return NextResponse.json({ error: 'Invalid or already used stream authorization' }, { status: 403 });
   }
 
   return NextResponse.json(
-    { authorized: true, sessionId },
+    { authorized: true, sessionId, alreadyAuthorized: result.result_code === 'already_authorized' },
     { headers: { 'Cache-Control': 'no-store' } },
   );
 }

@@ -10,11 +10,12 @@
 // https://www.twilio.com/docs/voice/media-streams, request validation:
 // https://www.twilio.com/docs/usage/webhooks/webhooks-security) and verified
 // offline (VoiceResponse/AccessToken need no real credentials to build XML
-// or sign a JWT), but never exercised against a real call. The simulator
-// (./simulator.ts) is the verified demo path; this is the parallel path for
-// once the accounts exist.
+// or sign a JWT), but never exercised against a real call. Customer calling
+// remains behind an explicit activation switch until provider hangup,
+// transcript-drain, and multi-track transcription smokes pass. Training uses
+// the separate Practice module.
 
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import twilio from 'twilio';
 
 const { AccessToken } = twilio.jwt;
@@ -25,6 +26,7 @@ const { VoiceGrant } = AccessToken;
 // unchecked webhook.
 export function isTwilioConfigured(): boolean {
   return !!(
+    process.env.LIVE_CUSTOMER_CALLS_ENABLED === 'true' &&
     process.env.TWILIO_ACCOUNT_SID &&
     process.env.TWILIO_API_KEY_SID &&
     process.env.TWILIO_API_KEY_SECRET &&
@@ -161,8 +163,19 @@ export function buildLiveBridgeStreamUrl(
   return base.toString();
 }
 
-export function createDialGrant(): { grant: string; hash: string } {
-  const grant = randomBytes(32).toString('base64url');
+// A logical start request must reproduce the exact same one-time grant when
+// its HTTP response is lost. Derive it on the server from an immutable actor
+// id + client request id; the secret never leaves the server and neither the
+// raw grant nor a reusable credential is stored in the database.
+export function createIdempotentDialGrant(
+  actorAuthUserId: string,
+  startRequestId: string,
+): { grant: string; hash: string } {
+  const secret = process.env.TWILIO_AUTH_TOKEN;
+  if (!secret) throw new Error('Twilio auth is unavailable');
+  const grant = createHmac('sha256', secret)
+    .update(`${actorAuthUserId}\0${startRequestId}`, 'utf8')
+    .digest('base64url');
   return { grant, hash: hashDialGrant(grant) };
 }
 

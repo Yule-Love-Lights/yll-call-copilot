@@ -85,18 +85,24 @@ describe('mapRow (snake_case DB row -> camelCase CallScoreRow)', () => {
 
 describe('loadCallScoreRows (Supabase loader, mapRow wired end to end)', () => {
   function fakeClient(rows: Record<string, unknown>[]) {
+    const eqCalls: [string, unknown][] = [];
     const from = vi.fn(() => ({
       select: () => ({
-        gte: () => ({
-          lte: () => Promise.resolve({ data: rows, error: null }),
-        }),
+        eq: (column: string, value: unknown) => {
+          eqCalls.push([column, value]);
+          return {
+            gte: () => ({
+              lte: () => Promise.resolve({ data: rows, error: null }),
+            }),
+          };
+        },
       }),
     }));
-    return { from } as unknown as SupabaseClient;
+    return { client: { from } as unknown as SupabaseClient, eqCalls };
   }
 
   it('returns rows with the fix moment mapped to camelCase, ready to format a real timestamp', async () => {
-    const client = fakeClient([rawDbRow()]);
+    const { client, eqCalls } = fakeClient([rawDbRow()]);
     const result = await loadCallScoreRows(client, '2026-07-06', '2026-07-12');
 
     expect(result.ok).toBe(true);
@@ -105,5 +111,6 @@ describe('loadCallScoreRows (Supabase loader, mapRow wired end to end)', () => {
     expect(result.rows[0].fix?.timestampSeconds).toBe(125);
     expect(result.rows[0].fix?.transcriptQuote).toBe('That is more than I wanted to spend.');
     expect(result.rows[0].emotional?.matchedTrack).toBe(false);
+    expect(eqCalls).toEqual([['metric_scope', 'performance']]);
   });
 });

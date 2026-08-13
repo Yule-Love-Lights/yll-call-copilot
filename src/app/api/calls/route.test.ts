@@ -1,105 +1,173 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  getSupabaseServerClient: vi.fn(),
+  client: { rpc: vi.fn(), from: vi.fn() },
   resolveCurrentHubActor: vi.fn(),
-  decideOwnedResourceAccess: vi.fn(),
-  auditTeamResourceAccess: vi.fn(),
+  getContact: vi.fn(),
+  getOpportunitiesForContact: vi.fn(),
+  getStageNameMap: vi.fn(),
+  isClaudeConfigured: vi.fn(),
+  generateFollowups: vi.fn(),
+  processTranscriptBatch: vi.fn(),
 }));
+
 vi.mock('@/lib/supabase', () => ({
-  getSupabaseServerClient: mocks.getSupabaseServerClient,
-  isSupabaseConfigured: vi.fn(() => true),
-  isMissingTableError: vi.fn(() => false),
+  getSupabaseServerClient: () => mocks.client,
+  isSupabaseConfigured: () => true,
+  isMissingTableError: () => false,
 }));
-vi.mock('@/lib/auth/resource', () => ({
-  resolveCurrentHubActor: mocks.resolveCurrentHubActor,
-  decideOwnedResourceAccess: mocks.decideOwnedResourceAccess,
-  auditTeamResourceAccess: mocks.auditTeamResourceAccess,
+vi.mock('@/lib/auth/resource', () => ({ resolveCurrentHubActor: mocks.resolveCurrentHubActor }));
+vi.mock('@/lib/claude', () => ({ isClaudeConfigured: mocks.isClaudeConfigured }));
+vi.mock('@/lib/leads/followups', () => ({ generateFollowups: mocks.generateFollowups }));
+vi.mock('@/lib/transcripts/process', () => ({ processTranscriptBatch: mocks.processTranscriptBatch }));
+vi.mock('@/lib/ghl/client', () => ({
+  isHighLevelConfigured: () => true,
+  getContact: mocks.getContact,
+  getOpportunitiesForContact: mocks.getOpportunitiesForContact,
+  getStageNameMap: mocks.getStageNameMap,
 }));
-vi.mock('@/lib/claude', () => ({ isClaudeConfigured: vi.fn(() => false) }));
-vi.mock('@/lib/leads/followups', () => ({ generateFollowups: vi.fn() }));
-vi.mock('@/lib/transcripts/process', () => ({ processTranscriptBatch: vi.fn() }));
 
 import { POST } from './route';
 
-const CALL_ID = '11111111-1111-1111-1111-111111111111';
-const actor = {
-  email: 'admin@example.com', authUserId: 'auth-admin', employeeId: 'employee-admin',
-  capabilities: ['operations.admin'],
-};
+const LEAD_ID = '11111111-2222-4333-8444-555555555555';
+const REQUEST_ID = '21111111-2222-4333-8444-555555555555';
 
-function request() {
+function request(overrides: Record<string, unknown> = {}) {
   return new Request('https://ops.example.com/api/calls', {
-    method: 'POST', headers: { 'content-type': 'application/json' },
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      leadId: 'lead-1', callId: CALL_ID, outcome: 'no_answer', notes: 'updated',
+      leadId: LEAD_ID,
+      outcome: 'no_answer',
+      notes: '',
+      completionRequestId: REQUEST_ID,
+      ...overrides,
     }),
   });
 }
 
-function database() {
-  const callUpdate = vi.fn(() => ({
-    eq: () => ({ eq: async () => ({ error: null }) }),
-  }));
-  const leadUpdate = vi.fn(() => ({ eq: async () => ({ error: null }) }));
-  const from = vi.fn((table: string) => {
-    if (table === 'leads') {
-      return {
-        select: () => ({ eq: () => ({ maybeSingle: async () => ({
-          data: {
-            id: 'lead-1', ghl_contact_id: 'ghl-1', full_name: 'Person', phone: '+15551234567',
-            email: null, address: null, vertical_slug: null, reason: 'test', opener_hint: null,
-            score: 1, source: 'test', status: 'claimed', claimed_by: null,
-            timezone: 'America/New_York', queued_at: '2026-08-07T00:00:00Z', done_at: null,
-          },
-          error: null,
-        }) }) }),
-        update: leadUpdate,
-      };
-    }
-    if (table === 'calls') {
-      return {
-        select: () => ({ eq: () => ({ maybeSingle: async () => ({
-          data: { id: CALL_ID, lead_id: 'lead-1', rep_email: 'rep@example.com' }, error: null,
-        }) }) }),
-        update: callUpdate,
-      };
-    }
-    throw new Error(`unexpected table ${table}`);
-  });
-  return { client: { from }, callUpdate, leadUpdate };
-}
-
-describe('POST /api/calls resource authorization', () => {
+describe('POST /api/calls transactional authorization', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.resolveCurrentHubActor.mockResolvedValue({ status: 'resolved', actor });
-    mocks.auditTeamResourceAccess.mockResolvedValue(true);
+    mocks.resolveCurrentHubActor.mockResolvedValue({
+      status: 'resolved',
+      actor: { employeeId: 'employee-1', authUserId: 'auth-1', email: 'rep@example.com' },
+    });
+    mocks.getContact.mockResolvedValue({
+      id: 'ghl-1', dnd: false, dndSettings: { Call: { status: 'inactive' } }, tags: [],
+    });
+    mocks.getOpportunitiesForContact.mockResolvedValue([]);
+    mocks.getStageNameMap.mockResolvedValue(new Map());
+    mocks.isClaudeConfigured.mockReturnValue(false);
+    const maybeSingle = vi.fn(async () => ({ data: { ghl_contact_id: 'ghl-1' }, error: null }));
+    mocks.client.from.mockImplementation((table: string) => {
+      if (table === 'leads') return { select: () => ({ eq: () => ({ maybeSingle }) }) };
+      throw new Error(`unexpected table ${table}`);
+    });
   });
 
-  it('does not update another employee call without an explicit override', async () => {
-    mocks.decideOwnedResourceAccess.mockReturnValue('denied');
-    const db = database();
-    mocks.getSupabaseServerClient.mockReturnValue(db.client);
+  it('rejects completion after the employee loses the lead claim', async () => {
+    mocks.client.rpc.mockResolvedValue({ data: [{ result_code: 'not_claimed_by_actor' }], error: null });
+    const response = await POST(request());
+    expect(response.status).toBe(403);
+    expect(mocks.client.rpc).toHaveBeenCalledWith('complete_owned_lead_call', expect.objectContaining({
+      p_actor_employee_id: 'employee-1',
+      p_lead_id: LEAD_ID,
+      p_completion_request_id: REQUEST_ID,
+      p_verified_contact_id: null,
+      p_call_permission_verified: false,
+    }));
+    expect(mocks.client.from).not.toHaveBeenCalled();
+  });
+
+  it('does not give an admin a foreign-work override', async () => {
+    mocks.resolveCurrentHubActor.mockResolvedValue({
+      status: 'resolved',
+      actor: { employeeId: 'admin-1', authUserId: 'auth-admin', email: 'admin@example.com' },
+    });
+    mocks.client.rpc.mockResolvedValue({ data: [{ result_code: 'not_claimed_by_actor' }], error: null });
+    const response = await POST(request());
+    expect(response.status).toBe(403);
+  });
+
+  it('fails a conflicting idempotency-key reuse without reading customer data', async () => {
+    mocks.client.rpc.mockResolvedValue({ data: [{ result_code: 'request_conflict' }], error: null });
+    const response = await POST(request());
+    expect(response.status).toBe(409);
+    expect(mocks.client.from).not.toHaveBeenCalled();
+    expect(mocks.getContact).not.toHaveBeenCalled();
+  });
+
+  it('fails closed before completion when current Call permission is disabled', async () => {
+    mocks.getContact.mockResolvedValue({
+      id: 'ghl-1', dnd: false, dndSettings: { Call: { status: 'active' } }, tags: [],
+    });
+    mocks.client.rpc.mockResolvedValue({ data: [{ result_code: 'call_not_authorized' }], error: null });
 
     const response = await POST(request());
 
-    expect(response.status).toBe(403);
-    expect(db.callUpdate).not.toHaveBeenCalled();
-    expect(db.leadUpdate).not.toHaveBeenCalled();
+    expect(response.status).toBe(409);
+    expect(mocks.client.rpc).toHaveBeenCalledTimes(1);
   });
 
-  it('audits an admin correction and preserves the original call attribution', async () => {
-    mocks.decideOwnedResourceAccess.mockReturnValue('team');
-    const db = database();
-    mocks.getSupabaseServerClient.mockReturnValue(db.client);
+  it('verifies current Call permission only for a fresh completion, then completes on the second transaction', async () => {
+    mocks.client.rpc
+      .mockResolvedValueOnce({ data: [{ result_code: 'call_not_authorized' }], error: null })
+      .mockResolvedValueOnce({
+        data: [{ result_code: 'completed', call_id: 'call-1', session_id: null, transcript_id: null, status: 'completed' }],
+        error: null,
+      });
 
     const response = await POST(request());
 
     expect(response.status).toBe(200);
-    expect(mocks.auditTeamResourceAccess).toHaveBeenCalledOnce();
-    expect(db.callUpdate).toHaveBeenCalledWith({
-      outcome: 'no_answer', notes: 'updated', ended_at: expect.any(String),
+    expect(await response.json()).toMatchObject({ saved: true, alreadyCompleted: false, callId: 'call-1' });
+    expect(mocks.client.rpc).toHaveBeenNthCalledWith(2, 'complete_owned_lead_call', expect.objectContaining({
+      p_verified_contact_id: 'ghl-1',
+      p_call_permission_verified: true,
+    }));
+  });
+
+  it('re-drives an exact committed retry without requiring HighLevel to be available again', async () => {
+    mocks.client.rpc.mockResolvedValue({
+      data: [{ result_code: 'already_completed', call_id: 'call-1', session_id: null, transcript_id: null, status: 'completed' }],
+      error: null,
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ saved: true, alreadyCompleted: true, callId: 'call-1' });
+    expect(mocks.getContact).not.toHaveBeenCalled();
+    expect(mocks.client.rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the stable retry request when follow-up generation fails after the call commits', async () => {
+    mocks.isClaudeConfigured.mockReturnValue(true);
+    mocks.generateFollowups.mockRejectedValue(new Error('temporary generation failure'));
+    const maybeSingle = vi.fn(async () => ({
+      data: { ghl_contact_id: 'ghl-1', email: 'customer@example.com', phone: null, vertical_slug: null },
+      error: null,
+    }));
+    mocks.client.from.mockImplementation((table: string) => {
+      if (table === 'leads') return { select: () => ({ eq: () => ({ maybeSingle }) }) };
+      throw new Error(`unexpected table ${table}`);
+    });
+    mocks.client.rpc
+      .mockResolvedValueOnce({ data: [{ result_code: 'call_not_authorized' }], error: null })
+      .mockResolvedValueOnce({
+        data: [{ result_code: 'completed', call_id: 'call-1', session_id: null, transcript_id: null, status: 'completed' }],
+        error: null,
+      });
+
+    const response = await POST(request({ outcome: 'callback' }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      saved: true,
+      postProcessingComplete: false,
+      followups: { generated: false, reason: 'temporary generation failure' },
     });
   });
 });

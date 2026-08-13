@@ -64,6 +64,16 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   if (!(SENDABLE_TOUCH_KINDS as string[]).includes(touch.kind)) {
     return NextResponse.json({ configured: true, sent: false, error: `A "${touch.kind}" touch cannot be sent.` }, { status: 400 });
   }
+  // Cold-snap check-ins contact a customer. This legacy path does not yet
+  // have the recipient-consent refresh and uncertain-delivery reconciliation
+  // required for safe retries, so keep it positively disabled. Reveal-photo
+  // messages are internal crew instructions and remain available.
+  if (touch.kind === 'cold_snap_checkin') {
+    return NextResponse.json(
+      { configured: true, sent: false, reason: 'Customer check-in sending is not available yet.' },
+      { status: 503 },
+    );
+  }
   if (touch.status !== 'pending') {
     return NextResponse.json({ configured: true, sent: false, error: 'This touch is no longer pending.' }, { status: 409 });
   }
@@ -78,21 +88,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       ? draftRevealPhotoCrewMessage({ address: (payload.address as string | null) ?? null, customerName: touch.customer_name })
       : draftColdSnapCheckinMessage({ customerName: touch.customer_name }));
 
-  let targetContactIds: string[];
-  if (touch.kind === 'cold_snap_checkin') {
-    if (!touch.ghl_contact_id) {
-      return NextResponse.json({ configured: true, sent: false, error: 'No GoHighLevel contact linked to this touch.' }, { status: 409 });
-    }
-    targetContactIds = [touch.ghl_contact_id];
-  } else {
-    targetContactIds = await resolveCrewContactIds(process.env.SECOND_MILE_CREW_PHONE);
-    if (targetContactIds.length === 0) {
-      return NextResponse.json({
-        configured: true,
-        sent: false,
-        reason: 'No crew contacts configured - set SECOND_MILE_CREW_PHONE.',
-      });
-    }
+  const targetContactIds = await resolveCrewContactIds(process.env.SECOND_MILE_CREW_PHONE);
+  if (targetContactIds.length === 0) {
+    return NextResponse.json({
+      configured: true,
+      sent: false,
+      reason: 'No crew contacts configured - set SECOND_MILE_CREW_PHONE.',
+    });
   }
 
   // Claim the row BEFORE calling GHL — same compare-and-swap as the

@@ -7,7 +7,6 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 
 type Lead = {
   id: string;
@@ -25,12 +24,17 @@ type Lead = {
   claimedBy: string | null;
   queuedAt: string;
   callableNow: boolean;
+  redacted: boolean;
+  isMine: boolean;
+  canOpen: boolean;
 };
 
 type QueueResponse = {
   configured: boolean;
   migrated?: boolean;
   reason?: string;
+  error?: string;
+  canBuildQueue?: boolean;
   leads: Lead[];
   lastBuildAt: string | null;
 };
@@ -71,7 +75,9 @@ function LeadRowCard({
     <li className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium">{lead.fullName ?? '(no name)'}</span>
+          <span className="text-sm font-medium">
+            {lead.redacted ? 'Queued lead' : (lead.fullName ?? '(no name)')}
+          </span>
           <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${scoreBadgeClass(lead.score)}`}>
             {lead.score}
           </span>
@@ -92,10 +98,14 @@ function LeadRowCard({
           )}
         </div>
         <span className="text-sm text-zinc-500">{lead.reason}</span>
-        <span className="text-xs text-zinc-400">
-          {lead.phone ?? 'no phone'} · {lead.source}
-          {lead.verticalSlug ? ` · ${lead.verticalSlug}` : ''}
-        </span>
+        {lead.redacted ? (
+          <span className="text-xs text-zinc-400">Contact details appear after you claim this lead.</span>
+        ) : (
+          <span className="text-xs text-zinc-400">
+            Open the lead for the current phone · {lead.source}
+            {lead.verticalSlug ? ` · ${lead.verticalSlug}` : ''}
+          </span>
+        )}
       </div>
       <div className="flex shrink-0 gap-2">
         {lead.status === 'queued' && (
@@ -113,9 +123,16 @@ function LeadRowCard({
             </button>
           </>
         )}
-        <Link href={`/call/${lead.id}`} className={primaryButtonClass}>
-          Open
-        </Link>
+        {lead.status === 'claimed' && mine && (
+          <button onClick={onDismiss} disabled={acting} className={secondaryButtonClass}>
+            Release
+          </button>
+        )}
+        {lead.canOpen && (
+          <Link href={`/call/${lead.id}`} className={primaryButtonClass}>
+            {mine ? 'Open' : 'Review'}
+          </Link>
+        )}
       </div>
     </li>
   );
@@ -129,18 +146,12 @@ export default function QueueList() {
   const [status, setStatus] = useState<'loading' | 'done' | 'error'>('loading');
   const [building, setBuilding] = useState(false);
   const [buildMessage, setBuildMessage] = useState<string | null>(null);
+  const [canBuildQueue, setCanBuildQueue] = useState(false);
   const [actingId, setActingId] = useState<string | null>(null);
   const [decideError, setDecideError] = useState<string | null>(null);
-  const [myEmail, setMyEmail] = useState<string | null>(null);
   const [verticals, setVerticals] = useState<VerticalOption[]>([]);
   const [verticalFilter, setVerticalFilter] = useState('');
   const [minScoreFilter, setMinScoreFilter] = useState('0');
-
-  useEffect(() => {
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) return;
-    supabase.auth.getUser().then(({ data }) => setMyEmail(data.user?.email ?? null));
-  }, []);
 
   useEffect(() => {
     fetch('/api/verticals')
@@ -191,11 +202,18 @@ export default function QueueList() {
     if (verticalFilter) params.set('vertical', verticalFilter);
     if (minScoreFilter && minScoreFilter !== '0') params.set('minScore', minScoreFilter);
     return fetch(`/api/queue?${params}`)
-      .then(res => res.json())
-      .then((json: QueueResponse) => {
+      .then(async res => ({ ok: res.ok, json: await res.json() as QueueResponse }))
+      .then(({ ok, json }) => {
         if (requestId !== requestIdRef.current) return; // a newer load() has since started
+        if (!ok || json.error) {
+          setReason(json.error ?? json.reason ?? 'Could not load the queue.');
+          setLeads([]);
+          setStatus('error');
+          return;
+        }
         setMigrated(json.migrated !== false);
         setReason(json.reason ?? null);
+        setCanBuildQueue(json.canBuildQueue === true);
         setLeads(json.leads ?? []);
         setLastBuildAt(json.lastBuildAt ?? null);
         setStatus('done');
@@ -216,12 +234,17 @@ export default function QueueList() {
     try {
       const res = await fetch('/api/queue/build', { method: 'POST' });
       const json = await res.json();
-      if (json.error) {
+      const serverError = typeof json.error === 'string'
+        ? json.error
+        : typeof json.error?.message === 'string'
+          ? json.error.message
+          : null;
+      if (serverError) {
         // The genuine unexpected-failure shape (200-parseable JSON, 500
         // status) — distinct from the two degraded-config shapes below,
         // which are not failures. Checked first so it can never fall
         // through to "Added undefined, refreshed undefined."
-        setBuildMessage(json.error);
+        setBuildMessage(serverError);
         return;
       }
       if (json.migrated === false) {
@@ -267,8 +290,8 @@ export default function QueueList() {
     }
   }
 
-  const mineFirst = leads.filter(l => l.status === 'claimed' && l.claimedBy === myEmail);
-  const rest = leads.filter(l => !(l.status === 'claimed' && l.claimedBy === myEmail));
+  const mineFirst = leads.filter(l => l.status === 'claimed' && l.isMine);
+  const rest = leads.filter(l => !(l.status === 'claimed' && l.isMine));
 
   return (
     <div className="flex flex-col gap-6">
@@ -281,9 +304,11 @@ export default function QueueList() {
       {migrated && reason && <div className={amberBannerClass}>{reason}</div>}
 
       <div className="flex flex-wrap items-center gap-3">
-        <button onClick={onBuild} disabled={building} className={primaryButtonClass}>
-          {building ? 'Building…' : 'Build queue'}
-        </button>
+        {canBuildQueue && (
+          <button onClick={onBuild} disabled={building} className={primaryButtonClass}>
+            {building ? 'Building…' : 'Build queue'}
+          </button>
+        )}
         <span className="text-sm text-zinc-500">
           {lastBuildAt ? `Last built ${new Date(lastBuildAt).toLocaleString()}` : 'Never built yet'}
         </span>
@@ -327,11 +352,15 @@ export default function QueueList() {
       )}
 
       {status === 'loading' && <p className="text-sm text-zinc-500">Loading…</p>}
-      {status === 'error' && <p className="text-sm text-red-600 dark:text-red-400">Could not load the queue.</p>}
+      {status === 'error' && <p className="text-sm text-red-600 dark:text-red-400">{reason ?? 'Could not load the queue.'}</p>}
       {decideError && <p className="text-sm text-red-600 dark:text-red-400">{decideError}</p>}
 
       {status === 'done' && leads.length === 0 && (
-        <p className="text-sm text-zinc-500">Nothing queued. Click &quot;Build queue&quot; to pull fresh leads.</p>
+        <p className="text-sm text-zinc-500">
+          {canBuildQueue
+            ? 'Nothing queued. Click "Build queue" to pull fresh leads.'
+            : 'Nothing is queued right now.'}
+        </p>
       )}
 
       {mineFirst.length > 0 && (

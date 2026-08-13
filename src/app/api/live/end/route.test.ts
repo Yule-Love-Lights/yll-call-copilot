@@ -1,55 +1,62 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({
-  getSupabaseServerClient: vi.fn(),
-  resolveCurrentHubActor: vi.fn(),
-  authorizeCallResource: vi.fn(),
-}));
-
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(), resolveCurrentHubActor: vi.fn() }));
 vi.mock('@/lib/supabase', () => ({
-  getSupabaseServerClient: mocks.getSupabaseServerClient,
-  isSupabaseConfigured: vi.fn(() => true),
-  isMissingTableError: vi.fn(() => false),
+  getSupabaseServerClient: () => ({ rpc: mocks.rpc }),
+  isSupabaseConfigured: () => true,
+  isMissingTableError: () => false,
 }));
-vi.mock('@/lib/auth/resource', () => ({
-  resolveCurrentHubActor: mocks.resolveCurrentHubActor,
-  authorizeCallResource: mocks.authorizeCallResource,
-}));
-vi.mock('@/lib/claude', () => ({ isClaudeConfigured: vi.fn(() => false) }));
+vi.mock('@/lib/auth/resource', () => ({ resolveCurrentHubActor: mocks.resolveCurrentHubActor }));
+vi.mock('@/lib/claude', () => ({ isClaudeConfigured: () => false }));
 vi.mock('@/lib/transcripts/process', () => ({ processTranscriptBatch: vi.fn() }));
 
 import { POST } from './route';
 
-describe('POST /api/live/end resource authorization', () => {
+const SESSION_ID = '11111111-2222-4333-8444-555555555555';
+
+function request() {
+  return new Request('https://ops.example.com/api/live/end', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ sessionId: SESSION_ID }),
+  });
+}
+
+describe('POST /api/live/end transactional ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.resolveCurrentHubActor.mockResolvedValue({ status: 'resolved', actor: { email: 'rep@example.com' } });
-    mocks.authorizeCallResource.mockResolvedValue({ status: 'denied' });
+    mocks.resolveCurrentHubActor.mockResolvedValue({
+      status: 'resolved',
+      actor: { employeeId: 'employee-1', email: 'rep@example.com' },
+    });
   });
 
-  it('does not end another employee live session', async () => {
-    const update = vi.fn();
-    const from = vi.fn((table: string) => {
-      if (table !== 'live_sessions') throw new Error(`unexpected table ${table}`);
-      return {
-        select: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({
-              data: { id: 'session-1', call_id: 'call-other', status: 'active' },
-              error: null,
-            }),
-          }),
-        }),
-        update,
-      };
-    });
-    mocks.getSupabaseServerClient.mockReturnValue({ from });
-    const response = await POST(new Request('https://ops.example.com/api/live/end', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId: 'session-1' }),
-    }));
-
+  it.each(['rep', 'admin'])('does not let a %s end another employee call', async role => {
+    if (role === 'admin') {
+      mocks.resolveCurrentHubActor.mockResolvedValue({
+        status: 'resolved',
+        actor: { employeeId: 'admin-1', email: 'admin@example.com' },
+      });
+    }
+    mocks.rpc.mockResolvedValue({ data: [{ result_code: 'not_owned' }], error: null });
+    const response = await POST(request());
     expect(response.status).toBe(403);
-    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('returns the same call for an idempotent repeat', async () => {
+    mocks.rpc.mockResolvedValue({
+      data: [{
+        result_code: 'already_ended',
+        session_id: SESSION_ID,
+        call_id: '21111111-2222-4333-8444-555555555555',
+        transcript_id: null,
+        status: 'pending_outcome',
+        already_ended: true,
+      }],
+      error: null,
+    });
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ saved: true, alreadyEnded: true, status: 'pending_outcome' });
   });
 });

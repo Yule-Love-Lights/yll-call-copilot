@@ -12,12 +12,14 @@ import {
   buildVoiceTwiml,
   buildWhisperTwiml,
   CONSENT_LINE,
+  createIdempotentDialGrant,
   isTwilioConfigured,
   twilioIdentityForAuthUserId,
   verifyTwilioSignature,
 } from './twilioVoice';
 
 const TWILIO_ENV_KEYS = [
+  'LIVE_CUSTOMER_CALLS_ENABLED',
   'TWILIO_ACCOUNT_SID',
   'TWILIO_API_KEY_SID',
   'TWILIO_API_KEY_SECRET',
@@ -53,6 +55,7 @@ describe('isTwilioConfigured', () => {
   });
 
   it('is true once every required var is set', () => {
+    process.env.LIVE_CUSTOMER_CALLS_ENABLED = 'true';
     process.env.TWILIO_ACCOUNT_SID = 'ACxxx';
     process.env.TWILIO_API_KEY_SID = 'SKxxx';
     process.env.TWILIO_API_KEY_SECRET = 'secret';
@@ -61,6 +64,17 @@ describe('isTwilioConfigured', () => {
     process.env.TWILIO_AUTH_TOKEN = 'auth-token';
     process.env.LIVE_BRIDGE_URL = 'wss://bridge.example.com';
     expect(isTwilioConfigured()).toBe(true);
+  });
+
+  it('stays false with complete credentials until customer calling is explicitly enabled', () => {
+    process.env.TWILIO_ACCOUNT_SID = 'ACxxx';
+    process.env.TWILIO_API_KEY_SID = 'SKxxx';
+    process.env.TWILIO_API_KEY_SECRET = 'secret';
+    process.env.TWILIO_TWIML_APP_SID = 'APxxx';
+    process.env.TWILIO_CALLER_ID = '+15551234567';
+    process.env.TWILIO_AUTH_TOKEN = 'auth-token';
+    process.env.LIVE_BRIDGE_URL = 'wss://bridge.example.com';
+    expect(isTwilioConfigured()).toBe(false);
   });
 });
 
@@ -79,6 +93,30 @@ describe('buildLiveBridgeStreamUrl', () => {
   });
 });
 
+describe('createIdempotentDialGrant', () => {
+  it('reproduces the exact same grant for the same actor and logical request', () => {
+    process.env.TWILIO_AUTH_TOKEN = 'auth-token';
+    const first = createIdempotentDialGrant('auth-user-1', 'request-1');
+    const retry = createIdempotentDialGrant('auth-user-1', 'request-1');
+
+    expect(retry).toEqual(first);
+    expect(first.grant).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(first.hash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('changes the grant when either immutable id changes', () => {
+    process.env.TWILIO_AUTH_TOKEN = 'auth-token';
+    const baseline = createIdempotentDialGrant('auth-user-1', 'request-1');
+
+    expect(createIdempotentDialGrant('auth-user-2', 'request-1').grant).not.toBe(baseline.grant);
+    expect(createIdempotentDialGrant('auth-user-1', 'request-2').grant).not.toBe(baseline.grant);
+  });
+
+  it('fails closed without the server secret', () => {
+    expect(() => createIdempotentDialGrant('auth-user-1', 'request-1')).toThrow('Twilio auth is unavailable');
+  });
+});
+
 describe('buildVoiceAccessToken', () => {
   it('derives a stable Voice-safe identity from an immutable Auth user id', () => {
     const identity = twilioIdentityForAuthUserId('123e4567-e89b-12d3-a456-426614174000');
@@ -90,6 +128,7 @@ describe('buildVoiceAccessToken', () => {
   });
 
   it('returns a real, well-shaped JWT once configured', () => {
+    process.env.LIVE_CUSTOMER_CALLS_ENABLED = 'true';
     process.env.TWILIO_ACCOUNT_SID = 'ACxxx';
     process.env.TWILIO_API_KEY_SID = 'SKxxx';
     process.env.TWILIO_API_KEY_SECRET = 'secret';

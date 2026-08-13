@@ -49,10 +49,10 @@ function fakeSupabase(role: string | null, scoreRows: Record<string, unknown>[] 
       return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: role ? { role } : null, error: null }) }) }) };
     }
     if (table === 'call_scores') {
-      return { select: () => ({ order: () => ({ order: () => ({ limit: () => scoresQueryResult(scoreRows, null) }) }) }) };
+      return { select: () => ({ eq: () => ({ order: () => ({ order: () => ({ limit: () => scoresQueryResult(scoreRows, null) }) }) }) }) };
     }
     if (table === 'transcripts') {
-      return { select: () => ({ in: async () => ({ data: transcriptRows, error: null }) }) };
+      return { select: () => ({ eq: () => ({ in: async () => ({ data: transcriptRows, error: null }) }) }) };
     }
     throw new Error(`Unexpected table in test: ${table}`);
   });
@@ -140,7 +140,7 @@ describe('GET /api/coach/calls -- role gate', () => {
       if (table === 'call_scores') {
         return {
           select: () => ({
-            order: () => ({ order: () => ({ limit: () => scoresQueryResult(null, { code: 'PGRST205', message: 'missing' }) }) }),
+            eq: () => ({ order: () => ({ order: () => ({ limit: () => scoresQueryResult(null, { code: 'PGRST205', message: 'missing' }) }) }) }),
           }),
         };
       }

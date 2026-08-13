@@ -41,12 +41,19 @@ function fakeSupabase(opts: { outcomeUpdateError?: { message: string } | null } 
   });
   const maybeSingle = vi.fn(() =>
     Promise.resolve({
-      data: { id: 't1', raw_text: 'Rep: hi. Customer: hello.', customer_name: null, customer_phone: null },
+      data: { id: 't1', raw_text: 'Rep: hi. Customer: hello.', customer_name: null, customer_phone: null, metric_scope: 'performance' },
       error: null,
     }),
   );
-  const eq = vi.fn(() => ({ maybeSingle }));
-  const select = vi.fn(() => ({ eq }));
+  const eqCalls: [string, unknown][] = [];
+  const selectBuilder = {
+    eq: (column: string, value: unknown) => {
+      eqCalls.push([column, value]);
+      return selectBuilder;
+    },
+    maybeSingle,
+  };
+  const select = vi.fn(() => selectBuilder);
   const update = vi.fn((row: Record<string, unknown>) => {
     outcomeUpdateCalls.push(row);
     return { eq: () => Promise.resolve({ error: opts.outcomeUpdateError ?? null }) };
@@ -56,7 +63,7 @@ function fakeSupabase(opts: { outcomeUpdateError?: { message: string } | null } 
     if (table === 'transcripts') return { select, update };
     throw new Error(`Unexpected table in test: ${table}`);
   });
-  return { client: { from } as unknown as SupabaseClient, upsertCalls, outcomeUpdateCalls };
+  return { client: { from } as unknown as SupabaseClient, upsertCalls, outcomeUpdateCalls, eqCalls };
 }
 
 const sampleLearnings = {
@@ -76,7 +83,7 @@ describe('processTranscriptBatch — learnings idempotency (H5)', () => {
   });
 
   it('upserts on transcript_id instead of a bare insert', async () => {
-    const { client, upsertCalls } = fakeSupabase();
+    const { client, upsertCalls, eqCalls } = fakeSupabase();
 
     await processTranscriptBatch({
       supabase: client,
@@ -89,6 +96,7 @@ describe('processTranscriptBatch — learnings idempotency (H5)', () => {
     expect(upsertCalls).toHaveLength(1);
     expect(upsertCalls[0].row).toMatchObject({ transcript_id: 't1', vertical_id: 'v1', summary: 'summary' });
     expect(upsertCalls[0].options).toEqual({ onConflict: 'transcript_id' });
+    expect(eqCalls).toContainEqual(['metric_scope', 'performance']);
   });
 
   it('processing the same transcript twice (a retried batch after a mid-batch crash) still only ever upserts, never a bare insert, so the DB unique(transcript_id) constraint keeps exactly one row', async () => {

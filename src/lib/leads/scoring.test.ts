@@ -19,6 +19,7 @@ import {
   SCORE_QUOTE_FOLLOWUP,
   SCORE_SEASON_PLAY,
   isCallable,
+  isChannelAllowed,
 } from './scoring';
 import type { HighLevelContact, HighLevelOpportunity } from '../ghl/types';
 
@@ -276,6 +277,80 @@ describe('decideUpsert', () => {
 describe('isCallable (do-not-call gate, live-verified stage vocabulary)', () => {
   it('blocks a dnd-flagged contact', () => {
     expect(isCallable({ dnd: true, tags: [], stageNames: [] })).toBe(false);
+  });
+
+  it('blocks a call-only DND contact while leaving other channel decisions separate', () => {
+    const contact = {
+      dnd: false,
+      dndSettings: {
+        Call: { status: 'active' },
+        Email: { status: 'inactive' },
+        SMS: { status: 'inactive' },
+      },
+      tags: [],
+      stageNames: [],
+    };
+    expect(isCallable(contact)).toBe(false);
+    expect(isChannelAllowed(contact, 'Email')).toBe(true);
+    expect(isChannelAllowed(contact, 'SMS')).toBe(true);
+  });
+
+  it('blocks only the follow-up channel whose DND is active', () => {
+    const contact = {
+      dnd: false,
+      dndSettings: { Email: { status: 'active' }, SMS: { status: 'inactive' } },
+      tags: [],
+      stageNames: [],
+    };
+    expect(isChannelAllowed(contact, 'Email')).toBe(false);
+    expect(isChannelAllowed(contact, 'SMS')).toBe(true);
+  });
+
+  it('uses a present channel setting before the aggregate DND flag', () => {
+    const contact = {
+      dnd: true,
+      dndSettings: {
+        Call: { status: 'inactive' },
+        Email: { status: 'active' },
+        SMS: { status: 'inactive' },
+      },
+      tags: [],
+      stageNames: [],
+    };
+    expect(isCallable(contact)).toBe(true);
+    expect(isChannelAllowed(contact, 'SMS')).toBe(true);
+    expect(isChannelAllowed(contact, 'Email')).toBe(false);
+  });
+
+  it('blocks permanent and unknown nonblank channel DND values fail closed', () => {
+    expect(isCallable({
+      dnd: false,
+      dndSettings: { Call: { status: 'permanent' } },
+      tags: [],
+      stageNames: [],
+    })).toBe(false);
+    expect(isCallable({
+      dnd: false,
+      dndSettings: { Call: { status: 'unexpected-future-value' } },
+      tags: [],
+      stageNames: [],
+    })).toBe(false);
+  });
+
+  it('allows inactive, blank, and missing channel DND states when all other gates are clear', () => {
+    expect(isCallable({
+      dnd: false,
+      dndSettings: { Call: { status: 'inactive' } },
+      tags: [],
+      stageNames: [],
+    })).toBe(true);
+    expect(isCallable({
+      dnd: false,
+      dndSettings: { Call: { status: '   ' } },
+      tags: [],
+      stageNames: [],
+    })).toBe(true);
+    expect(isCallable({ dnd: false, tags: [], stageNames: [] })).toBe(true);
   });
 
   it('blocks DO NOT CALL / Spam Calls / Pause Communications stages', () => {

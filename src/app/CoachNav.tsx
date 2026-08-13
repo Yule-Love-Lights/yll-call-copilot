@@ -49,6 +49,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Queues',
     items: [
+      { label: 'Call queue', href: '/queue', isActive: p => p.startsWith('/queue') || p.startsWith('/call/') },
       {
         label: 'Inbox',
         href: 'https://quote.yulelovelights.com/inbox',

@@ -67,13 +67,16 @@ export async function loadBrainView(supabase: SupabaseClient): Promise<LoadBrain
 
   const { data: learningsRows, error: learningsError } = await supabase
     .from('learnings')
-    .select('objections, customer_language, what_worked, what_failed, extracted_at');
+    .select('transcript_id, objections, customer_language, what_worked, what_failed, extracted_at');
   if (learningsError) {
     if (!isMissingTableError(learningsError)) console.error('Load learnings for brain failed:', learningsError);
     return { ok: false, reason: isMissingTableError(learningsError) ? 'Run migration 0003 first.' : 'Could not load learnings.' };
   }
 
-  const { data: transcriptRows, error: transcriptsError } = await supabase.from('transcripts').select('vertical_id, outcome');
+  const { data: transcriptRows, error: transcriptsError } = await supabase
+    .from('transcripts')
+    .select('id, vertical_id, outcome')
+    .eq('metric_scope', 'performance');
   if (transcriptsError) {
     if (!isMissingTableError(transcriptsError)) console.error('Load transcripts for brain failed:', transcriptsError);
     return { ok: false, reason: isMissingTableError(transcriptsError) ? 'Run migration 0003 first.' : 'Could not load transcripts.' };
@@ -127,15 +130,19 @@ export async function loadBrainView(supabase: SupabaseClient): Promise<LoadBrain
     d => ({ id: d.id, verticalId: d.vertical_id, title: d.title, kind: d.kind, createdAt: d.created_at }),
   );
 
-  const learnings = (learningsRows ?? []) as {
+  const eligibleTranscriptIds = new Set(
+    ((transcriptRows ?? []) as { id: string }[]).map(t => t.id),
+  );
+  const learnings = ((learningsRows ?? []) as {
+    transcript_id: string;
     objections: Objection[] | null;
     customer_language: string[] | null;
     what_worked: string[] | null;
     what_failed: string[] | null;
     extracted_at: string;
-  }[];
+  }[]).filter(row => eligibleTranscriptIds.has(row.transcript_id));
 
-  const transcripts = ((transcriptRows ?? []) as { vertical_id: string | null; outcome: TranscriptOutcome }[]).map(t => ({
+  const transcripts = ((transcriptRows ?? []) as { id: string; vertical_id: string | null; outcome: TranscriptOutcome }[]).map(t => ({
     verticalId: t.vertical_id,
     outcome: t.outcome,
   }));
@@ -158,7 +165,8 @@ export async function loadBrainView(supabase: SupabaseClient): Promise<LoadBrain
   // missing table here degrades just this lens.
   const { data: callScoreRows, error: callScoresError } = await supabase
     .from('call_scores')
-    .select('rep_email, overall, experience_score, emotional, sales, hospitality');
+    .select('rep_email, overall, experience_score, emotional, sales, hospitality')
+    .eq('metric_scope', 'performance');
 
   let coaching: CoachingLens | null = null;
   let coachingReason: string | null = null;

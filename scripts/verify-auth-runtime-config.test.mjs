@@ -11,6 +11,7 @@ const baseline = {
     '123e4567-e89b-42d3-a456-426614174000,223e4567-e89b-42d3-a456-426614174000',
   CRON_SECRET: '0123456789abcdef',
   GHL_WEBHOOK_SECRET: '',
+  GHL_FOLLOWUP_SEND_ENABLED: 'false',
   LIVE_BRIDGE_SECRET: '',
   LIVE_BRIDGE_URL: '',
   LIVE_APP_BASE_URL: '',
@@ -40,5 +41,11 @@ describe('authorization runtime preflight', () => {
     const result = run({ CRON_SECRET: ' 0123456789abcdef ' });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('CRON_SECRET must be an unpadded secret');
+  });
+
+  it('keeps customer follow-up sending disabled until reconciliation is implemented', () => {
+    const result = run({ GHL_FOLLOWUP_SEND_ENABLED: 'true' });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('GHL_FOLLOWUP_SEND_ENABLED must remain false');
   });
 });

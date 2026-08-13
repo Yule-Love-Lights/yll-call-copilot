@@ -1,56 +1,39 @@
-// POST /api/calls — saves a call from the console (/call/[leadId]): body
-// {leadId, outcome, notes, transcript?, callId?}. Sequential inserts, each
-// error surfaced rather than swallowed:
-//   1. transcript row (only if transcript text was pasted AND this is not a
-//      live-coached call — see step 2), then the existing extraction
-//      pipeline (src/lib/transcripts/process.ts) against it — reused rather
-//      than re-implemented, per the brief.
-//   2. the calls row itself. callId absent -> insert a fresh row, linking
-//      the transcript if any (a plain outbound call logged straight from
-//      the console). callId present -> UPDATE that existing row instead:
-//      POST /api/live/end already created it (transcript_id, lead_id,
-//      ghl_contact_id already set from the live session) and handed the id
-//      back to the console via the ?callId= query param, so tagging the
-//      outcome here would otherwise insert a SECOND calls row for the same
-//      conversation. Updating also means no new transcript is created for
-//      this request (step 1) — the live session already stored and
-//      extracted one.
-//   3. the lead's status -> done.
-//   4. for an interested/callback/voicemail outcome, a best-effort
-//      follow-up draft generation (src/lib/leads/followups.ts) — Claude not
-//      configured, or generation failing, degrades to {generated:false} and
-//      does not fail the whole request; the call itself already saved.
+// Completes one assigned lead call. The database owns the manual/live branch,
+// immutable actor check, open-session guard, transcript link, outcome, lead
+// completion, and retry idempotency in one transaction. Claude extraction and
+// draft generation run only after that transaction succeeds.
 
 import { NextResponse } from 'next/server';
-import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
 import { isClaudeConfigured } from '@/lib/claude';
-import { hasCapability } from '@/lib/auth/capabilities';
-import {
-  auditTeamResourceAccess,
-  decideOwnedResourceAccess,
-  resolveCurrentHubActor,
-} from '@/lib/auth/resource';
-import { validateCallInput } from '@/lib/leads/calls';
+import { resolveCurrentHubActor } from '@/lib/auth/resource';
 import { generateFollowups } from '@/lib/leads/followups';
+import { validateCallInput } from '@/lib/leads/calls';
 import { FOLLOWUP_OUTCOMES, type LeadRow } from '@/lib/leads/types';
-import { processTranscriptBatch } from '@/lib/transcripts/process';
 import type { Playbook, VerticalRow } from '@/lib/playbook/types';
+import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
+import { processTranscriptBatch } from '@/lib/transcripts/process';
+import { getContact, getOpportunitiesForContact, getStageNameMap, isHighLevelConfigured } from '@/lib/ghl/client';
+import { isCallable } from '@/lib/leads/scoring';
 
 export const maxDuration = 120;
 
+type CompletionResult = {
+  result_code: string;
+  call_id: string | null;
+  session_id: string | null;
+  transcript_id: string | null;
+  status: string | null;
+};
+
 export async function POST(request: Request) {
   if (!isSupabaseConfigured()) {
-    return NextResponse.json({ configured: false, saved: false, reason: 'Supabase not configured.' });
+    return NextResponse.json({ configured: false, saved: false, reason: 'Supabase not configured.' }, { status: 503 });
   }
-
-  const body = await request.json().catch(() => null);
-  const validation = validateCallInput(body);
+  const validation = validateCallInput(await request.json().catch(() => null));
   if (!validation.valid) {
     return NextResponse.json({ configured: true, saved: false, error: validation.error }, { status: 400 });
   }
   const input = validation.input;
-
-  const supabase = getSupabaseServerClient()!;
   const actorResolution = await resolveCurrentHubActor();
   if (actorResolution.status !== 'resolved') {
     return NextResponse.json(
@@ -60,220 +43,183 @@ export async function POST(request: Request) {
   }
   const actor = actorResolution.actor;
 
-  const { data: leadData, error: leadError } = await supabase.from('leads').select('*').eq('id', input.leadId).maybeSingle();
-  if (leadError) {
-    if (isMissingTableError(leadError)) {
-      return NextResponse.json({ configured: true, saved: false, migrated: false, reason: 'Run migration 0004 first.' });
-    }
-    console.error('Load lead for call save failed:', leadError);
-    return NextResponse.json({ configured: true, saved: false, error: 'Could not load the lead.' }, { status: 500 });
+  const supabase = getSupabaseServerClient()!;
+  async function completeWithPermission(verifiedContactId: string | null, permissionVerified: boolean) {
+    return supabase.rpc('complete_owned_lead_call', {
+      p_actor_employee_id: actor.employeeId,
+      p_actor_auth_user_id: actor.authUserId,
+      p_actor_email: actor.email,
+      p_lead_id: input.leadId,
+      p_completion_request_id: input.completionRequestId,
+      p_session_id: input.sessionId,
+      p_outcome: input.outcome,
+      p_notes: input.notes,
+      p_raw_transcript: input.transcript,
+      p_verified_contact_id: verifiedContactId,
+      p_call_permission_verified: permissionVerified,
+    });
   }
-  if (!leadData) {
+
+  // First ask the transaction whether this is an exact retry of a completion
+  // that already committed. That recovery path must still work if HighLevel
+  // is temporarily unavailable or the customer opts out after the call. A
+  // fresh manual completion cannot write on this probe: SQL returns
+  // call_not_authorized until the current contact permission is verified.
+  // An owned pending live attempt was already permission-bound at dial time,
+  // so saving its outcome can complete on this first call without contacting
+  // the customer again.
+  let completion = await completeWithPermission(null, false);
+  if (completion.error) {
+    if (isMissingTableError(completion.error)) {
+      return NextResponse.json({ configured: true, saved: false, migrated: false, reason: 'Run migration 0020 first.' });
+    }
+    console.error('Complete lead call failed:', completion.error);
+    return NextResponse.json({ configured: true, saved: false, error: 'Could not save the call.' }, { status: 500 });
+  }
+  let result = (Array.isArray(completion.data) ? completion.data[0] : completion.data) as CompletionResult | null;
+
+  if (result?.result_code === 'call_not_authorized') {
+    if (!isHighLevelConfigured()) {
+      return NextResponse.json(
+        { configured: true, saved: false, error: 'Current customer call permission is unavailable.' },
+        { status: 503 },
+      );
+    }
+    const { data: permissionLead, error: permissionLeadError } = await supabase
+      .from('leads')
+      .select('ghl_contact_id')
+      .eq('id', input.leadId)
+      .maybeSingle();
+    const verifiedContactId = (permissionLead as { ghl_contact_id?: string | null } | null)?.ghl_contact_id ?? null;
+    if (permissionLeadError || !verifiedContactId) {
+      return NextResponse.json(
+        { configured: true, saved: false, error: 'Current customer call permission is unavailable.' },
+        { status: permissionLeadError ? 503 : 409 },
+      );
+    }
+    try {
+      const [contact, opportunities, stageNames] = await Promise.all([
+        getContact(verifiedContactId),
+        getOpportunitiesForContact(verifiedContactId),
+        getStageNameMap(),
+      ]);
+      const currentStages = opportunities
+        .map(opportunity => opportunity.pipelineStageId ? stageNames.get(opportunity.pipelineStageId) : null)
+        .filter((stage): stage is string => !!stage);
+      if (!isCallable({
+        dnd: contact.dnd,
+        dndSettings: contact.dndSettings,
+        tags: contact.tags ?? [],
+        stageNames: currentStages,
+      })) {
+        return NextResponse.json(
+          { configured: true, saved: false, error: 'This customer cannot be called.' },
+          { status: 409 },
+        );
+      }
+    } catch (caught) {
+      console.error('Verify current call permission before completion failed:', caught);
+      return NextResponse.json(
+        { configured: true, saved: false, error: 'Current customer call permission is unavailable.' },
+        { status: 503 },
+      );
+    }
+
+    completion = await completeWithPermission(verifiedContactId, true);
+    if (completion.error) {
+      console.error('Complete verified lead call failed:', completion.error);
+      return NextResponse.json({ configured: true, saved: false, error: 'Could not save the call.' }, { status: 500 });
+    }
+    result = (Array.isArray(completion.data) ? completion.data[0] : completion.data) as CompletionResult | null;
+  }
+
+  if (!result) {
+    return NextResponse.json({ configured: true, saved: false, error: 'Could not save the call.' }, { status: 500 });
+  }
+  if (result.result_code === 'lead_missing') {
     return NextResponse.json({ configured: true, saved: false, error: 'Lead not found.' }, { status: 404 });
   }
-  const lead = leadData as LeadRow;
-
-  if (
-    lead.claimed_by &&
-    lead.claimed_by.toLowerCase() !== actor.email &&
-    !hasCapability(actor, 'operations.admin')
-  ) {
+  if (result.result_code === 'invalid_input') {
+    return NextResponse.json({ configured: true, saved: false, error: 'Invalid call details.' }, { status: 400 });
+  }
+  if (['actor_inactive', 'not_claimed_by_actor'].includes(result.result_code)) {
+    return NextResponse.json({ configured: true, saved: false, error: 'This lead is not assigned to you.' }, { status: 403 });
+  }
+  if (result.result_code === 'request_conflict') {
+    return NextResponse.json({ configured: true, saved: false, error: 'This retry does not match the original saved call.' }, { status: 409 });
+  }
+  if (result.result_code === 'call_not_authorized') {
     return NextResponse.json(
-      { configured: true, saved: false, error: 'Access denied.' },
-      { status: 403 },
+      { configured: true, saved: false, error: 'This customer cannot be called.' },
+      { status: 409 },
     );
   }
-  if (
-    lead.claimed_by &&
-    lead.claimed_by.toLowerCase() !== actor.email &&
-    !(await auditTeamResourceAccess(supabase, {
-      actor,
-      action: 'lead.call_override',
-      resourceType: 'lead',
-      resourceId: lead.id,
-      ownerEmail: lead.claimed_by,
-    }))
-  ) {
+  if (!['completed', 'already_completed'].includes(result.result_code) || !result.call_id) {
     return NextResponse.json(
-      { configured: true, saved: false, error: 'Could not audit this access.' },
-      { status: 503 },
+      { configured: true, saved: false, error: 'End the open live call before saving its outcome.' },
+      { status: 409 },
     );
   }
 
-  // Resolve the matched vertical (best-effort) for extraction + follow-up
-  // grounding. A lead with no vertical_slug match (e.g. a fresh inbound-
-  // webhook lead) just skips both rather than failing the save.
+  const { data: leadData } = await supabase.from('leads').select('*').eq('id', input.leadId).maybeSingle();
+  const lead = leadData as LeadRow | null;
   let verticalId: string | null = null;
   let verticalName: string | null = null;
   let playbook: Playbook | null = null;
-  if (lead.vertical_slug) {
+  if (lead?.vertical_slug) {
     const { data: verticalData } = await supabase
       .from('verticals')
       .select('id, name, active_version')
       .eq('slug', lead.vertical_slug)
       .maybeSingle();
-    if (verticalData) {
-      const v = verticalData as Pick<VerticalRow, 'id' | 'name' | 'active_version'>;
-      verticalId = v.id;
-      verticalName = v.name;
-      if (v.active_version > 0) {
+    const vertical = verticalData as Pick<VerticalRow, 'id' | 'name' | 'active_version'> | null;
+    if (vertical) {
+      verticalId = vertical.id;
+      verticalName = vertical.name;
+      if (vertical.active_version > 0) {
         const { data: versionData } = await supabase
           .from('playbook_versions')
           .select('content')
-          .eq('vertical_id', v.id)
-          .eq('version', v.active_version)
+          .eq('vertical_id', vertical.id)
+          .eq('version', vertical.active_version)
           .maybeSingle();
         playbook = (versionData as { content: Playbook } | null)?.content ?? null;
       }
     }
   }
 
-  // 1. Transcript + extraction (optional) — skipped for a live-coached call
-  // (input.callId set). Its transcript was already stored and extracted by
-  // POST /api/live/end; doing it again here would create a duplicate.
-  let transcriptId: string | null = null;
-  const extraction: { attempted: boolean; done: number; failed: number } = { attempted: false, done: 0, failed: 0 };
-  if (!input.callId && input.transcript) {
-    const { data: transcriptData, error: transcriptError } = await supabase
-      .from('transcripts')
-      .insert({
-        vertical_id: verticalId,
-        customer_name: lead.full_name,
-        customer_phone: lead.phone,
-        called_at: new Date().toISOString(),
-        raw_text: input.transcript,
-      })
-      .select('id')
-      .single();
-    if (transcriptError) {
-      console.error('Insert transcript for call failed:', transcriptError);
-      return NextResponse.json({ configured: true, saved: false, error: 'Could not store the transcript.' }, { status: 500 });
-    }
-    transcriptId = (transcriptData as { id: string }).id;
-
-    if (isClaudeConfigured() && verticalId) {
-      extraction.attempted = true;
-      const result = await processTranscriptBatch({
-        supabase,
-        transcriptIds: [transcriptId],
-        verticalId,
-        verticalName: verticalName ?? '',
-        // The outcome is already known from this call — no need to spend a
-        // GHL round trip re-deriving it the way bulk ingest does.
-        matchOutcomes: false,
-      });
-      extraction.done = result.done;
-      extraction.failed = result.failed;
-    }
+  const extraction = { attempted: false, done: 0, failed: 0 };
+  const createdManualTranscript = result.result_code === 'completed' && !input.sessionId && !!result.transcript_id;
+  const manualTranscriptAvailable = !input.sessionId && !!result.transcript_id;
+  // Re-drive idempotent extraction on an already-completed retry. The call
+  // transaction can commit before this route receives a response; skipping
+  // retries would leave a permanently unprocessed transcript after a crash.
+  if (manualTranscriptAvailable && result.transcript_id && verticalId && isClaudeConfigured()) {
+    extraction.attempted = true;
+    const processed = await processTranscriptBatch({
+      supabase,
+      transcriptIds: [result.transcript_id],
+      verticalId,
+      verticalName: verticalName ?? '',
+      matchOutcomes: false,
+    });
+    extraction.done = processed.done;
+    extraction.failed = processed.failed;
   }
 
-  // 2. The call itself — update the live session's row if we have its id,
-  // otherwise insert a fresh one (see the file-header comment).
-  const rep_email = actor.email;
-  let callId: string;
-  if (input.callId) {
-    const { data: existingCallData, error: existingCallError } = await supabase
-      .from('calls')
-      .select('id, lead_id, rep_email')
-      .eq('id', input.callId)
-      .maybeSingle();
-    if (existingCallError) {
-      console.error('Load existing call for update failed:', existingCallError);
-      return NextResponse.json({ configured: true, saved: false, error: 'Could not load the call.' }, { status: 500 });
-    }
-    if (!existingCallData) {
-      return NextResponse.json({ configured: true, saved: false, error: 'Call not found.' }, { status: 404 });
-    }
-    const existingCall = existingCallData as {
-      id: string;
-      lead_id: string | null;
-      rep_email: string | null;
-    };
-    if (existingCall.lead_id !== lead.id) {
-      return NextResponse.json(
-        { configured: true, saved: false, error: 'Call does not belong to this lead.' },
-        { status: 409 },
-      );
-    }
-    const access = decideOwnedResourceAccess(actor, existingCall.rep_email);
-    if (access === 'denied') {
-      return NextResponse.json(
-        { configured: true, saved: false, error: 'Access denied.' },
-        { status: 403 },
-      );
-    }
-    if (
-      access === 'team' &&
-      !(await auditTeamResourceAccess(supabase, {
-        actor,
-        action: 'call.update',
-        resourceType: 'call',
-        resourceId: input.callId,
-        ownerEmail: existingCall.rep_email as string,
-      }))
-    ) {
-      return NextResponse.json(
-        { configured: true, saved: false, error: 'Could not audit this access.' },
-        { status: 503 },
-      );
-    }
-
-    const { error: updateError } = await supabase
-      .from('calls')
-      .update({
-        outcome: input.outcome,
-        notes: input.notes,
-        ended_at: new Date().toISOString(),
-      })
-      .eq('id', input.callId)
-      .eq('rep_email', existingCall.rep_email);
-    if (updateError) {
-      console.error('Update call failed:', updateError);
-      return NextResponse.json({ configured: true, saved: false, error: 'Could not save the call.' }, { status: 500 });
-    }
-    callId = input.callId;
-  } else {
-    const { data: callData, error: callError } = await supabase
-      .from('calls')
-      .insert({
-        lead_id: lead.id,
-        ghl_contact_id: lead.ghl_contact_id,
-        rep_email,
-        direction: input.direction,
-        outcome: input.outcome,
-        notes: input.notes,
-        transcript_id: transcriptId,
-        ended_at: new Date().toISOString(),
-      })
-      .select('id')
-      .single();
-    if (callError) {
-      console.error('Insert call failed:', callError);
-      return NextResponse.json({ configured: true, saved: false, error: 'Could not save the call.' }, { status: 500 });
-    }
-    callId = (callData as { id: string }).id;
-  }
-
-  // 3. Lead -> done. Non-fatal if it fails: the call already saved, and a
-  // rep can still see/finish it from the console.
-  const { error: leadUpdateError } = await supabase
-    .from('leads')
-    .update({ status: 'done', done_at: new Date().toISOString() })
-    .eq('id', lead.id);
-  if (leadUpdateError) {
-    console.error('Mark lead done failed:', leadUpdateError);
-  }
-
-  // 4. Follow-up drafts (best-effort, only for outcomes that warrant one).
-  let followupsResult: { generated: boolean; count?: number; reason?: string } = {
+  let followups: { generated: boolean; count?: number; reason?: string } = {
     generated: false,
     reason: 'This outcome does not call for a follow-up.',
   };
-  if ((FOLLOWUP_OUTCOMES as string[]).includes(input.outcome)) {
+  let followupPostProcessingComplete = true;
+  if (FOLLOWUP_OUTCOMES.includes(input.outcome)) {
     if (!isClaudeConfigured()) {
-      followupsResult = { generated: false, reason: 'Claude not configured.' };
+      followups = { generated: false, reason: 'Claude not configured.' };
+    } else if (!lead) {
+      followupPostProcessingComplete = false;
+      followups = { generated: false, reason: 'Could not reload the lead for follow-up generation.' };
     } else if (!lead.email && !lead.phone) {
-      followupsResult = { generated: false, reason: 'Lead has no email or phone to follow up with.' };
+      followups = { generated: false, reason: 'Lead has no email or phone to follow up with.' };
     } else {
       try {
         const drafts = await generateFollowups({
@@ -284,17 +230,20 @@ export async function POST(request: Request) {
           playbook,
         });
         const rows: { call_id: string; kind: 'email' | 'sms'; to_address: string; subject: string | null; body: string }[] = [];
-        if (lead.email) rows.push({ call_id: callId, kind: 'email', to_address: lead.email, subject: drafts.email.subject, body: drafts.email.body });
-        if (lead.phone) rows.push({ call_id: callId, kind: 'sms', to_address: lead.phone, subject: null, body: drafts.sms });
-
+        if (lead.email) rows.push({ call_id: result.call_id, kind: 'email', to_address: lead.email, subject: drafts.email.subject, body: drafts.email.body });
+        if (lead.phone) rows.push({ call_id: result.call_id, kind: 'sms', to_address: lead.phone, subject: null, body: drafts.sms });
         if (rows.length > 0) {
-          const { error: followupError } = await supabase.from('followups').insert(rows);
+          const { error: followupError } = await supabase.from('followups').upsert(rows, {
+            onConflict: 'call_id,kind',
+            ignoreDuplicates: true,
+          });
           if (followupError) throw followupError;
         }
-        followupsResult = { generated: true, count: rows.length };
-      } catch (err) {
-        console.error('Generate follow-ups failed:', err);
-        followupsResult = { generated: false, reason: err instanceof Error ? err.message : 'Could not generate follow-ups.' };
+        followups = { generated: true, count: rows.length };
+      } catch (caught) {
+        followupPostProcessingComplete = false;
+        console.error('Generate follow-ups failed:', caught);
+        followups = { generated: false, reason: caught instanceof Error ? caught.message : 'Could not generate follow-ups.' };
       }
     }
   }
@@ -302,8 +251,12 @@ export async function POST(request: Request) {
   return NextResponse.json({
     configured: true,
     saved: true,
-    callId,
-    transcript: transcriptId ? { created: true, transcriptId, extraction } : { created: false },
-    followups: followupsResult,
+    postProcessingComplete: extraction.failed === 0 && followupPostProcessingComplete,
+    alreadyCompleted: result.result_code === 'already_completed',
+    callId: result.call_id,
+    transcript: result.transcript_id
+      ? { created: createdManualTranscript, transcriptId: result.transcript_id, extraction }
+      : { created: false },
+    followups,
   });
 }

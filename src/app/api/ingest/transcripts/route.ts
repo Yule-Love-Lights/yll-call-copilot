@@ -125,6 +125,7 @@ export async function POST(request: Request) {
         customer_phone: t.customer_phone,
         called_at: t.called_at,
         raw_text: t.raw_text,
+        metric_scope: 'performance',
       })),
     )
     .select('id');

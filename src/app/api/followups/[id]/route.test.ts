@@ -1,49 +1,39 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({
-  getSupabaseServerClient: vi.fn(),
-  resolveCurrentHubActor: vi.fn(),
-  authorizeCallResource: vi.fn(),
-}));
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(), resolveCurrentHubActor: vi.fn() }));
 vi.mock('@/lib/supabase', () => ({
-  getSupabaseServerClient: mocks.getSupabaseServerClient,
-  isSupabaseConfigured: vi.fn(() => true),
-  isMissingTableError: vi.fn(() => false),
+  getSupabaseServerClient: () => ({ rpc: mocks.rpc }),
+  isSupabaseConfigured: () => true,
+  isMissingTableError: () => false,
 }));
-vi.mock('@/lib/auth/resource', () => ({
-  resolveCurrentHubActor: mocks.resolveCurrentHubActor,
-  authorizeCallResource: mocks.authorizeCallResource,
-}));
+vi.mock('@/lib/auth/resource', () => ({ resolveCurrentHubActor: mocks.resolveCurrentHubActor }));
 
 import { PUT } from './route';
 
-describe('PUT /api/followups/[id] resource authorization', () => {
+const ID = '11111111-2222-4333-8444-555555555555';
+
+describe('PUT /api/followups/[id] self ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.resolveCurrentHubActor.mockResolvedValue({ status: 'resolved', actor: { email: 'rep@example.com' } });
-    mocks.authorizeCallResource.mockResolvedValue({ status: 'denied' });
+    mocks.resolveCurrentHubActor.mockResolvedValue({
+      status: 'resolved',
+      actor: { employeeId: 'employee-1', email: 'rep@example.com' },
+    });
   });
 
-  it('does not edit a draft owned by another employee', async () => {
-    const update = vi.fn();
-    const from = vi.fn(() => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({
-            data: { id: 'followup-1', call_id: 'call-other', status: 'draft' },
-            error: null,
-          }),
-        }),
-      }),
-      update,
-    }));
-    mocks.getSupabaseServerClient.mockReturnValue({ from });
-    const response = await PUT(new Request('https://ops.example.com/api/followups/followup-1', {
-      method: 'PUT', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ body: 'changed' }),
-    }), { params: Promise.resolve({ id: 'followup-1' }) });
-
+  it.each(['rep', 'admin'])('does not let a %s edit another employee draft', async role => {
+    if (role === 'admin') {
+      mocks.resolveCurrentHubActor.mockResolvedValue({
+        status: 'resolved',
+        actor: { employeeId: 'admin-1', email: 'admin@example.com' },
+      });
+    }
+    mocks.rpc.mockResolvedValue({ data: [{ result_code: 'not_owned' }], error: null });
+    const response = await PUT(new Request(`https://ops.example.com/api/followups/${ID}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ body: 'Customer message' }),
+    }), { params: Promise.resolve({ id: ID }) });
     expect(response.status).toBe(403);
-    expect(update).not.toHaveBeenCalled();
   });
 });

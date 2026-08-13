@@ -26,6 +26,7 @@ export async function GET() {
   const { data: callRows, error: callsError } = await supabase
     .from('calls')
     .select('outcome')
+    .eq('metric_scope', 'performance')
     .gte('started_at', startIso)
     .lte('started_at', endIso);
   if (callsError && !isMissingTableError(callsError)) {

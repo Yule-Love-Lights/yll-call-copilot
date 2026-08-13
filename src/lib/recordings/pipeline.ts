@@ -130,6 +130,7 @@ export async function processOneRecording(
         outcome: outcomeMatch.outcome,
         outcome_source: outcomeMatch.outcome_source,
         ghl_contact_id: row.ghl_contact_id,
+        metric_scope: 'performance',
         rep_email: repEmail,
         direction: row.direction,
         // Math.round both sources: the column is an integer and Deepgram

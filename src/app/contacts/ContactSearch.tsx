@@ -4,17 +4,23 @@
 // proxy route; the browser never sees the API key.
 
 import { useState } from 'react';
-import type { CrmContact } from '@/lib/ghl/types';
+type ContactResult = {
+  id: string;
+  fullName: string | null;
+  email: string | null;
+  phone: string | null;
+  redacted: boolean;
+};
 
 type SearchResponse = {
   configured: boolean;
-  contacts: CrmContact[];
+  contacts: ContactResult[];
   error?: string;
 };
 
 export default function ContactSearch() {
   const [query, setQuery] = useState('');
-  const [contacts, setContacts] = useState<CrmContact[]>([]);
+  const [contacts, setContacts] = useState<ContactResult[]>([]);
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
 
   async function onSubmit(e: React.FormEvent) {
@@ -68,7 +74,9 @@ export default function ContactSearch() {
             <li key={c.id} className="flex flex-col gap-0.5 px-4 py-3">
               <span className="text-sm font-medium">{c.fullName ?? '(no name)'}</span>
               <span className="text-sm text-zinc-500">
-                {[c.email, c.phone].filter(Boolean).join(' · ') || 'no email or phone'}
+                {c.redacted
+                  ? 'Contact details appear only after assignment.'
+                  : ([c.email, c.phone].filter(Boolean).join(' · ') || 'no email or phone')}
               </span>
             </li>
           ))}

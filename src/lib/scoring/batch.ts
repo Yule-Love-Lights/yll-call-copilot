@@ -86,6 +86,7 @@ export async function scoreNextBatch(supabase: SupabaseClient, limit: number): P
   const { data: transcriptRows, error: transcriptsError } = await supabase
     .from('transcripts')
     .select('id, raw_text, vertical_id, called_at, utterances, rep_email')
+    .eq('metric_scope', 'performance')
     .order('called_at', { ascending: false, nullsFirst: false })
     .limit(CANDIDATE_WINDOW);
   if (transcriptsError) {
@@ -107,6 +108,7 @@ export async function scoreNextBatch(supabase: SupabaseClient, limit: number): P
   const { data: scoredRows, error: scoredError } = await supabase
     .from('call_scores')
     .select('transcript_id')
+    .eq('metric_scope', 'performance')
     .in('transcript_id', candidateIds);
   if (scoredError && !isMissingTableError(scoredError)) {
     console.error('Load already-scored transcript ids failed:', scoredError);
@@ -175,6 +177,7 @@ export async function scoreNextBatch(supabase: SupabaseClient, limit: number): P
           .from('calls')
           .select('rep_email')
           .eq('transcript_id', candidate.id)
+          .eq('metric_scope', 'performance')
           .maybeSingle();
         repEmail = (callRow as { rep_email: string | null } | null)?.rep_email ?? null;
       }
@@ -206,6 +209,7 @@ export async function scoreNextBatch(supabase: SupabaseClient, limit: number): P
       const { error: upsertError } = await supabase.from('call_scores').upsert(
         {
           transcript_id: candidate.id,
+          metric_scope: 'performance',
           rubric_version: rubricResult.version,
           rep_email: repEmail,
           vertical_slug: context.slug,
