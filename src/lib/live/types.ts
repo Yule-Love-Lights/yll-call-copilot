@@ -4,11 +4,12 @@
 // generated schema).
 
 export type LiveSessionMode = 'twilio' | 'simulator';
-export type LiveSessionStatus = 'active' | 'ended';
+export type LiveSessionStatus = 'starting' | 'active' | 'pending_outcome' | 'completed' | 'abandoned';
 
 export type LiveSessionRow = {
   id: string;
-  call_id: string;
+  call_id: string | null;
+  lead_id: string | null;
   mode: LiveSessionMode;
   status: LiveSessionStatus;
   transcript_running: string;
@@ -21,6 +22,18 @@ export type LiveSessionRow = {
   media_stream_started_at: string | null;
   started_at: string;
   ended_at: string | null;
+};
+
+export type LiveSegmentRow = {
+  id: string;
+  session_id: string;
+  ordinal: number;
+  source_segment_id: string;
+  speaker: 'rep' | 'customer';
+  body: string;
+  at_ms: number;
+  silence_ms: number | null;
+  created_at: string;
 };
 
 export type RepRating = 'helpful' | 'noise';

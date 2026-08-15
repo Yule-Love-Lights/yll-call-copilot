@@ -6,7 +6,7 @@
 // module for every decision, same split as transcripts/outcomes.ts
 // (classifyStageName is pure + tested; matchOutcome orchestrates).
 
-import type { HighLevelContact, HighLevelOpportunity } from '../ghl/types';
+import type { ContactDndSettings, HighLevelContact, HighLevelOpportunity } from '../ghl/types';
 import type { LeadSource, LeadStatus } from './types';
 
 export const SCORE_INBOUND = 100;
@@ -126,11 +126,39 @@ export function isPastCustomer(tags: string[], openStageNames: string[] = []): b
 // whatever the other signals say.
 const DO_NOT_CALL_KEYWORDS = ['do not call', 'dnc', 'spam', 'pause communications'];
 
-export function isCallable(input: { dnd?: boolean | null; tags: string[]; stageNames: string[] }): boolean {
-  if (input.dnd === true) return false;
+export type OutboundChannel = 'Call' | 'Email' | 'SMS';
+
+export function isChannelAllowed(
+  input: {
+    dnd?: boolean | null;
+    dndSettings?: Partial<Record<OutboundChannel, { status?: string }>> | null;
+    tags: string[];
+    stageNames: string[];
+  },
+  channel: OutboundChannel,
+): boolean {
+  // HighLevel's channel status describes the DND state, not delivery
+  // availability: `active`/`permanent` mean DND is enabled, while `inactive`
+  // means DND is disabled. A present channel value is authoritative because
+  // HighLevel also sets the aggregate `dnd` flag when only one channel is
+  // blocked. Unknown nonblank values fail closed. Missing or blank channel
+  // data falls back to the aggregate flag for accounts that do not expose
+  // channel settings.
+  const channelDndStatus = input.dndSettings?.[channel]?.status?.trim().toLowerCase();
+  if (channelDndStatus && channelDndStatus !== 'inactive') return false;
+  if (!channelDndStatus && input.dnd === true) return false;
   if (input.tags.some(t => matchesAnyKeyword(t, DO_NOT_CALL_KEYWORDS))) return false;
   if (input.stageNames.some(s => matchesAnyKeyword(s, DO_NOT_CALL_KEYWORDS))) return false;
   return true;
+}
+
+export function isCallable(input: {
+  dnd?: boolean | null;
+  dndSettings?: Partial<Record<OutboundChannel, { status?: string }>> | null;
+  tags: string[];
+  stageNames: string[];
+}): boolean {
+  return isChannelAllowed(input, 'Call');
 }
 
 // GET /api/inbound/recent's lazy lead auto-create (a webhook-logged inbound
@@ -229,7 +257,7 @@ export function buildInboundCandidate(input: InboundCandidateInput): LeadCandida
 
 // Minimal contact shape, not a full HighLevelContact: in queue.ts this comes
 // from a getContact() hydration (CrmContact) that normalizes down to this
-// before scoring. dnd/tags/timezone are carried through (unlike
+// before scoring. dnd/dndSettings/tags/timezone are carried through (unlike
 // name/email/phone, which are cosmetic) because the do-not-call gate and the
 // TCPA calling-hours gate both need them.
 export type MinimalContact = {
@@ -238,6 +266,7 @@ export type MinimalContact = {
   email?: string | null;
   phone?: string | null;
   dnd?: boolean | null;
+  dndSettings?: ContactDndSettings;
   tags?: string[];
   timezone?: string | null;
 };

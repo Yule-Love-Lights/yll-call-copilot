@@ -44,6 +44,7 @@ export async function processTranscriptBatch(input: ProcessBatchInput): Promise<
         .from('transcripts')
         .select('id, raw_text, customer_name, customer_phone')
         .eq('id', transcriptId)
+        .eq('metric_scope', 'performance')
         .maybeSingle();
       if (error) throw error;
       if (!data) throw new Error('Transcript not found.');

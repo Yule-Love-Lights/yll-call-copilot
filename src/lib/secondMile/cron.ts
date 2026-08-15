@@ -44,6 +44,7 @@ async function scanRecentTranscripts(supabase: SupabaseClient, now: Date): Promi
   const { data: recentRows, error: recentError } = await supabase
     .from('transcripts')
     .select('id, raw_text, customer_name, ghl_contact_id, created_at')
+    .eq('metric_scope', 'performance')
     .gte('created_at', sinceIso)
     .order('created_at', { ascending: true });
   if (recentError) {

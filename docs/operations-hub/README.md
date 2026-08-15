@@ -30,6 +30,8 @@ human-merged, and the byte-identical Hub mirror is now present.
     blocks.
 12. `PHASE-0-RLS-RUNBOOK.md` — the API-only database boundary, CI proof,
     hosted preflight, safe rollout order, and remaining identity tests.
+13. `LIVE-CALLING-ACTIVATION-BLOCKERS.md` — the positive customer-call kill
+    switch and the evidence required before live calling may be enabled.
 
 ## Scoped authority
 

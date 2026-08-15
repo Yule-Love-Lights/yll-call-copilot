@@ -17,6 +17,7 @@ export type DocumentRow = {
 };
 
 export type TranscriptOutcome = 'booked' | 'not_booked' | 'unknown';
+export type TranscriptMetricScope = 'performance' | 'training';
 
 export type TranscriptRow = {
   id: string;
@@ -29,6 +30,7 @@ export type TranscriptRow = {
   outcome: TranscriptOutcome;
   outcome_source: string | null;
   ghl_contact_id: string | null;
+  metric_scope: TranscriptMetricScope;
   created_at: string;
 };
 

@@ -42,7 +42,8 @@ function fakeSupabase(
       return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: role ? { role } : null, error: null }) }) }) };
     }
     if (table === 'call_scores') {
-      return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: scoreRow, error: null }) }) }) };
+      const builder = { eq: () => builder, maybeSingle: async () => ({ data: scoreRow, error: null }) };
+      return { select: () => builder };
     }
     if (table === 'call_recordings') {
       return { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: recordingRow, error: null }) }) }) }) };

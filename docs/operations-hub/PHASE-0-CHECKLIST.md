@@ -1,10 +1,13 @@
 # Operations Hub Phase 0 safety checklist
 
-Status: **RLS base-role gate implemented on PR #43; field-user provisioning blocked**
-Date: 2026-08-07
-Branch base: Hub `master@d5910b9482b3a15388c033eb51854e97be154e3e`
-after human-authorized merges of PRs #41 and #42. Database hardening is in
-draft PR #43.
+Status: **RLS base-role gate merged; lead-work authorization in progress; field-user provisioning blocked**
+Date: 2026-08-13
+Branch base: Hub `master@7962a8f025186c54acab66d47c32e93991e59a30`
+after the human-authorized merge of PR #43. The lead-work authorization slice
+is on `codex/operations-hub-phase-0-lead-access`; it is not yet merged. Local
+repository, database, build, and unauthenticated responsive-smoke gates passed
+on 2026-08-13; CI, human review, hosted checks, and authenticated production
+smokes remain.
 
 This checklist records the actual repository baseline and the safety gates that
 must precede Advertising or Installer accounts. It does not authorize Hub-owned
@@ -26,10 +29,32 @@ was built for a small office allowlist:
 - route policies now inventory resource scope, but remaining service-role
   handlers and the hosted database rollout still need the authorization gates
   below;
-- PR #43 enables and forces RLS on all 31 tables with zero client policies and
-  removes client schema/table/column/sequence access. The server still uses a
-  service-role client that bypasses RLS, so the handler resource audit remains
+- Merged PR #43 enables and forces RLS on all 31 baseline tables with zero
+  client policies and removes client schema/table/column/sequence access. The
+  server still uses a service-role client that bypasses RLS, so the handler
+  resource audit remains
   a field-launch gate.
+
+The current lead-work branch addresses the known Office lead/call resource
+gaps. It adds immutable employee identifiers to claims and calls, self-claim
+and self-call transaction boundaries, current HighLevel contact and channel
+permission checks, append-only live segments, idempotency keys, durable
+follow-up send state, and positive metric provenance. These are branch facts,
+not release evidence, until the branch gates pass and a human merges it.
+
+Customer live calling is positively disabled with
+`LIVE_CUSTOMER_CALLS_ENABLED=false`. Runtime preflight rejects enabling it and
+the bridge refuses to start. The complete activation evidence is listed in
+`LIVE-CALLING-ACTIVATION-BLOCKERS.md`.
+
+Customer call follow-up sending is also positively disabled with
+`GHL_FOLLOWUP_SEND_ENABLED=false`, and runtime preflight rejects enabling it. It stays
+off until the Hub can refresh a changed recipient and reconcile a provider-
+accepted message whose final Hub status write was lost, without risking a
+duplicate send.
+The older customer-facing cold-snap check-in sender is disabled for the same
+reason. Crew-only reveal-photo instructions remain available because they do
+not contact customers.
 
 Field provisioning remains blocked until the capability, API-authorization,
 RLS, and impersonated-role gates below pass.
@@ -90,6 +115,31 @@ only the honestly named local pin check.
       UUIDs and audited provisioning record are verified.
 - [x] Manager is present in the closed design vocabulary and negative tests but
       every Manager actor claim is denied in V1.
+- [ ] Merge the locally verified lead-work authorization slice. Its implementation
+      binds claims and calls to immutable employee IDs; allows an ordinary
+      Office employee to work only their active claim; makes Owner/Admin team
+      reads explicit and audited; rechecks the current HighLevel contact,
+      recipient, channel DND, tags, and stage before new customer work; and
+      uses transactionally locked, idempotent database routines for lead,
+      call, live-session, segment, and follow-up mutations.
+- [ ] Complete the separate historical derived-data repair. Adding
+      `metric_scope` and positively filtering new reads prevents future
+      training/practice contamination, but previously materialized weekly
+      digests, brain reviews, proposals, feedback, and other derived records
+      must be audited and then rebuilt or invalidated before their release use.
+      Migration `0020` now fails closed while any legacy weekly digest, brain
+      review, playbook proposal, or potentially proposal-applied `edited`
+      playbook version remains. Before retrying, an operator must export those
+      rows, remove the reviews/digests/proposals and edited versions, reset each
+      affected `verticals.active_version` to a retained generated version, and
+      recreate only verified manual edits after migration. There is no bypass
+      because legacy rows do not carry enough provenance for safe automation.
+      The disposable migration fixture lives in
+      `supabase/tests/migration/0020_metric_scope_backfill.seed.sql` with its
+      pgTAP assertions beside it. Run migrations `0001` through `0019`, apply
+      the seed, apply `0020`, then run the backfill test. It intentionally stays
+      outside the ordinary post-migration test folder because its legacy rows
+      omit columns that become mandatory in `0020`.
 - [ ] Phone OTP, invite, recovery, phone reassignment, deactivation, and session
       revocation rules are implemented and audited.
 - [ ] Codex-side decisions 16 (OTP provider/recovery), 18 (cached-session and
@@ -100,7 +150,8 @@ only the honestly named local pin check.
       remains blocked; the Hub must not silently accept or drop queued writes.
 - [x] Five cron routes require Vercel's `Authorization: Bearer $CRON_SECRET`
       credential before evaluating the separate `CRON_ENABLED` kill switch.
-- [x] Outbound Twilio calls use an actor-bound, expiring, one-time database
+- [x] The preparatory outbound Twilio path uses an actor-bound, expiring,
+      one-time database
       grant; destination/session are derived server-side and customer-local
       calling hours are rechecked before atomic consumption.
 - [x] The public Media Streams upgrade validates Twilio's signature against a
@@ -110,20 +161,22 @@ only the honestly named local pin check.
       a persisted unique source digest.
 - [ ] Production preflight and signed postdeploy smoke are run for cron,
       HighLevel, Twilio, and the live bridge. `npm run verify:auth-config`
-      validates variable presence/shape before deploy; live endpoint evidence
-      is still required.
+      validates variable presence/shape before deploy. Customer live calling
+      remains disabled until every gate in
+      `LIVE-CALLING-ACTIVATION-BLOCKERS.md` is implemented, tested with real
+      providers and browsers, reviewed, and approved.
 - [ ] Legacy `src/lib/quoteTool.ts` remains read-only; new integration uses only
       the canonical `/api/ops/v1` boundary.
 
-Current inventory: 24 pages and 73 API route files (80 handler methods) are
-declared in `src/lib/auth/routePolicy.ts`. The 12 legacy route-level role
-lookups now return only closed least-privileged values. See
+Current branch inventory includes 24 pages and 74 API route files (81 handler
+methods), all declared in `src/lib/auth/routePolicy.ts`. The 12 legacy
+route-level role lookups now return only closed least-privileged values. See
 `PHASE-0-AUTHORIZATION-INVENTORY.md` for the capability matrix and remaining
 resource-scope, audit, identity-projection, and cross-repository gaps.
 
 ## 4. Existing-table RLS checklist
 
-PR #43 establishes an API-only database boundary for the 31 current tables.
+PR #43 establishes an API-only database boundary for the 31 baseline tables.
 Clean CI applies every migration to a fresh Supabase PostgreSQL database and
 uses real `SET ROLE` pgTAP tests. It also rejects unreviewed application views,
 routines, triggers, policies, publications, tables, and sequences.
@@ -166,6 +219,13 @@ proves RLS independently of ACLs.
 | `offer_versions` | [x] | [x] | [x] | [x] |
 | `brain_insights` | [x] | [x] | [x] | [x] |
 | `practice_sessions` | [x] | [x] | [x] | [x] |
+| `live_segments` | [x] | [x] | [x] | [x] |
+
+The lead-work branch authors RLS, default-deny coverage, an append-only
+service-role grant, and impersonation tests for `live_segments`, which becomes
+the 32nd table. Its local database suites passed on 2026-08-13: 117 lead-work
+assertions, 259 default-deny assertions, and 18 migration-backfill assertions.
+CI and human merge remain required.
 
 Claims shaped like inactive, self, wrong-department, stale-membership,
 unlinked, Office, Advertising, Installer, Owner/Admin, and Manager identities
@@ -207,10 +267,13 @@ ledger, compensation result, pay-period close, or payroll export.
 3. Central actor/capability model; inventory and protect every existing page and
    API before field access.
 4. RLS/default-deny migrations plus a real Supabase base-role impersonation
-   harness (implemented in PR #43; hosted and semantic-persona gates remain).
-5. Additive Hub identity/audit/integration scaffolding.
-6. Vendor Quote-owned schemas; add version health and deploy-skew smoke tests.
-7. Only after all above gates: phone OTP and controlled field-user provisioning.
+   harness (merged in PR #43; hosted and semantic-persona gates remain).
+5. Lead-work resource authorization, mutation idempotency, current customer
+   permission checks, and metric provenance (in progress on the current
+   branch; local gates passed, while CI and human merge remain).
+6. Additive Hub identity/audit/integration scaffolding.
+7. Vendor Quote-owned schemas; add version health and deploy-skew smoke tests.
+8. Only after all above gates: phone OTP and controlled field-user provisioning.
 
 Payroll CSV remains separately blocked until the canonical contract defines the
 required subtotal record type, stable pay-line ID, and subtotal field semantics.

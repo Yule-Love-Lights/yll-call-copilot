@@ -74,6 +74,7 @@ export async function GET(request: Request) {
   let query = supabase
     .from('call_scores')
     .select('id, transcript_id, rep_email, vertical_slug, called_at, scored_at, overall, experience_score, fix')
+    .eq('metric_scope', 'performance')
     .order('scored_at', { ascending: false })
     .order('id', { ascending: false })
     .limit(limit);
@@ -96,6 +97,7 @@ export async function GET(request: Request) {
     const { data: transcriptRows, error: transcriptError } = await supabase
       .from('transcripts')
       .select('id, customer_name, outcome, duration_seconds')
+      .eq('metric_scope', 'performance')
       .in('id', transcriptIds);
     if (transcriptError) {
       console.error('Load transcripts for call review failed:', transcriptError);

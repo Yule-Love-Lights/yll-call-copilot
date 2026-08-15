@@ -230,6 +230,7 @@ async function main() {
           customer_phone: null,
           called_at: parsed.called_at,
           raw_text: parsed.raw_text,
+          metric_scope: 'performance',
         })),
       )
       .select('id');

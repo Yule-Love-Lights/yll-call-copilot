@@ -26,6 +26,7 @@ export type LeadRow = {
   source: string;
   status: LeadStatus;
   claimed_by: string | null;
+  claimed_employee_id: string | null;
   // Contact-local IANA time zone, for the TCPA calling-hours gate
   // (src/lib/leads/callingHours.ts). Null when GHL never returned one.
   timezone: string | null;
@@ -59,16 +60,19 @@ export type CallRow = {
   lead_id: string | null;
   ghl_contact_id: string | null;
   rep_email: string | null;
+  rep_employee_id: string | null;
   direction: CallDirection;
   outcome: CallOutcome | null;
   notes: string | null;
   transcript_id: string | null;
   started_at: string;
   ended_at: string | null;
+  metric_scope: 'pending' | 'performance' | 'training';
+  completion_request_id: string | null;
 };
 
 export type FollowupKind = 'email' | 'sms';
-export type FollowupStatus = 'draft' | 'approved_sent' | 'failed';
+export type FollowupStatus = 'draft' | 'sending' | 'approved_sent' | 'failed' | 'send_unknown';
 
 export type FollowupRow = {
   id: string;

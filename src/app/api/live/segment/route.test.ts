@@ -1,236 +1,85 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({
-  isSupabaseConfigured: vi.fn(),
-  getSupabaseAuthServerClient: vi.fn(),
-  getSupabaseServerClient: vi.fn(),
-  resolveHubActor: vi.fn(),
-}));
-
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(), verifyHeaderSecret: vi.fn() }));
+const client = {
+  rpc: mocks.rpc,
+  from: vi.fn(() => ({
+    select: () => ({ eq: async () => ({ data: [], error: null }) }),
+  })),
+};
 vi.mock('@/lib/supabase', () => ({
-  isSupabaseConfigured: mocks.isSupabaseConfigured,
-  getSupabaseAuthServerClient: mocks.getSupabaseAuthServerClient,
-  getSupabaseServerClient: mocks.getSupabaseServerClient,
-  isMissingTableError: vi.fn(() => false),
+  getSupabaseServerClient: () => client,
+  isSupabaseConfigured: () => true,
+  isMissingTableError: () => false,
 }));
-
-vi.mock('@/lib/auth/actor', () => ({
-  resolveHubActor: mocks.resolveHubActor,
-}));
-
-vi.mock('@/lib/live/card', () => ({
-  generateCoachCard: vi.fn(),
-}));
+vi.mock('@/lib/auth/machine', () => ({ verifyHeaderSecret: mocks.verifyHeaderSecret }));
+vi.mock('@/lib/live/card', () => ({ generateCoachCard: vi.fn() }));
 
 import { POST } from './route';
 
-function request(
-  body: unknown,
-  headers: Record<string, string> = {},
-): Request {
+const SESSION_ID = '11111111-2222-4333-8444-555555555555';
+const SEGMENT_ID = '21111111-2222-4333-8444-555555555555';
+
+function request(body: Record<string, unknown> = {}, bridge = true) {
   return new Request('https://ops.example.com/api/live/segment', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
-    body: JSON.stringify(body),
+    headers: {
+      'content-type': 'application/json',
+      ...(bridge ? { 'x-live-bridge-secret': 'bridge-secret' } : {}),
+    },
+    body: JSON.stringify({
+      sessionId: SESSION_ID,
+      sourceSegmentId: SEGMENT_ID,
+      speaker: 'rep',
+      text: 'Hello there',
+      atMs: 1000,
+      ...body,
+    }),
   });
 }
 
-function employeeActor(
-  capabilities: string[] = ['office.calls.work'],
-  overrides: Record<string, unknown> = {},
-) {
-  return {
-    status: 'resolved',
-    actor: {
-      principalType: 'employee',
-      authUserId: 'auth-1',
-      employeeId: 'employee-1',
-      email: 'rep@example.com',
-      active: true,
-      role: 'office',
-      memberships: ['office'],
-      membershipVersion: null,
-      activeDepartmentContext: null,
-      capabilities,
-      source: 'legacy_app_users',
-      ...overrides,
-    },
-  };
-}
-
-describe('POST /api/live/segment authorization', () => {
+describe('POST /api/live/segment bridge boundary', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.isSupabaseConfigured.mockReturnValue(true);
-    mocks.getSupabaseAuthServerClient.mockResolvedValue({
-      auth: {
-        getUser: vi.fn(async () => ({
-          data: { user: { id: 'auth-1', email: 'rep@example.com' } },
-          error: null,
-        })),
-      },
-    });
-    mocks.resolveHubActor.mockResolvedValue(employeeActor());
+    mocks.verifyHeaderSecret.mockReturnValue('authorized');
   });
 
-  afterEach(() => vi.unstubAllEnvs());
-
-  it('returns 503 before authentication when Supabase is unavailable', async () => {
-    mocks.isSupabaseConfigured.mockReturnValue(false);
-    const response = await POST(request({}));
-    expect(response.status).toBe(503);
-    expect(mocks.resolveHubActor).not.toHaveBeenCalled();
-  });
-
-  it('requires a configured, exact bridge secret when the bridge header is present', async () => {
-    const missing = await POST(
-      request({}, { 'x-live-bridge-secret': 'bridge-secret-at-least-16' }),
-    );
-    expect(missing.status).toBe(503);
-
-    vi.stubEnv('LIVE_BRIDGE_SECRET', 'bridge-secret-at-least-16');
-    const denied = await POST(request({}, { 'x-live-bridge-secret': 'incorrect-secret-value' }));
-    expect(denied.status).toBe(401);
-
-    const authorized = await POST(
-      request({}, { 'x-live-bridge-secret': 'bridge-secret-at-least-16' }),
-    );
-    expect(authorized.status).toBe(400);
-    expect(mocks.getSupabaseAuthServerClient).not.toHaveBeenCalled();
-  });
-
-  it('requires the bridge stream grant to have been durably consumed for this Twilio session', async () => {
-    vi.stubEnv('LIVE_BRIDGE_SECRET', 'bridge-secret-at-least-16');
-    const from = vi.fn(() => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({
-            data: {
-              id: 'session-1',
-              call_id: 'call-1',
-              mode: 'twilio',
-              status: 'active',
-              transcript_running: '',
-              media_stream_started_at: null,
-              started_at: '2026-08-07T12:00:00.000Z',
-              ended_at: null,
-            },
-            error: null,
-          }),
-        }),
-      }),
-    }));
-    mocks.getSupabaseServerClient.mockReturnValue({ from });
-
-    const response = await POST(request(
-      { sessionId: 'session-1', speaker: 'rep', text: 'hello' },
-      { 'x-live-bridge-secret': 'bridge-secret-at-least-16' },
-    ));
-
-    expect(response.status).toBe(403);
-    expect(await response.json()).toMatchObject({ error: 'Stream authorization required.' });
-  });
-
-  it('denies a browser actor without office.calls.work', async () => {
-    mocks.resolveHubActor.mockResolvedValue(employeeActor(['internal_public.read']));
-    const response = await POST(request({}));
+  it('rejects browser transcript fabrication', async () => {
+    mocks.verifyHeaderSecret.mockReturnValue('denied');
+    const response = await POST(request({}, false));
     expect(response.status).toBe(401);
-    expect(mocks.getSupabaseServerClient).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
 
-  it('checks a browser actor against the call that owns the live session', async () => {
-    const from = vi.fn((table: string) => {
-      if (table === 'live_sessions') {
-        return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({
-                data: {
-                  id: 'session-1',
-                  call_id: 'call-1',
-                  mode: 'simulator',
-                  status: 'active',
-                  transcript_running: '',
-                  started_at: '2026-08-07T12:00:00.000Z',
-                  ended_at: null,
-                },
-                error: null,
-              }),
-            }),
-          }),
-        };
-      }
-      if (table === 'calls') {
-        return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({
-                data: { rep_email: 'other@example.com' },
-                error: null,
-              }),
-            }),
-          }),
-        };
-      }
-      throw new Error(`unexpected table ${table}`);
-    });
-    mocks.getSupabaseServerClient.mockReturnValue({ from });
+  it('requires a stable source segment id for retry deduplication', async () => {
+    const response = await POST(request({ sourceSegmentId: undefined }));
+    expect(response.status).toBe(400);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
 
-    const response = await POST(
-      request({ sessionId: 'session-1', speaker: 'rep', text: 'hello' }),
-    );
-
+  it.each(['not_authorized', 'actor_inactive'])('fails instead of silently dropping a segment when the RPC returns %s', async resultCode => {
+    mocks.rpc.mockResolvedValue({ data: [{ result_code: resultCode }], error: null });
+    const response = await POST(request());
     expect(response.status).toBe(403);
-    expect(await response.json()).toMatchObject({ error: 'Access denied.' });
+    expect(await response.json()).toMatchObject({ saved: false });
   });
 
-  it('allows an approved Owner/Admin team action only after a durable audit', async () => {
-    mocks.resolveHubActor.mockResolvedValue(employeeActor(
-      ['office.calls.work', 'operations.admin'],
-      {
-        email: 'admin@example.com',
-        role: 'owner_admin',
-        memberships: ['office', 'advertising', 'installer', 'management'],
-      },
-    ));
-    const auditInsert = vi.fn(async () => ({ error: null }));
-    const from = vi.fn((table: string) => {
-      if (table === 'live_sessions') {
-        return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({
-                data: {
-                  id: 'session-1', call_id: 'call-1', mode: 'simulator',
-                  status: 'ended', transcript_running: '',
-                  started_at: '2026-08-07T12:00:00.000Z', ended_at: null,
-                },
-                error: null,
-              }),
-            }),
-          }),
-        };
-      }
-      if (table === 'calls') {
-        return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({ data: { rep_email: 'rep@example.com' }, error: null }),
-            }),
-          }),
-        };
-      }
-      if (table === 'events_log') return { insert: auditInsert };
-      throw new Error(`unexpected table ${table}`);
+  it('returns an idempotent duplicate without generating another card', async () => {
+    mocks.rpc.mockResolvedValue({
+      data: [{
+        result_code: 'already_saved',
+        segment_id: SEGMENT_ID,
+        call_id: '31111111-2222-4333-8444-555555555555',
+        ordinal: 1,
+        at_ms: 1000,
+        transcript_running: 'rep: Hello there',
+        inserted: false,
+      }],
+      error: null,
     });
-    mocks.getSupabaseServerClient.mockReturnValue({ from });
-
-    const response = await POST(
-      request({ sessionId: 'session-1', speaker: 'rep', text: 'hello' }),
-    );
-
+    const response = await POST(request());
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ended: true });
-    expect(auditInsert).toHaveBeenCalledOnce();
+    expect(await response.json()).toMatchObject({ saved: true, duplicate: true, card: null });
+    expect(client.from).not.toHaveBeenCalled();
   });
 });

@@ -42,7 +42,7 @@ describe('resource authorization', () => {
 
   it('binds a call resource to its owner and audits an explicit admin override', async () => {
     const maybeSingle = vi.fn(async () => ({
-      data: { rep_email: 'rep@example.com' },
+      data: { rep_email: 'rep@example.com', rep_employee_id: 'employee-rep' },
       error: null,
     }));
     const eq = vi.fn(() => ({ maybeSingle }));

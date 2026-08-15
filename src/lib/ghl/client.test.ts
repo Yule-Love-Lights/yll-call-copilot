@@ -73,7 +73,12 @@ describe('GHL client', () => {
 
   describe('getContact (happy path)', () => {
     it('fetches and maps a single contact by id', async () => {
-      const hl: HighLevelContact = { id: 'c1', contactName: 'Jordan Rivera', phone: '555-0100' };
+      const hl: HighLevelContact = {
+        id: 'c1',
+        contactName: 'Jordan Rivera',
+        phone: '555-0100',
+        dndSettings: { Call: { status: 'inactive', code: '101' } },
+      };
       mockFetchOnce({ contact: hl });
 
       const contact = await getContact('c1');
@@ -81,6 +86,7 @@ describe('GHL client', () => {
       expect(contact.id).toBe('c1');
       expect(contact.fullName).toBe('Jordan Rivera');
       expect(contact.phone).toBe('555-0100');
+      expect(contact.dndSettings?.Call?.status).toBe('inactive');
     });
   });
 

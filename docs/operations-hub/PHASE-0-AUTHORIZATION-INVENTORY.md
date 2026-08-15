@@ -1,10 +1,13 @@
 # Operations Hub Phase 0 authorization inventory
 
-Status: **route and database base-role gates implemented; resource work remains; field provisioning blocked**
-Date: 2026-08-07
-Merged base: PRs #41 and #42 at
-`master@d5910b9482b3a15388c033eb51854e97be154e3e`; database hardening is in
-draft PR #43.
+Status: **route and database base-role gates merged; lead-work resource slice in progress; field provisioning blocked**
+Date: 2026-08-13
+Merged base: PRs #41 through #43 at
+`master@7962a8f025186c54acab66d47c32e93991e59a30`. The lead-work resource
+slice is on `codex/operations-hub-phase-0-lead-access`; it remains unmerged and
+its local repository, database, build, and unauthenticated responsive-smoke
+gates passed on 2026-08-13. CI, human review, hosted checks, and authenticated
+production smokes remain.
 
 This document records what the Phase 0 capability branch actually enforces.
 It does not amend the byte-mirrored integration contract and does not authorize
@@ -41,9 +44,9 @@ field provisioning.
 `src/lib/auth/routePolicy.ts` declares every current App Router surface:
 
 - 24 pages;
-- 73 API route files;
-- 80 exported API handler methods;
-- 104 page/API method combinations in total.
+- 74 API route files;
+- 81 exported API handler methods;
+- 105 page/API method combinations in total.
 
 Each employee policy declares all required capabilities, department,
 paid-context requirement, resource-scope class, sensitivity, and whether an
@@ -63,14 +66,28 @@ All existing employee routes belong to the Office department. Consequently:
 - caller-supplied `x-yll-actor-*` headers are stripped before forwarding.
 
 Resource-scope metadata is an inventory, not a substitute for handler checks.
-This slice binds call updates, live-session reads/end/segments, follow-up
-edits/sends, and coaching ratings to the owning employee. Owner/Admin team
-overrides are explicit and fail closed unless their sensitive-access audit is
-durable; a team member cannot impersonate another rep's coaching rating.
-Remaining service-role handlers and future identity-specific RLS policies still
-require the work in section 5 before field launch. PR #43 closes direct
-database access for every browser role; it intentionally does not make a
-service-role handler safe.
+Merged PR #43 closes direct database access for every browser role; it
+intentionally does not make a service-role handler safe.
+
+The current lead-work branch binds lead claims and calls to immutable
+`app_users.id` employee identifiers while retaining normalized email only as a
+compatibility assertion. Ordinary Office employees can see redacted unclaimed
+queue rows and their own claimed customer; they cannot read or mutate another
+employee's claim, call, transcript, live session, segment, or follow-up.
+Owner/Admin team reads are explicit, read-only where appropriate, and require a
+durable sensitive-access audit. Lead, call, live-session, live-segment, and
+follow-up mutations move through database routines that lock the current
+actor, lead, call, and session in a consistent order and reject stale ownership
+or conflicting retries.
+
+Fresh claims, calls, dials, and follow-up sends revalidate the current
+HighLevel contact and the relevant Call, SMS, or Email permission, including
+global/channel DND, tags, stage, and the exact current destination. Previously
+issued access does not override a later opt-out. The branch also adds explicit
+`pending`, `performance`, and `training` provenance so operational metrics use
+only positively identified performance records. These controls remain branch
+implementation, not release evidence, until the full gates pass and a human
+merges the branch.
 
 ## 3. Machine callers
 
@@ -105,6 +122,9 @@ Required deployment configuration:
 - `LIVE_BRIDGE_SECRET`: unpadded, at least 16 characters and identical in the
   Hub and bridge process;
 - `TWILIO_AUTH_TOKEN`: required before Twilio is considered configured;
+- `LIVE_CUSTOMER_CALLS_ENABLED`: must remain exactly `false`; runtime preflight
+  rejects `true` and the live bridge exits unless the separately reviewed
+  activation gates are satisfied;
 - `LIVE_BRIDGE_URL`: the same credential-free, query-free `wss://` base URL in
   the Hub and bridge process so exact upgrade signatures can be reconstructed;
 - `LIVE_APP_BASE_URL`: the Hub's `https://` base URL used for durable grant
@@ -116,6 +136,10 @@ Required deployment configuration:
   still used, `GHL_WEBHOOK_SECRET` must be unpadded and at least 16 characters.
 
 `CRON_ENABLED` remains only a kill switch. It is never caller authentication.
+
+The Twilio and bridge entries above describe preparatory defenses, not approval
+to place customer calls. Customer live calling is positively disabled. See
+`LIVE-CALLING-ACTIVATION-BLOCKERS.md` for the complete activation checklist.
 
 ## 4. Compatibility boundaries
 
@@ -158,28 +182,59 @@ This slice does **not** clear the field-user release stop:
    workflow is reconfigured for signed delivery or a secret header.
 7. Open owner decisions for cached sessions, deactivated-device writes, and
    placement/photo visibility remain protective-default deny.
+8. The lead-work branch introduces positive metric provenance for future
+   reads, but historical derived records that may already combine performance
+   and practice data still require a separately reviewed audit and data repair.
+   Weekly digests, brain reviews, proposals, feedback, and other materialized
+   outputs must be rebuilt or invalidated before they can be trusted for
+   release reporting.
+9. Customer live calling remains disabled until every provider lifecycle,
+   media finalization, speaker attribution, ordered delivery, coaching
+   deduplication, recovery, and real-provider smoke gate in
+   `LIVE-CALLING-ACTIVATION-BLOCKERS.md` passes.
 
 Until these gates pass, no Advertising or Installer account may be provisioned.
 
-## 6. Next resource-authorization slice
+## 6. Current lead-work authorization slice
 
-The PR #43 adversarial review found these existing Office blockers. RLS cannot
-protect them because their handlers intentionally use `service_role`:
+The current branch addresses the Office blockers from the PR #43 adversarial
+review without weakening the field-provisioning stop:
 
-1. `live/start` can create a dial grant for an unclaimed, dismissed, or
-   completed lead, and the Twilio callback does not revalidate current lead
-   state and claimant before dialing.
-2. Lead detail and queue reads can expose another rep's claimed customer PII,
-   call notes, and follow-ups.
-3. Lead claim can write `claimed_by = null` when session identity resolution
-   fails, creating an ownerless claimed lead.
-4. Manual call save can operate on an unclaimed/dismissed/completed lead and
-   then mark it done, corrupting queue state and employee statistics.
-5. The recordings list is team-global but currently uses the ordinary calls
-   capability rather than a pipeline/admin read capability.
+1. Lead claim/dismiss, manual completion, live start/dial/stream/segment/end,
+   and follow-up edit/send use narrowly granted transaction routines rather
+   than independent service-role read-then-write sequences.
+2. Claims and calls carry immutable employee IDs. An ordinary employee must be
+   the current active claimant, and all compatibility email fields must still
+   match that employee.
+3. Queue and inbound surfaces redact unclaimed customer PII, hide another
+   employee's claim, and expose full work data only after a permitted claim.
+4. New customer work requires a current HighLevel contact and a positive
+   channel-specific permission check. Stale queue data or an earlier grant
+   cannot authorize a call or follow-up after opt-out.
+5. Completion, start, segment, and send request identifiers distinguish safe
+   retries from conflicting payloads; follow-up provider message identifiers
+   become immutable evidence rather than treating a conversation ID as proof
+   of delivery.
+6. Calls, transcripts, and scores carry positive metric provenance. Training
+   and incomplete live attempts are excluded from performance loaders.
+7. The simulator customer-call path is removed in favor of Practice, and live
+   customer calling remains disabled behind the positive activation gate.
 
-The next branch must centralize lead-work authorization, bind ordinary reps to
-an active self-claim, make owner/admin overrides explicit and durably audited,
-revalidate the claim immediately before Twilio dialing, and add race/negative
-tests. Queue/inbound sharing and scoreboard team visibility must use truthful
-route-scope declarations rather than the coarse legacy `CALLS` constant.
+The implementation and local gates are present on the branch. Verification on
+2026-08-13 passed the pinned-contract check, TypeScript, ESLint, 1,008 Vitest
+tests across 119 files, the standard production build, 117 lead-work pgTAP
+assertions, 259 default-deny assertions, 18 legacy-backfill assertions, and
+desktop plus 390px login-shell smokes without overflow or console errors.
+Authentication was intentionally not bypassed, so hosted authenticated and
+real-provider smokes remain.
+
+## 7. Work remaining after this slice
+
+1. Receive CI and human review, run the hosted checks, and human-merge the
+   lead-work branch.
+2. Audit and repair or invalidate historical derived performance outputs.
+3. Complete the additive immutable Hub identity, phone OTP, revocation,
+   membership, and Quote-owned active-context projection work.
+4. Complete hosted preflight and semantic persona integration tests.
+5. Keep live customer calling disabled until the separate activation checklist
+   is fully implemented, tested, reviewed, and approved.

@@ -51,6 +51,7 @@ async function transcriptFallback(supabase: SupabaseClient, seasonYear: number):
   const { data, error } = await supabase
     .from('transcripts')
     .select('ghl_contact_id, customer_name, called_at, created_at')
+    .eq('metric_scope', 'performance')
     .eq('outcome', 'booked');
   if (error) {
     console.error('Transcript fallback for installed contacts failed:', error);

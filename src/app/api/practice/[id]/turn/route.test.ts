@@ -26,7 +26,8 @@ vi.mock('@/lib/practice/context', () => ({
   buildSessionSystemPrompt: (...args: unknown[]) => buildSessionSystemPromptMock(...args),
 }));
 
-import { POST, MAX_REP_TURNS, MAX_TURN_TEXT_LENGTH } from './route';
+import { POST } from './route';
+import { MAX_REP_TURNS, MAX_TURN_TEXT_LENGTH } from '@/lib/practice/limits';
 import type { PracticeSessionRow } from '@/lib/practice/types';
 
 function request(body: unknown) {

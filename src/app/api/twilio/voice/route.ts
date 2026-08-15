@@ -1,36 +1,50 @@
-// POST /api/twilio/voice -- the TwiML App's Voice webhook. Twilio calls this
-// directly (no browser session), so it is exempt from the staff-session
-// employee gate in src/proxy.ts (see routePolicy.ts) and validates itself
-// via the X-Twilio-Signature header (src/lib/live/twilioVoice.ts). Missing
-// TWILIO_AUTH_TOKEN fails closed; there is no unauthenticated setup mode.
-//
-// The browser supplies only an opaque one-time dialGrant. The handler derives
-// the session and customer destination from server-owned rows, binds the grant
-// to Twilio's authenticated client identity, rechecks calling hours, and
-// atomically consumes the grant before returning dialing TwiML.
-//
-// UNTESTED against a live Twilio account -- see twilioVoice.ts's header
-// comment for the sources this was coded against.
+// Twilio's signed Voice webhook. The browser sends only a one-time grant.
+// The database locks and revalidates the employee, current lead claim,
+// destination, calling window, call, and session before consuming it.
 
 import { NextResponse } from 'next/server';
+import { getContact, getOpportunitiesForContact, getStageNameMap, isHighLevelConfigured } from '@/lib/ghl/client';
+import { isCallable } from '@/lib/leads/scoring';
 import { getSupabaseServerClient, isSupabaseConfigured } from '@/lib/supabase';
-import { isWithinCallingHours } from '@/lib/leads/callingHours';
 import {
   buildLiveBridgeStreamUrl,
   buildVoiceTwiml,
-  createMediaStreamGrant,
   hashDialGrant,
+  isTwilioConfigured,
   normalizeTwilioClientIdentity,
   twilioIdentityForAuthUserId,
   verifyTwilioSignature,
 } from '@/lib/live/twilioVoice';
-import type { LiveSessionRow } from '@/lib/live/types';
+import { normalizePhone } from '@/lib/scoreboard/flywheel';
 
 const XML_HEADERS = { 'Content-Type': 'text/xml' };
-const MEDIA_STREAM_GRANT_TTL_MS = 5 * 60 * 1000;
+const CURRENT_CONTACT_TIMEOUT_MS = 4000;
 
 function errorTwiml(message: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?><Response><Say>${message}</Say></Response>`;
+}
+
+type DialResult = {
+  result_code: string;
+  session_id: string | null;
+  call_id: string | null;
+  lead_id: string | null;
+  to_number: string | null;
+  contact_timezone: string | null;
+};
+
+async function withTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error('Current contact verification timed out.')), CURRENT_CONTACT_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 export async function POST(request: Request) {
@@ -41,168 +55,155 @@ export async function POST(request: Request) {
       if (typeof value === 'string') params[key] = value;
     }
   }
-
-  const signature = request.headers.get('x-twilio-signature');
-  if (!verifyTwilioSignature({ url: request.url, params, signature })) {
+  if (!verifyTwilioSignature({
+    url: request.url,
+    params,
+    signature: request.headers.get('x-twilio-signature'),
+  })) {
     return NextResponse.json({ error: 'Invalid Twilio signature' }, { status: 403 });
   }
-
+  if (!isTwilioConfigured()) {
+    return new NextResponse(errorTwiml('Calling is temporarily unavailable.'), { status: 503, headers: XML_HEADERS });
+  }
   if (!isSupabaseConfigured()) {
-    return new NextResponse(errorTwiml('Calling is temporarily unavailable.'), {
-      status: 503,
-      headers: XML_HEADERS,
-    });
+    return new NextResponse(errorTwiml('Calling is temporarily unavailable.'), { status: 503, headers: XML_HEADERS });
   }
 
   const dialGrant = params.dialGrant?.trim();
   const clientIdentity = normalizeTwilioClientIdentity(params.From);
   if (!dialGrant || !clientIdentity) {
-    return new NextResponse(errorTwiml('This call is not authorized.'), {
-      status: 400,
-      headers: XML_HEADERS,
-    });
+    return new NextResponse(errorTwiml('This call is not authorized.'), { status: 400, headers: XML_HEADERS });
+  }
+
+  // Validate bridge configuration before the one-time database grant is
+  // consumed. The real session id is substituted only after authorization.
+  // Reuse the opaque one-time dial grant as the Media Stream grant. This
+  // makes Twilio's retry of the same signed webhook deterministic after a
+  // lost response, while the database still stores only its digest.
+  const mediaGrant = { grant: dialGrant, hash: hashDialGrant(dialGrant) };
+  try {
+    if (!process.env.LIVE_BRIDGE_URL) throw new Error('LIVE_BRIDGE_URL is missing');
+    buildLiveBridgeStreamUrl(
+      process.env.LIVE_BRIDGE_URL,
+      '00000000-0000-4000-8000-000000000000',
+      mediaGrant.grant,
+    );
+  } catch (caught) {
+    console.error('Live bridge URL configuration is invalid:', caught instanceof Error ? caught.message : caught);
+    return new NextResponse(errorTwiml('Calling is temporarily unavailable.'), { status: 503, headers: XML_HEADERS });
   }
 
   const supabase = getSupabaseServerClient()!;
-  const grantHash = hashDialGrant(dialGrant);
-  const { data: sessionData, error: sessionError } = await supabase
+  const dialGrantHash = hashDialGrant(dialGrant);
+  // Discovery only. The RPC locks the durable actor and revalidates this
+  // binding before any call transition.
+  const { data: discoveredSession, error: discoveryError } = await supabase
     .from('live_sessions')
-    .select('*')
-    .eq('dial_grant_hash', grantHash)
+    .select('dial_actor_auth_user_id, lead_id')
+    .eq('dial_grant_hash', dialGrantHash)
     .maybeSingle();
-  if (sessionError) {
-    console.error('Load one-time Twilio dial grant failed:', sessionError);
-    return new NextResponse(errorTwiml('Calling is temporarily unavailable.'), {
-      status: 503,
-      headers: XML_HEADERS,
-    });
+  const authUserId = (discoveredSession as { dial_actor_auth_user_id?: string | null } | null)?.dial_actor_auth_user_id ?? null;
+  const discoveredLeadId = (discoveredSession as { lead_id?: string | null } | null)?.lead_id ?? null;
+  if (discoveryError) {
+    console.error('Discover live dial actor failed:', discoveryError);
+    return new NextResponse(errorTwiml('Calling is temporarily unavailable.'), { status: 503, headers: XML_HEADERS });
   }
-  const session = sessionData as LiveSessionRow | null;
-  const now = new Date();
-  if (
-    !session ||
-    session.mode !== 'twilio' ||
-    session.status !== 'active' ||
-    session.dial_started_at !== null ||
-    !session.dial_grant_expires_at ||
-    new Date(session.dial_grant_expires_at).getTime() <= now.getTime() ||
-    !session.dial_actor_auth_user_id ||
-    twilioIdentityForAuthUserId(session.dial_actor_auth_user_id) !== clientIdentity
-  ) {
-    return new NextResponse(errorTwiml('This call authorization is invalid or expired.'), {
-      status: 403,
-      headers: XML_HEADERS,
-    });
+  if (!authUserId || !discoveredLeadId || twilioIdentityForAuthUserId(authUserId) !== clientIdentity) {
+    return new NextResponse(errorTwiml('This call authorization is invalid or expired.'), { status: 403, headers: XML_HEADERS });
   }
 
-  const { data: callData, error: callError } = await supabase
-    .from('calls')
-    .select('id, lead_id')
-    .eq('id', session.call_id)
-    .maybeSingle();
-  if (callError || !callData) {
-    return new NextResponse(errorTwiml('This call is no longer available.'), {
-      status: callError ? 503 : 404,
-      headers: XML_HEADERS,
-    });
+  // The queue-time DNC check can be hours old. Re-read the current CRM flag,
+  // tags, and pipeline stages immediately before the database consumes the
+  // dial grant. A CRM outage fails closed and leaves the setup retryable.
+  if (!isHighLevelConfigured()) {
+    return new NextResponse(errorTwiml('Calling is temporarily unavailable.'), { status: 503, headers: XML_HEADERS });
   }
-  const leadId = (callData as { lead_id?: unknown }).lead_id;
-  if (typeof leadId !== 'string' || !leadId) {
-    return new NextResponse(errorTwiml('This call has no customer destination.'), {
-      status: 409,
-      headers: XML_HEADERS,
-    });
-  }
-
-  const { data: leadData, error: leadError } = await supabase
+  const { data: discoveredLead, error: leadError } = await supabase
     .from('leads')
-    .select('phone, timezone')
-    .eq('id', leadId)
+    .select('ghl_contact_id')
+    .eq('id', discoveredLeadId)
     .maybeSingle();
-  if (leadError || !leadData) {
+  const contactId = (discoveredLead as { ghl_contact_id?: string | null } | null)?.ghl_contact_id ?? null;
+  if (leadError || !contactId) {
     return new NextResponse(errorTwiml('This customer destination is unavailable.'), {
-      status: leadError ? 503 : 404,
+      status: leadError ? 503 : 409,
       headers: XML_HEADERS,
     });
   }
-  const lead = leadData as { phone?: unknown; timezone?: unknown };
-  const toNumber = typeof lead.phone === 'string' ? lead.phone.trim() : '';
-  const timezone = typeof lead.timezone === 'string' ? lead.timezone : null;
-  if (!toNumber) {
-    return new NextResponse(errorTwiml('This customer has no phone number.'), {
-      status: 409,
-      headers: XML_HEADERS,
-    });
-  }
-  if (!isWithinCallingHours(timezone, now)) {
-    return new NextResponse(errorTwiml('This call is outside the customer calling hours.'), {
-      status: 409,
-      headers: XML_HEADERS,
-    });
-  }
-
-  // Build and validate the unique, session-bound Media Stream URL before
-  // consuming the dial grant. A bad bridge configuration must remain safely
-  // retryable rather than burning the caller's one-time authorization.
-  let streamUrl: string;
-  const mediaStreamGrant = createMediaStreamGrant();
+  let verifiedToNumber: string;
+  let verifiedTimezone: string;
   try {
-    if (!process.env.LIVE_BRIDGE_URL) throw new Error('LIVE_BRIDGE_URL is missing');
-    streamUrl = buildLiveBridgeStreamUrl(
-      process.env.LIVE_BRIDGE_URL,
-      session.id,
-      mediaStreamGrant.grant,
-    );
-  } catch (error) {
-    console.error('Live bridge URL configuration is invalid:', error instanceof Error ? error.message : error);
-    return new NextResponse(errorTwiml('Calling is temporarily unavailable.'), {
-      status: 503,
+    const [contact, opportunities, stageNames] = await withTimeout(Promise.all([
+      getContact(contactId),
+      getOpportunitiesForContact(contactId),
+      getStageNameMap(),
+    ]));
+    const currentStages = opportunities
+      .map(opportunity => opportunity.pipelineStageId ? stageNames.get(opportunity.pipelineStageId) : null)
+      .filter((stage): stage is string => !!stage);
+    if (!isCallable({ dnd: contact.dnd, dndSettings: contact.dndSettings, tags: contact.tags ?? [], stageNames: currentStages })) {
+      return new NextResponse(errorTwiml('This contact cannot be called.'), { status: 409, headers: XML_HEADERS });
+    }
+    const currentPhone = normalizePhone(contact.phone);
+    if (!currentPhone) {
+      return new NextResponse(errorTwiml('This customer has no valid phone number.'), { status: 409, headers: XML_HEADERS });
+    }
+    verifiedToNumber = currentPhone;
+    verifiedTimezone = contact.timezone?.trim() || 'America/New_York';
+  } catch (caught) {
+    console.error('Live do-not-call verification failed:', caught);
+    return new NextResponse(errorTwiml('Calling is temporarily unavailable.'), { status: 503, headers: XML_HEADERS });
+  }
+
+  if (request.signal.aborted) {
+    return new NextResponse(errorTwiml('Calling is temporarily unavailable.'), { status: 503, headers: XML_HEADERS });
+  }
+
+  const { data, error } = await supabase.rpc('consume_authorized_live_dial', {
+    p_dial_grant_hash: dialGrantHash,
+    p_actor_auth_user_id: authUserId,
+    p_media_stream_grant_hash: mediaGrant.hash,
+    p_verified_contact_id: contactId,
+    p_verified_to_number: verifiedToNumber,
+    p_verified_timezone: verifiedTimezone,
+  });
+  if (error) {
+    console.error('Consume live dial grant failed:', error);
+    return new NextResponse(errorTwiml('Calling is temporarily unavailable.'), { status: 503, headers: XML_HEADERS });
+  }
+  const result = (Array.isArray(data) ? data[0] : data) as DialResult | null;
+  if (!result) {
+    return new NextResponse(errorTwiml('Calling is temporarily unavailable.'), { status: 503, headers: XML_HEADERS });
+  }
+  if (result.result_code === 'outside_calling_hours') {
+    return new NextResponse(errorTwiml('This call is outside the customer calling hours.'), { status: 409, headers: XML_HEADERS });
+  }
+  if (result.result_code === 'missing_destination') {
+    return new NextResponse(errorTwiml('This customer has no phone number.'), { status: 409, headers: XML_HEADERS });
+  }
+  if (!['authorized', 'already_authorized'].includes(result.result_code) || !result.session_id || !result.to_number) {
+    const unavailable = result.result_code === 'actor_inactive';
+    return new NextResponse(errorTwiml('This call authorization is invalid or expired.'), {
+      status: unavailable ? 503 : 403,
       headers: XML_HEADERS,
     });
   }
 
-  const nowIso = now.toISOString();
-  const mediaStreamGrantExpiresAt = new Date(
-    now.getTime() + MEDIA_STREAM_GRANT_TTL_MS,
-  ).toISOString();
-  const { data: consumedRows, error: consumeError } = await supabase
-    .from('live_sessions')
-    .update({
-      dial_started_at: nowIso,
-      media_stream_grant_hash: mediaStreamGrant.hash,
-      media_stream_grant_expires_at: mediaStreamGrantExpiresAt,
-      media_stream_started_at: null,
-    })
-    .eq('id', session.id)
-    .eq('status', 'active')
-    .eq('dial_grant_hash', grantHash)
-    .is('dial_started_at', null)
-    .gt('dial_grant_expires_at', nowIso)
-    .select('id');
-  if (consumeError) {
-    console.error('Consume one-time Twilio dial grant failed:', consumeError);
-    return new NextResponse(errorTwiml('Calling is temporarily unavailable.'), {
-      status: 503,
-      headers: XML_HEADERS,
-    });
+  let streamUrl: string;
+  try {
+    streamUrl = buildLiveBridgeStreamUrl(process.env.LIVE_BRIDGE_URL!, result.session_id, mediaGrant.grant);
+  } catch (caught) {
+    // Prevalidation above makes this unreachable unless configuration changes
+    // during one request. Fail closed and leave the attempt visible to end.
+    console.error('Build authorized bridge URL failed:', caught);
+    return new NextResponse(errorTwiml('Calling is temporarily unavailable.'), { status: 503, headers: XML_HEADERS });
   }
-  if (!consumedRows || consumedRows.length !== 1) {
-    return new NextResponse(errorTwiml('This call authorization was already used.'), {
-      status: 409,
-      headers: XML_HEADERS,
-    });
-  }
-
-  // Same host Twilio just used to reach this webhook -- the whisper route
-  // lives in this same Next app (not the media bridge), so there is no
-  // separate env var for it, just this request's own origin.
-  const whisperUrl = new URL('/api/twilio/whisper', request.url).toString();
 
   const twiml = buildVoiceTwiml({
-    toNumber,
+    toNumber: result.to_number,
     streamUrl,
-    sessionId: session.id,
-    whisperUrl,
+    sessionId: result.session_id,
+    whisperUrl: new URL('/api/twilio/whisper', request.url).toString(),
   });
   return new NextResponse(twiml, { headers: XML_HEADERS });
 }

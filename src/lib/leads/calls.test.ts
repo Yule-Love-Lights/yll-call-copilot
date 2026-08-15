@@ -1,129 +1,80 @@
-// Coverage for validateCallInput — the "calls POST validation" pure function.
-
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { validateCallInput } from './calls';
 
+const LEAD_ID = '11111111-2222-4333-8444-555555555555';
+const SESSION_ID = '21111111-2222-4333-8444-555555555555';
+const REQUEST_ID = '31111111-2222-4333-8444-555555555555';
+
+function validBody(overrides: Record<string, unknown> = {}) {
+  return {
+    leadId: LEAD_ID,
+    outcome: 'interested',
+    notes: 'Wants a quote.',
+    completionRequestId: REQUEST_ID,
+    ...overrides,
+  };
+}
+
 describe('validateCallInput', () => {
-  it('accepts a minimal valid body with no transcript', () => {
-    const result = validateCallInput({ leadId: 'lead1', outcome: 'interested', notes: 'Wants a quote.' });
-    expect(result).toEqual({
+  it('accepts and normalizes a manual completion', () => {
+    expect(validateCallInput(validBody({ transcript: '  hello  ' }))).toEqual({
       valid: true,
-      input: { leadId: 'lead1', outcome: 'interested', notes: 'Wants a quote.', transcript: null, callId: null, direction: 'outbound' },
-    });
-  });
-
-  it('trims and keeps a pasted transcript', () => {
-    const result = validateCallInput({ leadId: 'lead1', outcome: 'voicemail', notes: '', transcript: '  hello  ' });
-    expect(result).toEqual({
-      valid: true,
-      input: { leadId: 'lead1', outcome: 'voicemail', notes: '', transcript: 'hello', callId: null, direction: 'outbound' },
-    });
-  });
-
-  it('rejects a missing leadId', () => {
-    const result = validateCallInput({ outcome: 'interested', notes: '' });
-    expect(result).toEqual({ valid: false, error: 'leadId is required.' });
-  });
-
-  it('rejects a blank leadId', () => {
-    const result = validateCallInput({ leadId: '   ', outcome: 'interested', notes: '' });
-    expect(result.valid).toBe(false);
-  });
-
-  it('rejects a missing outcome', () => {
-    const result = validateCallInput({ leadId: 'lead1', notes: '' });
-    expect(result.valid).toBe(false);
-    if (!result.valid) expect(result.error).toMatch(/outcome must be one of/);
-  });
-
-  it('rejects an outcome outside the allowed set', () => {
-    const result = validateCallInput({ leadId: 'lead1', outcome: 'maybe_later', notes: '' });
-    expect(result.valid).toBe(false);
-  });
-
-  it('rejects a non-object body', () => {
-    expect(validateCallInput(null)).toEqual({ valid: false, error: 'Invalid request body.' });
-    expect(validateCallInput('nope')).toEqual({ valid: false, error: 'Invalid request body.' });
-  });
-
-  it('defaults notes to an empty string when absent', () => {
-    const result = validateCallInput({ leadId: 'lead1', outcome: 'no_answer' });
-    expect(result).toEqual({
-      valid: true,
-      input: { leadId: 'lead1', outcome: 'no_answer', notes: '', transcript: null, callId: null, direction: 'outbound' },
-    });
-  });
-
-  it('treats a blank transcript the same as no transcript', () => {
-    const result = validateCallInput({ leadId: 'lead1', outcome: 'no_answer', transcript: '   ' });
-    expect(result).toEqual({
-      valid: true,
-      input: { leadId: 'lead1', outcome: 'no_answer', notes: '', transcript: null, callId: null, direction: 'outbound' },
-    });
-  });
-
-  // callId — see POST /api/calls: when set, the route updates the call a
-  // live-coached session already created instead of inserting a second one.
-  describe('callId', () => {
-    it('accepts a well-formed uuid', () => {
-      const result = validateCallInput({
-        leadId: 'lead1',
+      input: {
+        leadId: LEAD_ID,
         outcome: 'interested',
-        notes: '',
-        callId: '11111111-2222-4333-8444-555555555555',
-      });
-      expect(result).toEqual({
-        valid: true,
-        input: {
-          leadId: 'lead1',
-          outcome: 'interested',
-          notes: '',
-          transcript: null,
-          callId: '11111111-2222-4333-8444-555555555555',
-          direction: 'outbound',
-        },
-      });
-    });
-
-    it('treats a blank callId the same as no callId', () => {
-      const result = validateCallInput({ leadId: 'lead1', outcome: 'interested', notes: '', callId: '   ' });
-      expect(result).toEqual({
-        valid: true,
-        input: { leadId: 'lead1', outcome: 'interested', notes: '', transcript: null, callId: null, direction: 'outbound' },
-      });
-    });
-
-    it('rejects a malformed callId', () => {
-      const result = validateCallInput({ leadId: 'lead1', outcome: 'interested', notes: '', callId: 'not-a-uuid' });
-      expect(result).toEqual({ valid: false, error: 'callId must be a valid id.' });
+        notes: 'Wants a quote.',
+        transcript: 'hello',
+        sessionId: null,
+        completionRequestId: REQUEST_ID,
+      },
     });
   });
 
-  // direction (L6) — every insert used to hardcode 'outbound' regardless of
-  // where the call actually came from, permanently mislabeling inbound
-  // calls in the `calls` table with no way to reconstruct the truth later.
-  describe('direction', () => {
-    it('defaults to outbound when absent', () => {
-      const result = validateCallInput({ leadId: 'lead1', outcome: 'interested', notes: '' });
-      expect(result.valid).toBe(true);
-      if (result.valid) expect(result.input.direction).toBe('outbound');
+  it('accepts the server-recovered live call id', () => {
+    const result = validateCallInput(validBody({ sessionId: SESSION_ID, transcript: '   ' }));
+    expect(result).toEqual({
+      valid: true,
+      input: {
+        leadId: LEAD_ID,
+        outcome: 'interested',
+        notes: 'Wants a quote.',
+        transcript: null,
+        sessionId: SESSION_ID,
+        completionRequestId: REQUEST_ID,
+      },
     });
+  });
 
-    it('accepts an explicit inbound', () => {
-      const result = validateCallInput({ leadId: 'lead1', outcome: 'interested', notes: '', direction: 'inbound' });
-      expect(result.valid).toBe(true);
-      if (result.valid) expect(result.input.direction).toBe('inbound');
+  it.each([
+    [null, 'Invalid request body.'],
+    [validBody({ leadId: '' }), 'leadId is required.'],
+    [validBody({ leadId: 'not-a-uuid' }), 'leadId must be a valid id.'],
+    [validBody({ outcome: 'maybe' }), 'outcome must be one of:'],
+    [validBody({ sessionId: 'not-a-uuid' }), 'sessionId must be a valid id.'],
+    [validBody({ completionRequestId: '' }), 'completionRequestId must be a valid id.'],
+  ])('rejects invalid input %#', (body, message) => {
+    const result = validateCallInput(body);
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.error).toContain(message);
+  });
+
+  it('defaults optional text fields without accepting caller-owned direction', () => {
+    const result = validateCallInput({
+      leadId: LEAD_ID,
+      outcome: 'no_answer',
+      completionRequestId: REQUEST_ID,
+      direction: 'inbound',
     });
-
-    it('accepts an explicit outbound', () => {
-      const result = validateCallInput({ leadId: 'lead1', outcome: 'interested', notes: '', direction: 'outbound' });
-      expect(result.valid).toBe(true);
-      if (result.valid) expect(result.input.direction).toBe('outbound');
-    });
-
-    it('rejects a direction outside inbound|outbound', () => {
-      const result = validateCallInput({ leadId: 'lead1', outcome: 'interested', notes: '', direction: 'sideways' });
-      expect(result).toEqual({ valid: false, error: 'direction must be "inbound" or "outbound".' });
+    expect(result).toEqual({
+      valid: true,
+      input: {
+        leadId: LEAD_ID,
+        outcome: 'no_answer',
+        notes: '',
+        transcript: null,
+        sessionId: null,
+        completionRequestId: REQUEST_ID,
+      },
     });
   });
 });

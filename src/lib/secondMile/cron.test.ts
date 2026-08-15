@@ -35,12 +35,21 @@ function fakeSupabase(transcripts: Row[]) {
 
   const from = vi.fn((table: string) => {
     if (table === 'transcripts') {
-      return {
-        select: () => ({
-          gte: () => ({
-            order: () => Promise.resolve({ data: transcripts, error: null }),
+      const filters: [string, unknown][] = [];
+      const builder = {
+        eq: (column: string, value: unknown) => {
+          filters.push([column, value]);
+          return builder;
+        },
+        gte: () => ({
+          order: () => Promise.resolve({
+            data: transcripts.filter(row => filters.every(([column, value]) => row[column] === value)),
+            error: null,
           }),
         }),
+      };
+      return {
+        select: () => builder,
       };
     }
     if (table === 'second_mile_scans') {
@@ -74,8 +83,8 @@ function fakeSupabase(transcripts: Row[]) {
 }
 
 const TRANSCRIPTS: Row[] = [
-  { id: 't1', raw_text: 'call 1 transcript text', customer_name: 'Jordan', ghl_contact_id: 'c1', created_at: new Date().toISOString() },
-  { id: 't2', raw_text: 'call 2 transcript text', customer_name: 'Sam', ghl_contact_id: 'c2', created_at: new Date().toISOString() },
+  { id: 't1', raw_text: 'call 1 transcript text', customer_name: 'Jordan', ghl_contact_id: 'c1', created_at: new Date().toISOString(), metric_scope: 'performance' },
+  { id: 't2', raw_text: 'call 2 transcript text', customer_name: 'Sam', ghl_contact_id: 'c2', created_at: new Date().toISOString(), metric_scope: 'performance' },
 ];
 
 const WON_CONTACTS = [{ ghlContactId: 'c_won', customerName: 'Alex Chen', address: '5 Pine Rd' }];
@@ -109,6 +118,18 @@ describe('runSecondMileCron', () => {
     expect(result.cookiesOrnamentWindowActive).toBe(true);
     expect(result.cookiesOrnamentCreated).toBe(1);
     expect(result.revealPhotoCreated).toBe(1);
+  });
+
+  it('does not scan a training transcript into customer second-mile actions', async () => {
+    const { client } = fakeSupabase([
+      ...TRANSCRIPTS,
+      { id: 'simulator', raw_text: 'scripted practice', customer_name: 'Practice Customer', ghl_contact_id: null, created_at: new Date().toISOString(), metric_scope: 'training' },
+    ]);
+
+    const result = await runSecondMileCron(client, new Date('2026-07-14T17:00:00Z'));
+
+    expect(result.transcriptsScanned).toBe(2);
+    expect(scanPersonalTouchesMock).toHaveBeenCalledTimes(2);
   });
 
   it('idempotency: a second run given the same inputs creates zero new rows and re-scans nothing', async () => {

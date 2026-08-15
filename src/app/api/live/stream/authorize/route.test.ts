@@ -1,110 +1,57 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { hashMediaStreamGrant } from '@/lib/live/twilioVoice';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({
-  getSupabaseServerClient: vi.fn(),
-  isSupabaseConfigured: vi.fn(),
-}));
-
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(), verifyHeaderSecret: vi.fn() }));
 vi.mock('@/lib/supabase', () => ({
-  getSupabaseServerClient: mocks.getSupabaseServerClient,
-  isSupabaseConfigured: mocks.isSupabaseConfigured,
+  getSupabaseServerClient: () => ({ rpc: mocks.rpc }),
+  isSupabaseConfigured: () => true,
 }));
+vi.mock('@/lib/auth/machine', () => ({ verifyHeaderSecret: mocks.verifyHeaderSecret }));
 
 import { POST } from './route';
 
-const SECRET = 'bridge-secret-at-least-16';
-const SESSION_ID = '123e4567-e89b-12d3-a456-426614174000';
+const SESSION_ID = '11111111-2222-4333-8444-555555555555';
 const STREAM_GRANT = 'a'.repeat(43);
 
-function request(
-  body: unknown,
-  secret: string | undefined = SECRET,
-): Request {
-  const headers: Record<string, string> = { 'content-type': 'application/json' };
-  if (secret !== undefined) headers['x-live-bridge-secret'] = secret;
+function request() {
   return new Request('https://ops.example.com/api/live/stream/authorize', {
     method: 'POST',
-    headers,
-    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json', 'x-live-bridge-secret': 'bridge-secret' },
+    body: JSON.stringify({ sessionId: SESSION_ID, streamGrant: STREAM_GRANT }),
   });
-}
-
-function database(result: { data: Array<{ id: string }> | null; error: unknown }) {
-  const chain: Record<string, ReturnType<typeof vi.fn>> = {};
-  chain.eq = vi.fn(() => chain);
-  chain.is = vi.fn(() => chain);
-  chain.gt = vi.fn(() => chain);
-  chain.select = vi.fn(async () => result);
-  const update = vi.fn(() => chain);
-  const from = vi.fn(() => ({ update }));
-  return { client: { from }, from, update, chain };
 }
 
 describe('POST /api/live/stream/authorize', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubEnv('LIVE_BRIDGE_SECRET', SECRET);
-    mocks.isSupabaseConfigured.mockReturnValue(true);
+    mocks.verifyHeaderSecret.mockReturnValue('authorized');
   });
 
-  afterEach(() => vi.unstubAllEnvs());
-
-  it('fails closed when configuration or the exact bridge secret is missing', async () => {
-    mocks.isSupabaseConfigured.mockReturnValue(false);
-    expect((await POST(request({}))).status).toBe(503);
-
-    mocks.isSupabaseConfigured.mockReturnValue(true);
-    vi.stubEnv('LIVE_BRIDGE_SECRET', '');
-    expect((await POST(request({}))).status).toBe(503);
-
-    vi.stubEnv('LIVE_BRIDGE_SECRET', SECRET);
-    expect((await POST(request({}, 'incorrect-secret-value'))).status).toBe(401);
-  });
-
-  it('atomically consumes the matching unexpired grant and retains its digest', async () => {
-    const db = database({ data: [{ id: SESSION_ID }], error: null });
-    mocks.getSupabaseServerClient.mockReturnValue(db.client);
-
-    const response = await POST(request({ sessionId: SESSION_ID, streamGrant: STREAM_GRANT }));
-
+  it('atomically authorizes one current claimed stream', async () => {
+    mocks.rpc.mockResolvedValue({ data: [{ result_code: 'authorized', session_id: SESSION_ID }], error: null });
+    const response = await POST(request());
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ authorized: true, sessionId: SESSION_ID });
-    expect(db.update).toHaveBeenCalledWith({ media_stream_started_at: expect.any(String) });
-    expect(db.chain.eq).toHaveBeenCalledWith('id', SESSION_ID);
-    expect(db.chain.eq).toHaveBeenCalledWith('mode', 'twilio');
-    expect(db.chain.eq).toHaveBeenCalledWith('status', 'active');
-    expect(db.chain.eq).toHaveBeenCalledWith(
-      'media_stream_grant_hash',
-      hashMediaStreamGrant(STREAM_GRANT),
-    );
-    expect(db.chain.is).toHaveBeenCalledWith('media_stream_started_at', null);
-    expect(db.chain.gt).toHaveBeenCalledWith(
-      'media_stream_grant_expires_at',
-      expect.any(String),
-    );
+    expect(mocks.rpc).toHaveBeenCalledWith('consume_authorized_live_stream', {
+      p_session_id: SESSION_ID,
+      p_media_stream_grant_hash: expect.any(String),
+    });
   });
 
-  it('rejects replay, expiry, wrong session, and wrong grant when the atomic update matches no row', async () => {
-    const db = database({ data: [], error: null });
-    mocks.getSupabaseServerClient.mockReturnValue(db.client);
+  it('recovers the same stream after an authorization response is lost', async () => {
+    mocks.rpc.mockResolvedValue({ data: [{ result_code: 'already_authorized', session_id: SESSION_ID }], error: null });
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ authorized: true, alreadyAuthorized: true });
+  });
 
-    const response = await POST(request({ sessionId: SESSION_ID, streamGrant: STREAM_GRANT }));
-
+  it('rejects replay, expiry, claim loss, and grant mismatch', async () => {
+    mocks.rpc.mockResolvedValue({ data: [{ result_code: 'invalid_or_expired' }], error: null });
+    const response = await POST(request());
     expect(response.status).toBe(403);
-    expect(await response.json()).toMatchObject({ error: expect.stringContaining('already used') });
   });
 
-  it('rejects malformed grants before touching the database', async () => {
-    const response = await POST(request({ sessionId: SESSION_ID, streamGrant: 'short' }));
-    expect(response.status).toBe(400);
-    expect(mocks.getSupabaseServerClient).not.toHaveBeenCalled();
-  });
-
-  it('fails closed when durable consumption is unavailable', async () => {
-    const db = database({ data: null, error: { message: 'database unavailable' } });
-    mocks.getSupabaseServerClient.mockReturnValue(db.client);
-    const response = await POST(request({ sessionId: SESSION_ID, streamGrant: STREAM_GRANT }));
+  it('fails closed when the durable transition is unavailable', async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: 'offline' } });
+    const response = await POST(request());
     expect(response.status).toBe(503);
   });
 });

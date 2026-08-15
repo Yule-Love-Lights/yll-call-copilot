@@ -9,9 +9,8 @@
 // (see the Phase 4 brief). Coded against the installed package versions'
 // actual documented APIs, verified by introspecting node_modules directly
 // rather than from memory, since @deepgram/sdk's real-time API shape
-// changed across major versions. The always-available simulator
-// (src/lib/live/simulator.ts, driven from the browser) is the verified demo
-// path; this is the parallel path for once the accounts exist.
+// changed across major versions. Employee training stays in /practice and
+// never passes through this customer-call bridge.
 //
 // Run: node scripts/live-bridge.mjs
 // Reads DEEPGRAM_API_KEY, LIVE_BRIDGE_SECRET, LIVE_BRIDGE_URL,
@@ -22,6 +21,7 @@
 
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
@@ -64,12 +64,17 @@ function envVar(name, fallback) {
 }
 
 const DEEPGRAM_API_KEY = envVar('DEEPGRAM_API_KEY');
+const LIVE_CUSTOMER_CALLS_ENABLED = envVar('LIVE_CUSTOMER_CALLS_ENABLED', 'false');
 const LIVE_BRIDGE_SECRET = envVar('LIVE_BRIDGE_SECRET');
 const LIVE_BRIDGE_URL = envVar('LIVE_BRIDGE_URL');
 const TWILIO_AUTH_TOKEN = envVar('TWILIO_AUTH_TOKEN');
 const LIVE_APP_BASE_URL = envVar('LIVE_APP_BASE_URL', 'http://localhost:3000');
 const PORT = Number(process.env.PORT || envVar('LIVE_BRIDGE_PORT', '8787'));
 
+if (LIVE_CUSTOMER_CALLS_ENABLED !== 'true') {
+  console.error('LIVE_CUSTOMER_CALLS_ENABLED is not true -- the unvalidated customer-call bridge will not start.');
+  process.exit(1);
+}
 if (!DEEPGRAM_API_KEY) {
   console.error('DEEPGRAM_API_KEY is not set (checked shell env and .env.local) -- the bridge cannot transcribe without it.');
   process.exit(1);
@@ -111,15 +116,21 @@ const deepgram = new DefaultDeepgramClient({ apiKey: DEEPGRAM_API_KEY });
 // reaches the engine, which does the actual threshold check).
 const SILENCE_REPORT_THRESHOLD_MS = 1500;
 
-async function postSegment(sessionId, speaker, text, silenceMs) {
-  const result = await postLiveSegment({
+async function postSegment(sessionId, sourceSegmentId, speaker, text, atMs, silenceMs) {
+  const input = {
     appBaseUrl: LIVE_APP_BASE_URL,
     bridgeSecret: LIVE_BRIDGE_SECRET,
     sessionId,
+    sourceSegmentId,
     speaker,
     text,
+    atMs,
     silenceMs,
-  });
+  };
+  let result = await postLiveSegment(input);
+  // A transient Hub failure is safe to retry because sourceSegmentId is
+  // stable and the database accepts each finalized utterance only once.
+  if (result === 'unavailable') result = await postLiveSegment(input);
   if (result !== 'saved') {
     console.error(`POST /api/live/segment failed closed: ${result}`);
   }
@@ -138,6 +149,7 @@ const TRACK_TO_SPEAKER = { inbound: 'rep', outbound: 'customer' };
 function handleTwilioConnection(ws, expectedSessionId) {
   let sessionId = null;
   let streamStarted = false;
+  let streamStartedAt = null;
   let currentSpeaker = 'customer';
   let lastFinalAt = null;
   let deepgramSocketPromise = null;
@@ -177,7 +189,16 @@ function handleTwilioConnection(ws, expectedSessionId) {
         const now = Date.now();
         const silenceMs = lastFinalAt && now - lastFinalAt >= SILENCE_REPORT_THRESHOLD_MS ? now - lastFinalAt : undefined;
         lastFinalAt = now;
-        if (sessionId) postSegment(sessionId, currentSpeaker, text, silenceMs);
+        if (sessionId && streamStartedAt) {
+          postSegment(
+            sessionId,
+            randomUUID(),
+            currentSpeaker,
+            text,
+            Math.max(0, now - streamStartedAt),
+            silenceMs,
+          );
+        }
       });
 
       return socket;
@@ -203,6 +224,7 @@ function handleTwilioConnection(ws, expectedSessionId) {
         }
         sessionId = expectedSessionId;
         streamStarted = true;
+        streamStartedAt = Date.now();
         return;
       }
 

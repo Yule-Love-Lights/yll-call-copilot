@@ -40,6 +40,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     .from('call_scores')
     .select('id, transcript_id')
     .eq('id', id)
+    .eq('metric_scope', 'performance')
     .maybeSingle();
   if (scoreError) {
     if (isMissingTableError(scoreError)) {

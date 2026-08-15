@@ -1,50 +1,38 @@
-// POST /api/live/start {leadId, mode} -- the rep clicked "Start coached
-// call" on /call/[leadId]/live. Opens the calls row up front (no outcome
-// yet -- that only happens once the rep tags one back on the normal
-// console) and a live_sessions row anchored to it, mirroring the lookup +
-// insert style of POST /api/calls.
+// Starts or recovers the signed-in employee's one open Twilio attempt for an
+// assigned lead. Training uses /practice; this route never creates simulator
+// sessions. The RPC owns the call+session transaction and rotates an unused
+// dial grant exactly when a previous response was lost.
 
 import { NextResponse } from 'next/server';
+import { resolveCurrentHubActor } from '@/lib/auth/resource';
+import { createIdempotentDialGrant, isTwilioConfigured } from '@/lib/live/twilioVoice';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
-import { hasCapability } from '@/lib/auth/capabilities';
-import { auditTeamResourceAccess, resolveCurrentHubActor } from '@/lib/auth/resource';
-import { isWithinCallingHours } from '@/lib/leads/callingHours';
-import { createDialGrant } from '@/lib/live/twilioVoice';
-import type { LeadRow } from '@/lib/leads/types';
-import type { LiveSessionMode } from '@/lib/live/types';
 
-const LIVE_SESSION_MODES: LiveSessionMode[] = ['twilio', 'simulator'];
-const DIAL_GRANT_TTL_MS = 5 * 60 * 1000;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function validateStartBody(body: unknown): { valid: true; leadId: string; mode: LiveSessionMode } | { valid: false; error: string } {
-  if (typeof body !== 'object' || body === null) {
-    return { valid: false, error: 'Invalid request body.' };
-  }
-  const b = body as Record<string, unknown>;
-  const leadId = typeof b.leadId === 'string' ? b.leadId.trim() : '';
-  if (!leadId) return { valid: false, error: 'leadId is required.' };
-
-  const mode = typeof b.mode === 'string' ? b.mode : '';
-  if (!(LIVE_SESSION_MODES as string[]).includes(mode)) {
-    return { valid: false, error: `mode must be one of: ${LIVE_SESSION_MODES.join(', ')}.` };
-  }
-
-  return { valid: true, leadId, mode: mode as LiveSessionMode };
-}
+type StartResult = {
+  result_code: 'starting' | 'active' | 'pending_outcome' | 'invalid_input' | 'actor_inactive' | 'lead_missing' | 'not_claimed_by_actor' | 'start_conflict';
+  call_id: string | null;
+  session_id: string | null;
+};
 
 export async function POST(request: Request) {
+  if (!isTwilioConfigured()) {
+    return NextResponse.json({ configured: false, saved: false, reason: 'Customer calling is not available.' }, { status: 503 });
+  }
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ configured: false, saved: false, reason: 'Supabase not configured.' });
   }
-
   const body = await request.json().catch(() => null);
-  const validation = validateStartBody(body);
-  if (!validation.valid) {
-    return NextResponse.json({ configured: true, saved: false, error: validation.error }, { status: 400 });
+  const leadId = typeof body?.leadId === 'string' ? body.leadId.trim() : '';
+  const startRequestId = typeof body?.startRequestId === 'string' ? body.startRequestId.trim() : '';
+  if (!UUID_PATTERN.test(leadId) || !UUID_PATTERN.test(startRequestId)) {
+    return NextResponse.json(
+      { configured: true, saved: false, error: 'leadId and startRequestId must be valid ids.' },
+      { status: 400 },
+    );
   }
-  const { leadId, mode } = validation;
 
-  const supabase = getSupabaseServerClient()!;
   const actorResolution = await resolveCurrentHubActor();
   if (actorResolution.status !== 'resolved') {
     return NextResponse.json(
@@ -52,103 +40,51 @@ export async function POST(request: Request) {
       { status: actorResolution.status === 'unavailable' ? 503 : 403 },
     );
   }
-  const actor = actorResolution.actor;
 
-  const { data: leadData, error: leadError } = await supabase.from('leads').select('*').eq('id', leadId).maybeSingle();
-  if (leadError) {
-    if (isMissingTableError(leadError)) {
-      return NextResponse.json({ configured: true, saved: false, migrated: false, reason: 'Run migration 0004 first.' });
+  const dial = createIdempotentDialGrant(actorResolution.actor.authUserId, startRequestId);
+  const supabase = getSupabaseServerClient()!;
+  const { data, error } = await supabase.rpc('start_claimed_live_attempt', {
+    p_actor_employee_id: actorResolution.actor.employeeId,
+    p_actor_auth_user_id: actorResolution.actor.authUserId,
+    p_actor_email: actorResolution.actor.email,
+    p_lead_id: leadId,
+    p_start_request_id: startRequestId,
+    p_dial_grant_hash: dial.hash,
+  });
+  if (error) {
+    if (isMissingTableError(error)) {
+      return NextResponse.json({ configured: true, saved: false, migrated: false, reason: 'Run migration 0020 first.' });
     }
-    console.error('Load lead for live session start failed:', leadError);
-    return NextResponse.json({ configured: true, saved: false, error: 'Could not load the lead.' }, { status: 500 });
+    console.error('Start live attempt failed:', error);
+    return NextResponse.json({ configured: true, saved: false, error: 'Could not start the call.' }, { status: 500 });
   }
-  if (!leadData) {
+
+  const result = (Array.isArray(data) ? data[0] : data) as StartResult | null;
+  if (!result || result.result_code === 'invalid_input') {
+    return NextResponse.json({ configured: true, saved: false, error: 'Could not start the call.' }, { status: 400 });
+  }
+  if (result.result_code === 'lead_missing') {
     return NextResponse.json({ configured: true, saved: false, error: 'Lead not found.' }, { status: 404 });
   }
-  const lead = leadData as LeadRow;
-  if (
-    lead.claimed_by &&
-    lead.claimed_by.toLowerCase() !== actor.email &&
-    !hasCapability(actor, 'operations.admin')
-  ) {
-    return NextResponse.json(
-      { configured: true, saved: false, error: 'Access denied.' },
-      { status: 403 },
-    );
+  if (result.result_code === 'actor_inactive' || result.result_code === 'not_claimed_by_actor') {
+    return NextResponse.json({ configured: true, saved: false, error: 'This lead is not assigned to you.' }, { status: 403 });
   }
-  if (
-    lead.claimed_by &&
-    lead.claimed_by.toLowerCase() !== actor.email &&
-    !(await auditTeamResourceAccess(supabase, {
-      actor,
-      action: 'live_session.start_override',
-      resourceType: 'lead',
-      resourceId: lead.id,
-      ownerEmail: lead.claimed_by,
-    }))
-  ) {
+  if (result.result_code === 'start_conflict') {
     return NextResponse.json(
-      { configured: true, saved: false, error: 'Could not audit this access.' },
-      { status: 503 },
-    );
-  }
-
-  // TCPA calling-hours gate — a real phone call must not be PLACED outside
-  // 8am-9pm in the contact's own local time. The simulator is exempt: no
-  // phone call is actually placed, it just drives the same coaching UI
-  // against a scripted transcript.
-  if (mode === 'twilio' && !isWithinCallingHours(lead.timezone, new Date())) {
-    return NextResponse.json(
-      { configured: true, saved: false, reason: 'Outside calling hours for this contact (TCPA quiet hours: 8am-9pm their local time).' },
+      { configured: true, saved: false, error: 'Another call setup is already open for this lead.' },
       { status: 409 },
     );
   }
-
-  const rep_email = actor.email;
-  const { data: callData, error: callError } = await supabase
-    .from('calls')
-    .insert({
-      lead_id: lead.id,
-      ghl_contact_id: lead.ghl_contact_id,
-      rep_email,
-      direction: 'outbound',
-    })
-    .select('id')
-    .single();
-  if (callError) {
-    console.error('Insert call for live session failed:', callError);
+  if (!result.call_id || !result.session_id) {
     return NextResponse.json({ configured: true, saved: false, error: 'Could not start the call.' }, { status: 500 });
   }
-  const callId = (callData as { id: string }).id;
-
-  const dial = mode === 'twilio' ? createDialGrant() : null;
-  const { data: sessionData, error: sessionError } = await supabase
-    .from('live_sessions')
-    .insert({
-      call_id: callId,
-      mode,
-      dial_grant_hash: dial?.hash ?? null,
-      dial_actor_auth_user_id: dial ? actor.authUserId : null,
-      dial_grant_expires_at: dial
-        ? new Date(Date.now() + DIAL_GRANT_TTL_MS).toISOString()
-        : null,
-    })
-    .select('id')
-    .single();
-  if (sessionError) {
-    if (isMissingTableError(sessionError)) {
-      return NextResponse.json({ configured: true, saved: false, migrated: false, reason: 'Run migration 0005 first.' });
-    }
-    console.error('Insert live session failed:', sessionError);
-    return NextResponse.json({ configured: true, saved: false, error: 'Could not start the live session.' }, { status: 500 });
-  }
-  const sessionId = (sessionData as { id: string }).id;
 
   return NextResponse.json({
     configured: true,
     saved: true,
-    sessionId,
-    callId,
-    dialGrant: dial?.grant ?? null,
+    status: result.result_code,
+    sessionId: result.session_id,
+    callId: result.call_id,
+    dialGrant: result.result_code === 'starting' ? dial.grant : null,
   });
 }

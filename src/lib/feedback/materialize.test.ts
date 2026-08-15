@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { materializeFeedbackCards } from './materialize';
+import { listFeedbackCards, materializeFeedbackCards } from './materialize';
 import type { CallScoreRow } from './types';
 
 function score(id: string, overrides: Partial<CallScoreRow> = {}): CallScoreRow {
@@ -61,13 +61,20 @@ function fakeClient(opts: {
   upsertError?: unknown;
 }) {
   const upsertCalls: { rows: unknown[]; options: unknown }[] = [];
+  const scoreEqCalls: [string, unknown][] = [];
 
   const from = vi.fn((table: string) => {
     if (table === 'call_scores') {
+      const builder = {
+        eq: (column: string, value: unknown) => {
+          scoreEqCalls.push([column, value]);
+          return builder;
+        },
+        then: (resolve: (value: { data: CallScoreRow[]; error: null }) => unknown) =>
+          Promise.resolve({ data: opts.scores, error: null }).then(resolve),
+      };
       return {
-        select: () => ({
-          eq: () => Promise.resolve({ data: opts.scores, error: null }),
-        }),
+        select: () => builder,
       };
     }
     if (table === 'feedback_cards') {
@@ -89,12 +96,12 @@ function fakeClient(opts: {
   });
 
   const client = { from } as unknown as SupabaseClient;
-  return { client, upsertCalls };
+  return { client, upsertCalls, scoreEqCalls };
 }
 
 describe('materializeFeedbackCards', () => {
   it('creates a feedback_cards row for every call_score missing one', async () => {
-    const { client, upsertCalls } = fakeClient({
+    const { client, upsertCalls, scoreEqCalls } = fakeClient({
       scores: [score('s1'), score('s2', { fix: { moment: 'm', timestamp_seconds: 10, transcript_quote: 'q', better_line: 'b' } })],
       existingCallScoreIds: [],
     });
@@ -110,6 +117,10 @@ describe('materializeFeedbackCards', () => {
     // The upsert must be conflict-safe on call_score_id -- see the idempotent
     // test below for why.
     expect(upsertCalls[0].options).toMatchObject({ onConflict: 'call_score_id', ignoreDuplicates: true });
+    expect(scoreEqCalls).toEqual([
+      ['rep_email', 'jason@example.com'],
+      ['metric_scope', 'performance'],
+    ]);
   });
 
   it('is idempotent -- skips call_scores that already have a feedback_cards row', async () => {
@@ -166,5 +177,40 @@ describe('materializeFeedbackCards', () => {
     const result = await materializeFeedbackCards(client, 'jason@example.com');
     expect(result.created).toBe(0);
     expect(upsertCalls).toHaveLength(0);
+  });
+});
+
+describe('listFeedbackCards', () => {
+  it('returns only cards backed by performance call scores', async () => {
+    const eqCalls: [string, unknown][] = [];
+    const builder = {
+      eq(column: string, value: unknown) {
+        eqCalls.push([column, value]);
+        return builder;
+      },
+      order() {
+        return builder;
+      },
+      limit() {
+        return Promise.resolve({ data: [{ id: 'card-1' }], error: null });
+      },
+    };
+    const client = {
+      from: (table: string) => {
+        expect(table).toBe('feedback_cards');
+        return {
+          select: (columns: string) => {
+            expect(columns).toBe('*, call_scores!inner(metric_scope)');
+            return builder;
+          },
+        };
+      },
+    } as unknown as SupabaseClient;
+
+    await expect(listFeedbackCards(client, 'jason@example.com')).resolves.toEqual([{ id: 'card-1' }]);
+    expect(eqCalls).toEqual([
+      ['call_scores.metric_scope', 'performance'],
+      ['rep_email', 'jason@example.com'],
+    ]);
   });
 });

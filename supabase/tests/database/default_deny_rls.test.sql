@@ -30,6 +30,7 @@ insert into expected_hub_tables (table_name) values
   ('ingest_jobs'),
   ('leads'),
   ('learnings'),
+  ('live_segments'),
   ('live_sessions'),
   ('offer_versions'),
   ('playbook_proposals'),
@@ -81,25 +82,36 @@ select set_eq(
   'the reviewed public-sequence manifest is exact'
 );
 
--- Application routines in `public` are RLS-bypass surface: a security definer
--- function runs with its owner's rights, so it can read and write tables that
--- deny the caller. This assertion used to be "there are none" (count = 0).
--- #217 adds the first one, so it is now an explicit ALLOWLIST -- deliberately
--- NOT a count, because `count = 1` would let ANY future unreviewed routine
--- through and this test exists precisely to stop that. A new routine fails
--- here until someone names it and justifies it.
---
--- call_commitments_upsert_batch: security definer on purpose. It locks the
--- transcript's existing rows with `select ... for update`, decides whether a
--- re-extraction is safe, and upserts -- all in ONE transaction. Splitting the
--- check from the write reopens a TOCTOU race that lets a reordered
--- re-extraction rewrite a RESOLVED commitment's text while its settled status
--- stays put, i.e. an employee's record showing a promise kept that never was.
--- PostgREST cannot express a conditional upsert, so the guard has to live in
--- the database. It writes only call_commitments and pins its search_path.
+create temporary table expected_hub_routines (
+  routine_signature text primary key
+) on commit drop;
+
+insert into expected_hub_routines (routine_signature) values
+  ('abandon_owned_live_attempt(uuid,text,uuid)'),
+  ('append_authorized_live_segment(uuid,uuid,text,text,integer,integer)'),
+  ('assert_legacy_metric_artifacts_reconciled()'),
+  ('assert_personal_touch_metric_provenance()'),
+  ('begin_owned_followup_send(uuid,text,uuid,uuid)'),
+  ('call_commitments_upsert_batch(uuid,jsonb)'),
+  ('complete_owned_lead_call(uuid,text,text,uuid,uuid,uuid,text,text,text,text,boolean)'),
+  ('consume_authorized_live_dial(text,text,text,text,text,text)'),
+  ('consume_authorized_live_stream(uuid,text)'),
+  ('decide_queued_lead(uuid,text,text,uuid,text,text,boolean,text)'),
+  ('end_owned_live_attempt(uuid,text,uuid)'),
+  ('enforce_call_metric_scope()'),
+  ('enforce_call_score_metric_scope()'),
+  ('enforce_followup_provider_message_immutable()'),
+  ('enforce_live_session_transition()'),
+  ('enforce_transcript_metric_scope()'),
+  ('finish_owned_followup_send(uuid,text,uuid,uuid,text,text)'),
+  ('is_contact_calling_time_allowed(timestamp with time zone,text)'),
+  ('reject_live_segment_mutation()'),
+  ('start_claimed_live_attempt(uuid,text,text,uuid,text,uuid)'),
+  ('update_owned_followup_draft(uuid,text,uuid,text,text)');
+
 select set_eq(
   $sql$
-    select routine.proname::text
+    select routine.oid::regprocedure::text
     from pg_proc routine
     join pg_namespace namespace on namespace.oid = routine.pronamespace
     where namespace.nspname = 'public'
@@ -111,21 +123,33 @@ select set_eq(
           and dependency.deptype = 'e'
       )
   $sql$,
-  $sql$ values ('call_commitments_upsert_batch'::text) $sql$,
-  'every application routine that can bypass table RLS is on the reviewed list'
+  $sql$ select routine_signature from expected_hub_routines $sql$,
+  'the reviewed public-routine manifest is exact'
 );
 
-select is(
-  (
-    select count(*)::bigint
+create temporary table expected_hub_triggers (
+  trigger_signature text primary key
+) on commit drop;
+
+insert into expected_hub_triggers (trigger_signature) values
+  ('call_scores.enforce_call_score_metric_scope'),
+  ('calls.enforce_call_metric_scope'),
+  ('followups.enforce_followup_provider_message_immutable'),
+  ('live_segments.reject_live_segment_mutation'),
+  ('live_sessions.enforce_live_session_transition'),
+  ('transcripts.enforce_transcript_metric_scope');
+
+select set_eq(
+  $sql$
+    select format('%I.%I', relation.relname, trigger_record.tgname)
     from pg_trigger trigger_record
     join pg_class relation on relation.oid = trigger_record.tgrelid
     join pg_namespace namespace on namespace.oid = relation.relnamespace
     where namespace.nspname = 'public'
       and not trigger_record.tgisinternal
-  ),
-  0::bigint,
-  'no unreviewed application trigger can run with server writes'
+  $sql$,
+  $sql$ select trigger_signature from expected_hub_triggers $sql$,
+  'the reviewed public-trigger manifest is exact'
 );
 
 select is(
@@ -233,15 +257,27 @@ from expected_hub_tables
 order by table_name;
 
 select ok(
-  has_table_privilege('service_role', format('public.%I', table_name), 'SELECT')
-    and has_table_privilege('service_role', format('public.%I', table_name), 'INSERT')
-    and has_table_privilege('service_role', format('public.%I', table_name), 'UPDATE')
-    and has_table_privilege('service_role', format('public.%I', table_name), 'DELETE')
-    and not has_table_privilege('service_role', format('public.%I', table_name), 'TRUNCATE')
-    and not has_table_privilege('service_role', format('public.%I', table_name), 'REFERENCES')
-    and not has_table_privilege('service_role', format('public.%I', table_name), 'TRIGGER')
-    and not has_table_privilege('service_role', format('public.%I', table_name), 'MAINTAIN'),
-  format('service_role has only compatibility DML on %I', table_name)
+  case
+    when table_name = 'live_segments' then
+      has_table_privilege('service_role', 'public.live_segments', 'SELECT')
+        and has_table_privilege('service_role', 'public.live_segments', 'INSERT')
+        and not has_table_privilege('service_role', 'public.live_segments', 'UPDATE')
+        and not has_table_privilege('service_role', 'public.live_segments', 'DELETE')
+        and not has_table_privilege('service_role', 'public.live_segments', 'TRUNCATE')
+        and not has_table_privilege('service_role', 'public.live_segments', 'REFERENCES')
+        and not has_table_privilege('service_role', 'public.live_segments', 'TRIGGER')
+        and not has_table_privilege('service_role', 'public.live_segments', 'MAINTAIN')
+    else
+      has_table_privilege('service_role', format('public.%I', table_name), 'SELECT')
+        and has_table_privilege('service_role', format('public.%I', table_name), 'INSERT')
+        and has_table_privilege('service_role', format('public.%I', table_name), 'UPDATE')
+        and has_table_privilege('service_role', format('public.%I', table_name), 'DELETE')
+        and not has_table_privilege('service_role', format('public.%I', table_name), 'TRUNCATE')
+        and not has_table_privilege('service_role', format('public.%I', table_name), 'REFERENCES')
+        and not has_table_privilege('service_role', format('public.%I', table_name), 'TRIGGER')
+        and not has_table_privilege('service_role', format('public.%I', table_name), 'MAINTAIN')
+  end,
+  format('service_role has reviewed compatibility DML on %I', table_name)
 )
 from expected_hub_tables
 order by table_name;

@@ -62,8 +62,10 @@ export async function postLiveSegment({
   appBaseUrl,
   bridgeSecret,
   sessionId,
+  sourceSegmentId,
   speaker,
   text,
+  atMs,
   silenceMs,
   fetchImpl = fetch,
   signal = AbortSignal.timeout(3000),
@@ -78,7 +80,7 @@ export async function postLiveSegment({
         'Content-Type': 'application/json',
         'x-live-bridge-secret': bridgeSecret,
       },
-      body: JSON.stringify({ sessionId, speaker, text, silenceMs }),
+      body: JSON.stringify({ sessionId, sourceSegmentId, speaker, text, atMs, silenceMs }),
       signal,
     });
     if (response.ok) return 'saved';

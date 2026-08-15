@@ -97,16 +97,18 @@ export async function authorizeCallResource(
 ): Promise<CallResourceAuthorization> {
   const { data, error } = await client
     .from('calls')
-    .select('rep_email')
+    .select('rep_email, rep_employee_id')
     .eq('id', input.callId)
     .maybeSingle();
   if (error) return { status: 'unavailable' };
   if (!data) return { status: 'missing' };
 
   const ownerEmail = (data as { rep_email?: unknown }).rep_email;
+  const ownerEmployeeId = (data as { rep_employee_id?: unknown }).rep_employee_id;
   if (typeof ownerEmail !== 'string' || !ownerEmail.trim()) return { status: 'denied' };
 
-  const self = ownerEmail.trim().toLowerCase() === input.actor.email;
+  const self = ownerEmployeeId === input.actor.employeeId
+    && ownerEmail.trim().toLowerCase() === input.actor.email;
   if (self) return { status: 'authorized', ownerEmail, access: 'self' };
   if (!input.teamCapability || !hasCapability(input.actor, input.teamCapability)) {
     return { status: 'denied' };

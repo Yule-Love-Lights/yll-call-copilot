@@ -201,7 +201,7 @@ describe('POST /api/second-mile/[id]/send', () => {
     expect((getRow().payload?.sent_to as string[]).sort()).toEqual(['c1', 'c2']);
   });
 
-  it('double-click cannot double-send', async () => {
+  it('keeps the legacy customer check-in sender disabled until safe reconciliation exists', async () => {
     const coldSnapRow: Row = {
       id: 'touch-2',
       ghl_contact_id: 'cust-1',
@@ -214,15 +214,12 @@ describe('POST /api/second-mile/[id]/send', () => {
     fakeClient = client;
     sendConversationMessageMock.mockResolvedValue({ messageId: 'm1' });
 
-    const [res1, res2] = await Promise.all([postTo('touch-2'), postTo('touch-2')]);
-    const [json1, json2] = await Promise.all([res1.json(), res2.json()]);
+    const response = await postTo('touch-2');
+    const json = await response.json();
 
-    const sentTrueCount = [json1, json2].filter(j => j.sent === true).length;
-    const conflictCount = [json1, json2].filter(j => j.sent === false && j.error === 'This touch is no longer pending.').length;
-
-    expect(sentTrueCount).toBe(1);
-    expect(conflictCount).toBe(1);
-    expect(sendConversationMessageMock).toHaveBeenCalledTimes(1);
-    expect(getRow().status).toBe('done');
+    expect(response.status).toBe(503);
+    expect(json).toMatchObject({ sent: false, reason: expect.stringContaining('not available yet') });
+    expect(sendConversationMessageMock).not.toHaveBeenCalled();
+    expect(getRow().status).toBe('pending');
   });
 });

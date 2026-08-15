@@ -6,11 +6,13 @@
 // (loadStatsInputs/loadStats) is untested here, same convention as every
 // other route/loader split in this app (see src/lib/leads/calls.ts).
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   attributeVersion,
   computeStats,
   dateRangeToTimestamps,
+  loadStatsInputs,
   parseDateRange,
   periodFromDays,
   topNoiseCardTexts,
@@ -43,6 +45,47 @@ describe('attributeVersion', () => {
 
   it('returns null for an empty version list', () => {
     expect(attributeVersion('2026-01-15T00:00:00.000Z', [])).toBeNull();
+  });
+});
+
+describe('loadStatsInputs metric provenance', () => {
+  it('loads only exact performance calls and transcripts', async () => {
+    const filters: Record<string, [string, unknown][]> = {};
+    const rows: Record<string, unknown[]> = {
+      leads: [{ id: 'lead-1', opener_hint: 'Warm lead' }],
+      calls: [{ id: 'call-1', lead_id: 'lead-1', outcome: 'interested', started_at: '2026-06-01T12:00:00.000Z' }],
+      followups: [],
+      coaching_events: [],
+      playbook_versions: [],
+      transcripts: [{ outcome: 'booked' }],
+    };
+    const from = vi.fn((table: string) => {
+      filters[table] = [];
+      const builder = {
+        select: () => builder,
+        eq: (column: string, value: unknown) => {
+          filters[table].push([column, value]);
+          return builder;
+        },
+        in: () => builder,
+        gte: () => builder,
+        lte: () => builder,
+        then: (resolve: (value: { data: unknown[]; error: null }) => unknown) =>
+          Promise.resolve({ data: rows[table] ?? [], error: null }).then(resolve),
+      };
+      return builder;
+    });
+
+    const result = await loadStatsInputs({ from } as unknown as SupabaseClient, {
+      verticalId: 'vertical-1',
+      verticalSlug: 'holiday',
+      from: '2026-06-01',
+      to: '2026-06-02',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(filters.calls).toContainEqual(['metric_scope', 'performance']);
+    expect(filters.transcripts).toContainEqual(['metric_scope', 'performance']);
   });
 });
 
