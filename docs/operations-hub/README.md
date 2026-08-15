@@ -1,14 +1,16 @@
 # Operations Hub final-review pack
 
-Status: **owner-approved; PR #37 human-merged; Phase 0 foundation in progress**
-Prepared: 2026-08-07
-Merged Hub source: PR #37 at
-`master@f6cc06bcc9009a8d4357b0adcb31e16ae150d8cc`
+Status: **owner-approved; Phase 0 immutable identity foundation in progress**
+Updated: 2026-08-18
+Merged Hub source: PRs #37 and #40 through #49 at
+`master@699af86011625a61212727a1510c57d71fafb3a8`. The current contract mirror
+remains the byte-identical PR #44 pin recorded in `SOURCE-PINS.md`.
 
 This pack is the reconciled and approved source for the Operations Hub.
-Quote Tool PR #701 established the canonical `v1.3.0-draft` baseline, PR #716
-merged its self-contained form, Naldo signed the master plan, Hub PR #37 was
-human-merged, and the byte-identical Hub mirror is now present.
+Quote Tool PR #701 established the original canonical baseline, PR #716 made it
+self-contained, Naldo signed the master plan, and Hub PR #37 was human-merged.
+The current byte-identical mirror is `v1.4.0-draft`, pinned to Quote commit
+`0a69fc0efc4998b59136057671e5705d8e5583f6` and merged through Hub PR #44.
 
 ## Read in this order
 
@@ -55,6 +57,8 @@ Completed:
 - Naldo's four P16 rulings are recorded in `DECISIONS.md`.
 - Naldo signed the master-plan approval and authorized Phase 0.
 - The Hub contract mirror is byte-identical to the canonical file.
+- Fail-closed production auth, centralized capabilities, API-only database RLS,
+  and Office lead/call resource authorization merged through PR #46.
 
 Phase 0 must now deliver:
 
@@ -65,6 +69,23 @@ Phase 0 must now deliver:
   every field-facing Hub table and endpoint.
 - Identity-link, auth, audit, idempotency, DLQ, kill-switch, and fail-closed
   scaffolding.
+
+The current identity-foundation branch adds only Hub-owned immutable employee,
+auth-link, active-state, membership-version, and local identity-audit
+scaffolding. It does not invent the unpublished cross-boundary event envelope,
+enable phone OTP, or create field accounts. The approved later target is
+Supabase Phone Auth with Turnstile, Twilio Verify delivery, owner-only recovery,
+password-identity revocation at activation with Supabase-console owner
+break-glass, and a 30-day maximum Hub session. Placement Runs will require an
+online start, allow at most 12 hours under an authorized offline window, and
+quarantine expired or revoked-device work for Naldo/Jason review without
+automatic pay or inventory credit. Management is an owner/admin view and
+digest, not a paid-work department.
+
+OTP activation remains blocked on the later provider/configuration PR, the
+Quote-owned capability and current-context surfaces, the canonical shared
+schema/OpenAPI artifacts, hosted identity-persona proof, and the unresolved
+Advertising placement/photo visibility ruling.
 
 PRs #35 and #36 are closed as superseded. Merged PR #37 is the only Hub
 planning source. Every implementation PR still requires current gates and a

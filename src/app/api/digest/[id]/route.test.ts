@@ -26,8 +26,8 @@ import { GET } from './route';
 
 function fakeSupabase(role: string | null, digestRow: Record<string, unknown> | null = null) {
   const from = vi.fn((table: string) => {
-    if (table === 'app_users') {
-      return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: role ? { role } : null, error: null }) }) }) };
+    if (table === 'ops_employees') {
+      return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: role ? { role, active: true } : null, error: null }) }) }) };
     }
     if (table === 'weekly_digests') {
       return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: digestRow, error: null }) }) }) };
@@ -48,7 +48,7 @@ describe('GET /api/digest/[id] -- role gate', () => {
 
   it('403s a rep instead of returning a past digest', async () => {
     getSessionEmailMock.mockResolvedValue('rep@yulelovelights.com');
-    fakeClient = fakeSupabase('rep');
+    fakeClient = fakeSupabase('office');
 
     const res = await GET(new Request('http://localhost/api/digest/d1'), fakeParams('d1'));
 

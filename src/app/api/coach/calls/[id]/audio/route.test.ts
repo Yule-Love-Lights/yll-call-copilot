@@ -38,8 +38,8 @@ function fakeSupabase(
   recordingRow: Record<string, unknown> | null = null,
 ) {
   fromMock = vi.fn((table: string) => {
-    if (table === 'app_users') {
-      return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: role ? { role } : null, error: null }) }) }) };
+    if (table === 'ops_employees') {
+      return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: role ? { role, active: true } : null, error: null }) }) }) };
     }
     if (table === 'call_scores') {
       const builder = { eq: () => builder, maybeSingle: async () => ({ data: scoreRow, error: null }) };
@@ -65,7 +65,7 @@ describe('GET /api/coach/calls/[id]/audio', () => {
 
   it('403s a rep and never queries call_scores or call_recordings', async () => {
     getSessionEmailMock.mockResolvedValue('rep@yulelovelights.com');
-    fakeClient = fakeSupabase('rep', null);
+    fakeClient = fakeSupabase('office', null);
 
     const res = await GET(new Request('http://localhost/api/coach/calls/c1/audio'), fakeParams('c1'));
 
@@ -73,7 +73,7 @@ describe('GET /api/coach/calls/[id]/audio', () => {
     const json = await res.json();
     expect(json.error).toBe("Call review is for the coach's one-on-one prep, not a rep-facing page.");
     expect(fromMock).toHaveBeenCalledTimes(1);
-    expect(fromMock).toHaveBeenCalledWith('app_users');
+    expect(fromMock).toHaveBeenCalledWith('ops_employees');
     expect(downloadRecordingAudioMock).not.toHaveBeenCalled();
   });
 

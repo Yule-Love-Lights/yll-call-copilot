@@ -1,8 +1,8 @@
 # Yule Love Lights Operations Hub — master plan
 
-Status: **approved direction; paired contract clarification pending human merge**
+Status: **owner-approved; canonical contract mirrored; Phase 0 identity foundation in progress**
 Version: `1.3-review-1`
-Date: 2026-08-07
+Date: 2026-08-15
 
 ## 1. Mission
 
@@ -69,11 +69,22 @@ whether it is local, submitted, accepted, under review, rejected, or adjusted.
 
 ## 4. Identity, roles, and department context
 
-- Sign-in is invite-only phone number plus one-time PIN.
+- Sign-in is invite-only phone number plus one-time PIN. The approved target is
+  Supabase Phone Auth with Twilio Verify delivery added in a later activation
+  PR. Production phone OTP stays off until provider configuration, Turnstile,
+  delivery/recovery testing, and a human-approved rollout are complete.
+- OTP request, resend, and recovery surfaces require Turnstile. Recovery is an
+  audited Naldo/Jason-only action; there is no employee self-service phone
+  reassignment or recovery in V1. A Hub session has a maximum 30-day lifetime
+  and may end sooner on logout, deactivation, revocation, or security review.
+  Existing password identities are revoked when phone auth activates; the
+  Supabase console is the audited owner-only break-glass path.
 - Naldo and Jason are the only provisioned owner/admin identities in V1 and can
   see all departments. Jason is primary time approver; Naldo is backup.
 - Employee roles are Office, Advertising, and Installer. A Manager capability
   tier is designed and tested but **not provisioned in V1**.
+- Management is an owner/admin view and digest type, not an employee department
+  membership or paid-work context.
 - An employee may hold multiple department memberships. Exactly one active
   department-context interval is active at each instant of a canonical paid
   shift. Switching context is an explicit, audited Quote Tool operation and
@@ -119,6 +130,14 @@ action for an assigned campaign. It obtains an accepted Quote Tool day clock
 when needed and starts the Hub-owned run. Partial success is shown plainly and
 is recoverable; the UI never pretends that both systems accepted when only one
 did.
+
+A new Placement Run requires an online, server-accepted start. That accepted
+run may authorize up to 12 hours of offline capture. Work outside the authorized
+window, or arriving after employee/device deactivation or revocation, is
+quarantined for owner review and is never silently accepted, discarded, or
+counted for pay or inventory. The credential shape and activation path remain
+part of the later OTP/offline implementation PR, not this identity-foundation
+slice.
 
 While a run is active:
 
@@ -386,3 +405,6 @@ clean weeks.
       Signed 2026-08-07.
 - [x] Naldo authorizes Phase 0 to start. Each implementation PR still requires
       its own current-branch gates, security review, green CI, and human merge.
+- [x] Hub PR #44 mirrored the canonical `v1.4.0-draft` Flow H update at
+      `master@0756b611c1e3bd7d6d3eeb4318b8677412ae0ad7`; the contract mirror
+      remains canonical Quote Tool-owned and is not edited by Hub identity work.

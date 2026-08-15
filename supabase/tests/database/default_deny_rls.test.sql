@@ -33,6 +33,11 @@ insert into expected_hub_tables (table_name) values
   ('live_segments'),
   ('live_sessions'),
   ('offer_versions'),
+  ('ops_departments'),
+  ('ops_employee_auth_identities'),
+  ('ops_employee_department_memberships'),
+  ('ops_employees'),
+  ('ops_identity_audit_events'),
   ('playbook_proposals'),
   ('playbook_versions'),
   ('practice_sessions'),
@@ -102,11 +107,17 @@ insert into expected_hub_routines (routine_signature) values
   ('enforce_call_score_metric_scope()'),
   ('enforce_followup_provider_message_immutable()'),
   ('enforce_live_session_transition()'),
+  ('enforce_ops_employee_auth_identity_transition()'),
+  ('enforce_ops_employee_identity_immutability()'),
   ('enforce_transcript_metric_scope()'),
   ('finish_owned_followup_send(uuid,text,uuid,uuid,text,text)'),
+  ('guard_app_users_projection()'),
   ('is_contact_calling_time_allowed(timestamp with time zone,text)'),
+  ('provision_legacy_office_employee(uuid,text,text)'),
   ('reject_live_segment_mutation()'),
+  ('reject_ops_identity_audit_event_mutation()'),
   ('start_claimed_live_attempt(uuid,text,text,uuid,text,uuid)'),
+  ('sync_app_user_projection()'),
   ('update_owned_followup_draft(uuid,text,uuid,text,text)');
 
 select set_eq(
@@ -137,6 +148,12 @@ insert into expected_hub_triggers (trigger_signature) values
   ('followups.enforce_followup_provider_message_immutable'),
   ('live_segments.reject_live_segment_mutation'),
   ('live_sessions.enforce_live_session_transition'),
+  ('ops_employee_auth_identities.enforce_ops_employee_auth_identity_transition'),
+  ('ops_employee_auth_identities.sync_app_user_projection'),
+  ('app_users.guard_app_users_projection'),
+  ('ops_employees.enforce_ops_employee_identity_immutability'),
+  ('ops_employees.sync_app_user_projection'),
+  ('ops_identity_audit_events.reject_ops_identity_audit_event_mutation'),
   ('transcripts.enforce_transcript_metric_scope');
 
 select set_eq(
@@ -258,6 +275,36 @@ order by table_name;
 
 select ok(
   case
+    when table_name = 'app_users' then
+      has_table_privilege('service_role', 'public.app_users', 'SELECT')
+        and not has_table_privilege('service_role', 'public.app_users', 'INSERT')
+        and not has_table_privilege('service_role', 'public.app_users', 'UPDATE')
+        and not has_table_privilege('service_role', 'public.app_users', 'DELETE')
+        and not has_table_privilege('service_role', 'public.app_users', 'TRUNCATE')
+        and not has_table_privilege('service_role', 'public.app_users', 'REFERENCES')
+        and not has_table_privilege('service_role', 'public.app_users', 'TRIGGER')
+        and not has_table_privilege('service_role', 'public.app_users', 'MAINTAIN')
+        and has_column_privilege('service_role', 'public.app_users', 'id', 'UPDATE')
+        and not has_column_privilege('service_role', 'public.app_users', 'email', 'UPDATE')
+        and not has_column_privilege('service_role', 'public.app_users', 'role', 'UPDATE')
+        and not has_column_privilege('service_role', 'public.app_users', 'created_at', 'UPDATE')
+        and not has_any_column_privilege('service_role', 'public.app_users', 'INSERT')
+        and not has_any_column_privilege('service_role', 'public.app_users', 'REFERENCES')
+    when table_name in (
+      'ops_departments',
+      'ops_employee_auth_identities',
+      'ops_employee_department_memberships',
+      'ops_employees',
+      'ops_identity_audit_events'
+    ) then
+      has_table_privilege('service_role', format('public.%I', table_name), 'SELECT')
+        and not has_table_privilege('service_role', format('public.%I', table_name), 'INSERT')
+        and not has_table_privilege('service_role', format('public.%I', table_name), 'UPDATE')
+        and not has_table_privilege('service_role', format('public.%I', table_name), 'DELETE')
+        and not has_table_privilege('service_role', format('public.%I', table_name), 'TRUNCATE')
+        and not has_table_privilege('service_role', format('public.%I', table_name), 'REFERENCES')
+        and not has_table_privilege('service_role', format('public.%I', table_name), 'TRIGGER')
+        and not has_table_privilege('service_role', format('public.%I', table_name), 'MAINTAIN')
     when table_name = 'live_segments' then
       has_table_privilege('service_role', 'public.live_segments', 'SELECT')
         and has_table_privilege('service_role', 'public.live_segments', 'INSERT')
@@ -277,7 +324,7 @@ select ok(
         and not has_table_privilege('service_role', format('public.%I', table_name), 'TRIGGER')
         and not has_table_privilege('service_role', format('public.%I', table_name), 'MAINTAIN')
   end,
-  format('service_role has reviewed compatibility DML on %I', table_name)
+  format('service_role has only the reviewed privileges on %I', table_name)
 )
 from expected_hub_tables
 order by table_name;
@@ -327,8 +374,66 @@ select ok(
   'only service_role can resolve public-schema application objects'
 );
 
-insert into public.app_users (email, role)
-values ('rls-probe@example.invalid', 'rep');
+insert into auth.users (
+  id,
+  email,
+  confirmation_token,
+  recovery_token,
+  email_change,
+  email_change_token_new
+)
+values (
+  '00000000-0000-4000-8000-000000000101',
+  'rls-probe@example.invalid',
+  '',
+  '',
+  '',
+  ''
+);
+
+insert into public.ops_employees (
+  id,
+  compatibility_email,
+  role,
+  active,
+  membership_version,
+  entity_version
+) values (
+  '00000000-0000-4000-8000-000000000201',
+  'rls-probe@example.invalid',
+  'office',
+  true,
+  1,
+  1
+);
+
+insert into public.ops_employee_auth_identities (
+  employee_id,
+  auth_user_id,
+  state,
+  entity_version,
+  effective_at
+) values (
+  '00000000-0000-4000-8000-000000000201',
+  '00000000-0000-4000-8000-000000000101',
+  'active',
+  1,
+  now()
+);
+
+insert into public.ops_employee_department_memberships (
+  employee_id,
+  department_id,
+  state,
+  membership_version,
+  effective_at
+) values (
+  '00000000-0000-4000-8000-000000000201',
+  '00000000-0000-4000-8000-000000000001',
+  'active',
+  1,
+  now()
+);
 
 -- These transaction-local grants prove the RLS layer independently of the
 -- ACL layer. They disappear on rollback.
@@ -431,12 +536,46 @@ select is(
   1::bigint,
   'service_role can read through the server-only RLS bypass'
 );
-select lives_ok(
+select throws_ok(
   $sql$
     insert into public.app_users (email, role)
     values ('rls-service-role@example.invalid', 'rep')
   $sql$,
-  'service_role retains the DML needed by server handlers'
+  '42501',
+  null,
+  'service_role cannot insert compatibility projection rows directly'
+);
+select throws_ok(
+  $sql$
+    update public.app_users
+    set
+      email = 'rls-service-role@example.invalid',
+      role = 'admin',
+      created_at = clock_timestamp()
+    where id = '00000000-0000-4000-8000-000000000201'
+  $sql$,
+  '42501',
+  null,
+  'service_role cannot update compatibility projection data directly'
+);
+select throws_ok(
+  $sql$
+    delete from public.app_users
+    where id = '00000000-0000-4000-8000-000000000201'
+  $sql$,
+  '42501',
+  null,
+  'service_role cannot delete compatibility projection rows directly'
+);
+select throws_ok(
+  $sql$
+    update public.app_users
+    set id = '00000000-0000-4000-8000-000000000202'
+    where id = '00000000-0000-4000-8000-000000000201'
+  $sql$,
+  '23514',
+  'app_users.id is immutable',
+  'the narrow row-lock column grant cannot change a projection key'
 );
 reset role;
 

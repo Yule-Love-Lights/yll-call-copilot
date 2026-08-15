@@ -1,17 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildLegacyActor, type AppUserRole } from './capabilities';
+import { buildHubActor, type OpsEmployeeRole } from './capabilities';
 import {
   authorizeActiveClaimedLead,
   authorizeLeadDetailRead,
   type LeadWorkRow,
 } from './leadWork';
 
-function actor(role: AppUserRole = 'rep', email = 'rep@example.com') {
-  const result = buildLegacyActor({
-    authUserId: `auth-${role}`,
-    employeeId: `employee-${role}`,
-    email,
-    appUserRole: role,
+function actor(role: OpsEmployeeRole = 'office', email = 'rep@example.com') {
+  const identityLabel = role === 'office' ? 'rep' : role;
+  const result = buildHubActor({
+    authUserId: `auth-${identityLabel}`,
+    employeeId: `employee-${identityLabel}`,
+    compatibilityEmail: email,
+    employeeRole: role,
+    memberships: ['office'],
+    membershipVersion: 1,
   });
   if (!result) throw new Error(`expected actor for ${role}`);
   return result;

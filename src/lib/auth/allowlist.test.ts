@@ -1,84 +1,74 @@
-// Coverage for the staff allowlist decision helper. Style follows
-// ghl/client.test.ts — we mock the Supabase client (and env vars for the
-// default-client path); no live Supabase calls.
-
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { checkAllowlist, shouldDenyAccess } from './allowlist';
 
+const AUTH_USER_ID = '123e4567-e89b-42d3-a456-426614174000';
+
 function fakeClient(result: { data: unknown; error: unknown }) {
   const maybeSingle = vi.fn(async () => result);
-  const eq = vi.fn(() => ({ maybeSingle }));
-  const select = vi.fn(() => ({ eq }));
-  const from = vi.fn(() => ({ select, eq }));
-  const client = { from } as unknown as SupabaseClient;
-  return { client, from, select, eq };
+  const eq = vi.fn();
+  const query = { eq, maybeSingle };
+  eq.mockReturnValue(query);
+  const select = vi.fn(() => query);
+  const from = vi.fn(() => ({ select }));
+  return { client: { from } as unknown as SupabaseClient, from };
+}
+
+function activeIdentity() {
+  return {
+    id: '523e4567-e89b-42d3-a456-426614174000',
+    employee_id: '423e4567-e89b-42d3-a456-426614174000',
+    auth_user_id: AUTH_USER_ID,
+    state: 'active',
+    entity_version: 1,
+    effective_at: '2026-01-01T00:00:00.000Z',
+    revoked_at: null,
+    employee: {
+      id: '423e4567-e89b-42d3-a456-426614174000',
+      compatibility_email: 'office@example.com',
+      role: 'office',
+      active: true,
+      membership_version: 1,
+      entity_version: 1,
+      effective_at: '2026-01-01T00:00:00.000Z',
+      deactivated_at: null,
+      memberships: [{
+        state: 'active',
+        effective_at: '2026-01-01T00:00:00.000Z',
+        revoked_at: null,
+        membership_version: 1,
+        department: { slug: 'office', active: true },
+      }],
+    },
+  };
 }
 
 describe('checkAllowlist', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
+  beforeEach(() => vi.restoreAllMocks());
+
+  it('allows only an actor resolved through an active auth link', async () => {
+    const { client } = fakeClient({ data: activeIdentity(), error: null });
+    await expect(checkAllowlist(AUTH_USER_ID, client)).resolves.toBe('allowed');
   });
 
-  it('returns allowed when the email has an app_users row', async () => {
-    const { client } = fakeClient({ data: { id: 'u1' }, error: null });
-    expect(await checkAllowlist('jason@example.com', client)).toBe('allowed');
+  it('denies a missing or invalid actor', async () => {
+    const missing = fakeClient({ data: null, error: null });
+    await expect(checkAllowlist(AUTH_USER_ID, missing.client)).resolves.toBe('denied');
+    await expect(checkAllowlist(null, missing.client)).resolves.toBe('denied');
+    await expect(checkAllowlist('not-a-uuid', missing.client)).resolves.toBe('denied');
   });
 
-  it('returns denied when the email is not in app_users', async () => {
-    const { client } = fakeClient({ data: null, error: null });
-    expect(await checkAllowlist('stranger@example.com', client)).toBe('denied');
-  });
-
-  it('returns unconfigured (fail closed) when the query dependency errors', async () => {
-    const { client } = fakeClient({ data: null, error: { message: 'boom' } });
-    expect(await checkAllowlist('jason@example.com', client)).toBe('unconfigured');
-  });
-
-  it('returns denied when the signed-in user has no email', async () => {
-    const { client, from } = fakeClient({ data: { id: 'u1' }, error: null });
-    expect(await checkAllowlist(null, client)).toBe('denied');
-    expect(await checkAllowlist(undefined, client)).toBe('denied');
-    expect(await checkAllowlist('', client)).toBe('denied');
-    expect(from).not.toHaveBeenCalled();
-  });
-
-  it('lowercases the email before matching', async () => {
-    const { client, eq } = fakeClient({ data: { id: 'u1' }, error: null });
-    await checkAllowlist('Jason@Example.COM', client);
-    expect(eq).toHaveBeenCalledWith('email', 'jason@example.com');
-  });
-
-  it('returns unconfigured when no client is available (explicit null)', async () => {
-    expect(await checkAllowlist('jason@example.com', null)).toBe('unconfigured');
-  });
-
-  it('returns unconfigured via the default client when Supabase env is missing', async () => {
-    const savedUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const savedKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
-    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
-    try {
-      expect(await checkAllowlist('jason@example.com')).toBe('unconfigured');
-    } finally {
-      if (savedUrl !== undefined) process.env.NEXT_PUBLIC_SUPABASE_URL = savedUrl;
-      if (savedKey !== undefined) process.env.SUPABASE_SERVICE_ROLE_KEY = savedKey;
-    }
+  it('keeps identity dependency failure distinct and fail closed', async () => {
+    const failed = fakeClient({ data: null, error: { message: 'boom' } });
+    await expect(checkAllowlist(AUTH_USER_ID, failed.client)).resolves.toBe('unconfigured');
+    await expect(checkAllowlist(AUTH_USER_ID, null)).resolves.toBe('unconfigured');
   });
 });
 
-// H4: 'unconfigured' represents an unavailable authorization dependency. It
-// must deny and must never quietly become an allow decision.
 describe('shouldDenyAccess', () => {
-  it('denies an explicit "denied" decision', () => {
+  it('denies explicit rejection and dependency unavailability', () => {
     expect(shouldDenyAccess('denied')).toBe(true);
-  });
-
-  it('denies "unconfigured" — the fail-open gap this closes', () => {
     expect(shouldDenyAccess('unconfigured')).toBe(true);
-  });
-
-  it('allows "allowed"', () => {
     expect(shouldDenyAccess('allowed')).toBe(false);
   });
 });

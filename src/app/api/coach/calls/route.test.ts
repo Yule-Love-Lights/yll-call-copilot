@@ -45,8 +45,8 @@ function scoresQueryResult(data: unknown, error: unknown) {
 
 function fakeSupabase(role: string | null, scoreRows: Record<string, unknown>[] = [], transcriptRows: Record<string, unknown>[] = []) {
   fromMock = vi.fn((table: string) => {
-    if (table === 'app_users') {
-      return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: role ? { role } : null, error: null }) }) }) };
+    if (table === 'ops_employees') {
+      return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: role ? { role, active: true } : null, error: null }) }) }) };
     }
     if (table === 'call_scores') {
       return { select: () => ({ eq: () => ({ order: () => ({ order: () => ({ limit: () => scoresQueryResult(scoreRows, null) }) }) }) }) };
@@ -67,7 +67,7 @@ describe('GET /api/coach/calls -- role gate', () => {
 
   it('403s a rep and never queries call_scores or transcripts', async () => {
     getSessionEmailMock.mockResolvedValue('rep@yulelovelights.com');
-    fakeClient = fakeSupabase('rep');
+    fakeClient = fakeSupabase('office');
 
     const res = await GET(new Request('http://localhost/api/coach/calls'));
 
@@ -75,10 +75,10 @@ describe('GET /api/coach/calls -- role gate', () => {
     const json = await res.json();
     expect(json.error).toBe("Call review is for the coach's one-on-one prep, not a rep-facing page.");
     expect(fromMock).toHaveBeenCalledTimes(1);
-    expect(fromMock).toHaveBeenCalledWith('app_users');
+    expect(fromMock).toHaveBeenCalledWith('ops_employees');
   });
 
-  it('403s (fail closed) when the caller has no app_users row', async () => {
+  it('403s (fail closed) when the caller has no ops_employees row', async () => {
     getSessionEmailMock.mockResolvedValue('stranger@yulelovelights.com');
     fakeClient = fakeSupabase(null);
 
@@ -134,8 +134,8 @@ describe('GET /api/coach/calls -- role gate', () => {
   it('degrades to a friendly reason when call_scores is not migrated yet', async () => {
     getSessionEmailMock.mockResolvedValue('naldo@yulelovelights.com');
     fromMock = vi.fn((table: string) => {
-      if (table === 'app_users') {
-        return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { role: 'owner' }, error: null }) }) }) };
+      if (table === 'ops_employees') {
+        return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { role: 'owner', active: true }, error: null }) }) }) };
       }
       if (table === 'call_scores') {
         return {

@@ -1,10 +1,10 @@
-// Compatibility helper for existing handlers while the proxy enforces the
-// centralized capability policy. Only the closed legacy admin values may
-// survive this boundary; field, Manager, unknown, and failed lookups all
-// degrade to the least-privileged Office role.
+// Compatibility helper for handlers that still branch on the old three-value
+// role. The root proxy has already authorized the immutable UUID-linked actor,
+// and getSessionEmail supplies that actor's stored compatibility email. This
+// secondary projection never reads app_users.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { parseAppUserRole } from './capabilities';
+import { parseOpsEmployeeRole } from './capabilities';
 
 export type LegacyStaffRole = 'rep' | 'owner' | 'admin';
 
@@ -14,11 +14,11 @@ export async function resolveStaffRole(
 ): Promise<LegacyStaffRole> {
   if (!email) return 'rep';
   const { data, error } = await supabase
-    .from('app_users')
-    .select('role')
-    .eq('email', email.toLowerCase())
+    .from('ops_employees')
+    .select('role, active')
+    .eq('compatibility_email', email.toLowerCase())
     .maybeSingle();
-  if (error || !data) return 'rep';
-  const role = parseAppUserRole((data as { role?: unknown }).role);
+  if (error || !data || (data as { active?: unknown }).active !== true) return 'rep';
+  const role = parseOpsEmployeeRole((data as { role?: unknown }).role);
   return role === 'owner' || role === 'admin' ? role : 'rep';
 }

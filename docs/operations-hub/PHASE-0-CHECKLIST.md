@@ -1,13 +1,12 @@
 # Operations Hub Phase 0 safety checklist
 
-Status: **RLS base-role gate merged; lead-work authorization in progress; field-user provisioning blocked**
-Date: 2026-08-13
-Branch base: Hub `master@7962a8f025186c54acab66d47c32e93991e59a30`
-after the human-authorized merge of PR #43. The lead-work authorization slice
-is on `codex/operations-hub-phase-0-lead-access`; it is not yet merged. Local
-repository, database, build, and unauthenticated responsive-smoke gates passed
-on 2026-08-13; CI, human review, hosted checks, and authenticated production
-smokes remain.
+Status: **lead-work authorization merged; immutable identity foundation in progress; field-user provisioning blocked**
+Date: 2026-08-18
+Branch base: Hub `master@699af86011625a61212727a1510c57d71fafb3a8`
+after the human-authorized merges through PR #49. The additive identity work
+is isolated on
+`codex/operations-hub-identity-foundation`. It remains branch work until its
+repository, database, security, CI, hosted, and human-review gates pass.
 
 This checklist records the actual repository baseline and the safety gates that
 must precede Advertising or Installer accounts. It does not authorize Hub-owned
@@ -18,11 +17,16 @@ copies of Quote Tool time, pay, payroll, job, or shared-labor data.
 Do **not** provision Advertising or Installer identities yet. The current app
 was built for a small office allowlist:
 
-- login is email/password, while the planned Operations Hub identity is phone
-  number plus OTP;
-- the new actor resolver still uses `app_users` as a bootstrap identity source;
-  its inferred membership has no canonical `membership_version` or Quote-owned
-  active-context projection;
+- login is still email/password, while the approved Operations Hub target is
+  invite-only Supabase Phone Auth. Twilio Verify delivery is a later activation
+  and no production OTP provider is enabled by this foundation branch;
+- this identity branch replaces email-linked `app_users` resolution with an
+  active, revocable Auth-link record that resolves to a preserved
+  `ops_employees.id`, effective active memberships, and a monotonic Hub
+  `membership_version`. Each Auth UUID is immutable in its history record, but
+  an owner-approved replacement can revoke the old link and add a new one
+  without changing the employee ID. The Quote-owned active-context projection
+  is still unavailable;
 - owner/admin runtime access now requires the server-only Naldo/Jason Auth UUID
   ceiling and audited team access on the protected call/live resources, but
   production IDs and the final additive employee/auth link still need review;
@@ -35,12 +39,14 @@ was built for a small office allowlist:
   resource audit remains
   a field-launch gate.
 
-The current lead-work branch addresses the known Office lead/call resource
-gaps. It adds immutable employee identifiers to claims and calls, self-claim
-and self-call transaction boundaries, current HighLevel contact and channel
-permission checks, append-only live segments, idempotency keys, durable
-follow-up send state, and positive metric provenance. These are branch facts,
-not release evidence, until the branch gates pass and a human merges it.
+Merged PR #46 addresses the known Office lead/call resource gaps. It adds
+immutable employee identifiers to claims and calls, self-claim and self-call
+transaction boundaries, current HighLevel contact and channel permission
+checks, append-only live segments, idempotency keys, durable follow-up send
+state, and positive metric provenance. Its application/database checks and
+Vercel deploy passed before/after the human-authorized merge at `9000c683`.
+Railway remained intentionally red because the disabled live-call bridge
+correctly refused to start; this is not identity release evidence.
 
 Customer live calling is positively disabled with
 `LIVE_CUSTOMER_CALLS_ENABLED=false`. Runtime preflight rejects enabling it and
@@ -61,11 +67,12 @@ RLS, and impersonated-role gates below pass.
 
 ## 2. Contract and repository boundary
 
-- [x] Quote Tool PR #701 established the `v1.3.0-draft` baseline; PR #716
-      merged its self-contained canonical form to Quote Tool `master` at
-      `5d56ebb62e23b2fe592cdc1912359b1ddf137270`.
-- [x] Hub mirror is exact: 41,336 bytes, SHA-256
-      `2fc10d33bf592b79d38741e8f40bdc1abcf52c2233d3be89521807211bbafa4a`.
+- [x] Quote Tool PR #701 established the `v1.3.0-draft` baseline and PR #716
+      made it self-contained. The current canonical/mirror pin is
+      `v1.4.0-draft` at Quote commit
+      `0a69fc0efc4998b59136057671e5705d8e5583f6` after the Flow H addition.
+- [x] Hub PR #44 copied the current mirror exactly: 47,692 bytes, SHA-256
+      `70ec41d325d7fb6ad907f0979b2389fa2cb6effb35e10bfd228c822cd42bfee4`.
 - [x] `contract-pin.json` records one version, source commit/path, byte length,
       and raw-byte SHA-256.
 - [x] Local verification detects mirror/pin drift and clearly reports
@@ -94,17 +101,20 @@ only the honestly named local pin check.
       favicon passes through an exact public-runtime asset registry, so dotted
       dynamic IDs cannot skip the gate. There is
       no missing-configuration bypass, including in local development.
-- [x] `app_users.role` is constrained at every authorization boundary; a closed
-      parser, compatibility helpers, and the bootstrap script ensure arbitrary
-      values never imply privilege.
-- [x] A centralized email-linked bootstrap actor resolver returns the current
-      `app_users.id`, row-presence status, inferred membership,
-      null/version-marked active-context fields, and explicit Hub-local
-      capabilities. It is intentionally not described as final immutable
-      identity linkage.
-- [ ] Additive Hub identity plus the Quote-owned current-context projection
-      replace those bootstrap inferences with effective active state,
-      memberships, `membership_version`, and canonical context freshness.
+- [x] `app_users` is a guarded Office compatibility projection. The closed
+      parser, service-role-only atomic provisioning routine, and legacy helper
+      ensure arbitrary input never implies privilege or provisions a field,
+      Manager, or Owner/Admin account.
+- [ ] This branch implements the additive Hub identity resolver: immutable
+      per-link Auth UUID history with explicit revocation/replacement, preserved
+      Office employee UUIDs, effective active state, multi-department
+      memberships, monotonic `membership_version`, and explicit Hub-local
+      capabilities. It remains branch evidence until its database, persona, CI,
+      hosted, and human-review gates pass.
+- [ ] The Quote-owned current-context projection is a separate canonical
+      contract/API dependency and remains unavailable. The Hub actor therefore
+      keeps `activeDepartmentContext = null` and cannot invent a paid-context
+      ledger.
 - [x] Every current page and API handler method declares required capabilities
       server-side; an exhaustive filesystem test rejects undeclared additions.
 - [x] Existing office routes are denied to Advertising and Installer roles.
@@ -115,7 +125,7 @@ only the honestly named local pin check.
       UUIDs and audited provisioning record are verified.
 - [x] Manager is present in the closed design vocabulary and negative tests but
       every Manager actor claim is denied in V1.
-- [ ] Merge the locally verified lead-work authorization slice. Its implementation
+- [x] PR #46 merged the verified lead-work authorization slice. Its implementation
       binds claims and calls to immutable employee IDs; allows an ordinary
       Office employee to work only their active claim; makes Owner/Admin team
       reads explicit and audited; rechecks the current HighLevel contact,
@@ -140,14 +150,48 @@ only the honestly named local pin check.
       the seed, apply `0020`, then run the backfill test. It intentionally stays
       outside the ordinary post-migration test folder because its legacy rows
       omit columns that become mandatory in `0020`.
-- [ ] Phone OTP, invite, recovery, phone reassignment, deactivation, and session
-      revocation rules are implemented and audited.
-- [ ] Codex-side decisions 16 (OTP provider/recovery), 18 (cached-session and
-      deactivated-device behavior), and 20 (placement/photo visibility) receive
-      owner rulings before their affected auth/RLS behavior is implemented.
-- [ ] P18 cached-session grace and deactivated-device pending-write behavior is
-      owner-ruled, then implemented and audited. Until then, field provisioning
-      remains blocked; the Hub must not silently accept or drop queued writes.
+- [x] Owner architecture ruling for decision 16: invite-only Supabase Phone
+      Auth, Turnstile on OTP request/resend/recovery, owner-only recovery, and a
+      maximum 30-day Hub session. Twilio Verify is the planned delivery provider
+      for a later activation PR, not enabled or configured by this foundation.
+      Existing password identities are revoked at phone-auth activation;
+      Supabase-console owner break-glass is the emergency path.
+- [ ] Phone OTP, invite delivery, Turnstile verification, owner recovery, phone
+      reassignment, deactivation, session expiry/revocation, abuse controls, and
+      provider smokes are implemented and audited. Until then email/password
+      bootstrap remains Office-only and no field account is provisioned.
+- [ ] Before any Auth-link replacement or recovery path is enabled, every
+      `0020` employee mutation routine atomically locks and verifies the current
+      active Auth link against its supplied Auth UUID. The foundation has no
+      reachable replacement routine; its guarded legacy Office provisioner
+      refuses employees with link history. This gate prevents an already
+      resolved old request from using a compatibility projection recreated for
+      a replacement login.
+- [ ] That future Owner/Admin replacement routine also records the acting
+      employee, reason, old-link revocation, and new-link creation atomically.
+      Direct Auth-link mutation remains unavailable to service/browser roles.
+- [ ] Before any membership-change path is enabled, membership revocation must
+      atomically remove/update the `app_users` compatibility projection or the
+      `0020` mutation routines must verify the current effective membership.
+      This foundation grants service/browser roles no membership writes, and
+      its only provisioner creates Office membership before the Auth link.
+- [x] Owner offline ruling for decision 18: a Placement Run must start online;
+      the accepted run may authorize up to 12 hours of offline capture; expired,
+      deactivated, revoked, or otherwise ineligible-device uploads quarantine
+      for Naldo/Jason review and never automatically count toward pay or
+      inventory.
+- [ ] The 12-hour credential/grace behavior, deactivation receipt, quarantine,
+      replay, and safe owner-resolution path are implemented and audited. The
+      Quote-owned offline packet and current-context dependencies remain blocked.
+- [ ] Decision 20 placement/photo visibility receives its owner ruling before
+      the affected Advertising authorization and RLS behavior is implemented.
+- [ ] Before field actors are enabled, replace the Office-only required
+      compatibility-email projection with an actor/attribution shape that lets
+      phone-only Advertising and Installer identities resolve without inventing
+      an email. The nullable database field alone is not activation evidence.
+- [x] Management is an owner/admin view and digest type, not a department
+      membership or paid-work context. V1 employee departments remain Office,
+      Advertising, and Installer; Manager claims remain denied.
 - [x] Five cron routes require Vercel's `Authorization: Bearer $CRON_SECRET`
       credential before evaluating the separate `CRON_ENABLED` kill switch.
 - [x] The preparatory outbound Twilio path uses an actor-bound, expiring,
@@ -174,7 +218,7 @@ route-level role lookups now return only closed least-privileged values. See
 `PHASE-0-AUTHORIZATION-INVENTORY.md` for the capability matrix and remaining
 resource-scope, audit, identity-projection, and cross-repository gaps.
 
-## 4. Existing-table RLS checklist
+## 4. Database RLS checklist
 
 PR #43 establishes an API-only database boundary for the 31 baseline tables.
 Clean CI applies every migration to a fresh Supabase PostgreSQL database and
@@ -220,22 +264,39 @@ proves RLS independently of ACLs.
 | `brain_insights` | [x] | [x] | [x] | [x] |
 | `practice_sessions` | [x] | [x] | [x] | [x] |
 | `live_segments` | [x] | [x] | [x] | [x] |
+| `ops_departments` | [x] | [x] | [x] | [x] |
+| `ops_employees` | [x] | [x] | [x] | [x] |
+| `ops_employee_auth_identities` | [x] | [x] | [x] | [x] |
+| `ops_employee_department_memberships` | [x] | [x] | [x] | [x] |
+| `ops_identity_audit_events` | [x] | [x] | [x] | [x] |
 
-The lead-work branch authors RLS, default-deny coverage, an append-only
-service-role grant, and impersonation tests for `live_segments`, which becomes
-the 32nd table. Its local database suites passed on 2026-08-13: 117 lead-work
-assertions, 259 default-deny assertions, and 18 migration-backfill assertions.
-CI and human merge remain required.
+Merged PR #46 adds RLS, default-deny coverage, an append-only service-role
+grant, and impersonation tests for `live_segments`, the 32nd baseline table.
+Before merge its database suites passed 117 lead-work assertions, 259
+default-deny assertions, and 18 migration-backfill assertions; GitHub and hosted
+checks were green.
+
+Migration `0023` extends the reviewed manifest to 38 tables, 27 routines, and
+12 triggers. The local PostgreSQL/parser harness applied all 23 migrations,
+passed the seeded legacy upgrade, exact provisioning retry and deactivation
+denial, and matched all four protective preflight failures. The new pgTAP
+suites contain an expected 51 identity-foundation assertions and 17 seeded
+upgrade assertions; the expanded default-deny suite expects 304 assertions.
+Those pgTAP counts remain CI-pending because this Mac has neither the Supabase
+CLI nor Docker, so they are not yet merge evidence.
 
 Claims shaped like inactive, self, wrong-department, stale-membership,
 unlinked, Office, Advertising, Installer, Owner/Admin, and Manager identities
 are also verified unable to override database default deny. That is not the
-semantic persona gate. The following remain blocked until the additive
-identity and membership schema exists:
+semantic persona gate. This branch adds database tests for preserved employee
+UUIDs, active/inactive and linked/unlinked identity, projection drift,
+deactivation/reactivation, exact provisioning retry/conflict/audit behavior,
+the three-department vocabulary, and Manager's exclusion from departments.
+The following still remain:
 
-- [ ] immutable self-versus-other employee tests;
-- [ ] active/inactive and linked/unlinked identity tests;
-- [ ] current/stale multi-membership and department-context tests;
+- [ ] immutable self-versus-other employee resource tests;
+- [ ] current/stale multi-membership plus Quote-owned department-context
+      integration tests;
 - [ ] Office, Advertising, Installer, Owner/Admin, and unprovisioned Manager
       server-plus-database integration tests;
 - [ ] hosted owner/ACL/policy/routine/trigger/publication preflight and
@@ -247,14 +308,18 @@ See `PHASE-0-RLS-RUNBOOK.md` for the exact proof boundary and rollout steps.
 
 ## 5. Additive Hub-owned schema, after authorization design
 
-Proposed names are reserved, not yet authorized migrations:
+The identity-foundation branch is authorized to add Hub-owned versions of:
 
 - `ops_employees`
 - `ops_departments`
+- `ops_employee_auth_identities`
 - `ops_employee_department_memberships`
-- Hub-owned audit/outbox/inbox/DLQ and kill-switch records; only their
-  cross-boundary envelope/event fields come from the Quote-owned shared JSON
-  Schema after the Quote Tool publishes it
+- `ops_identity_audit_events`
+
+The canonical shared JSON Schema is still unpublished. This branch therefore
+does not invent cross-boundary outbox/inbox/DLQ envelopes, capability grants,
+or current-context projections. Those remain Phase 0 dependencies owned at the
+Quote boundary.
 
 These tables must never contain a second day clock, break, job segment, travel
 ledger, compensation result, pay-period close, or payroll export.
@@ -269,11 +334,11 @@ ledger, compensation result, pay-period close, or payroll export.
 4. RLS/default-deny migrations plus a real Supabase base-role impersonation
    harness (merged in PR #43; hosted and semantic-persona gates remain).
 5. Lead-work resource authorization, mutation idempotency, current customer
-   permission checks, and metric provenance (in progress on the current
-   branch; local gates passed, while CI and human merge remain).
-6. Additive Hub identity/audit/integration scaffolding.
+   permission checks, and metric provenance (merged in PR #46).
+6. Additive Hub identity/audit/integration scaffolding (current branch; no OTP
+   activation or field provisioning).
 7. Vendor Quote-owned schemas; add version health and deploy-skew smoke tests.
 8. Only after all above gates: phone OTP and controlled field-user provisioning.
 
-Payroll CSV remains separately blocked until the canonical contract defines the
-required subtotal record type, stable pay-line ID, and subtotal field semantics.
+Payroll remains Quote Tool-owned and separately gated by the contract's
+overtime, blended-rate, professional-review, and owner-activation requirements.
