@@ -13,6 +13,7 @@ insert into expected_hub_tables (table_name) values
   ('app_users'),
   ('brain_insights'),
   ('brain_reviews'),
+  ('call_commitments'),
   ('call_recordings'),
   ('call_scores'),
   ('calls'),
@@ -80,9 +81,25 @@ select set_eq(
   'the reviewed public-sequence manifest is exact'
 );
 
-select is(
-  (
-    select count(*)::bigint
+-- Application routines in `public` are RLS-bypass surface: a security definer
+-- function runs with its owner's rights, so it can read and write tables that
+-- deny the caller. This assertion used to be "there are none" (count = 0).
+-- #217 adds the first one, so it is now an explicit ALLOWLIST -- deliberately
+-- NOT a count, because `count = 1` would let ANY future unreviewed routine
+-- through and this test exists precisely to stop that. A new routine fails
+-- here until someone names it and justifies it.
+--
+-- call_commitments_upsert_batch: security definer on purpose. It locks the
+-- transcript's existing rows with `select ... for update`, decides whether a
+-- re-extraction is safe, and upserts -- all in ONE transaction. Splitting the
+-- check from the write reopens a TOCTOU race that lets a reordered
+-- re-extraction rewrite a RESOLVED commitment's text while its settled status
+-- stays put, i.e. an employee's record showing a promise kept that never was.
+-- PostgREST cannot express a conditional upsert, so the guard has to live in
+-- the database. It writes only call_commitments and pins its search_path.
+select set_eq(
+  $sql$
+    select routine.proname::text
     from pg_proc routine
     join pg_namespace namespace on namespace.oid = routine.pronamespace
     where namespace.nspname = 'public'
@@ -93,9 +110,9 @@ select is(
           and dependency.objid = routine.oid
           and dependency.deptype = 'e'
       )
-  ),
-  0::bigint,
-  'no unreviewed application routine can bypass table RLS'
+  $sql$,
+  $sql$ values ('call_commitments_upsert_batch'::text) $sql$,
+  'every application routine that can bypass table RLS is on the reviewed list'
 );
 
 select is(
