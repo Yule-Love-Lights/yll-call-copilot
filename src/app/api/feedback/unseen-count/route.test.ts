@@ -31,26 +31,33 @@ import { GET } from './route';
 // object so the caller can chain either order, and `await`-ing it resolves
 // to {data, error, count}.
 function unseenCountResult(count: number | null, error: unknown = null) {
+  const eqCalls: [string, unknown][] = [];
   const builder: {
-    eq: () => typeof builder;
+    eq: (column: string, value: unknown) => typeof builder;
     is: () => typeof builder;
     then: (resolve: (v: { data: null; error: unknown; count: number | null }) => unknown) => unknown;
+    eqCalls: [string, unknown][];
   } = {
-    eq: () => builder,
+    eq: (column, value) => {
+      eqCalls.push([column, value]);
+      return builder;
+    },
     is: () => builder,
     then: resolve => Promise.resolve({ data: null, error, count }).then(resolve),
+    eqCalls,
   };
   return builder;
 }
 
 function fakeSupabase(count: number | null, error: unknown = null) {
+  let query: ReturnType<typeof unseenCountResult> | null = null;
   const from = vi.fn((table: string) => {
     if (table === 'feedback_cards') {
-      return { select: () => unseenCountResult(count, error) };
+      return { select: () => (query = unseenCountResult(count, error)) };
     }
     throw new Error(`Unexpected table in test: ${table}`);
   });
-  return { from } as unknown as SupabaseClient;
+  return { client: { from } as unknown as SupabaseClient, getQuery: () => query };
 }
 
 describe('GET /api/feedback/unseen-count', () => {
@@ -83,17 +90,22 @@ describe('GET /api/feedback/unseen-count', () => {
 
   it("returns the signed-in rep's own unseen count", async () => {
     getSessionEmailMock.mockResolvedValue('jamie@yulelovelights.com');
-    fakeClient = fakeSupabase(3);
+    const fake = fakeSupabase(3);
+    fakeClient = fake.client;
 
     const res = await GET();
     const json = await res.json();
 
     expect(json).toEqual({ count: 3 });
+    expect(fake.getQuery()?.eqCalls).toEqual([
+      ['call_scores.metric_scope', 'performance'],
+      ['rep_email', 'jamie@yulelovelights.com'],
+    ]);
   });
 
   it('degrades to 0 when feedback_cards is not migrated yet', async () => {
     getSessionEmailMock.mockResolvedValue('jamie@yulelovelights.com');
-    fakeClient = fakeSupabase(null, { code: 'PGRST205', message: 'missing' });
+    fakeClient = fakeSupabase(null, { code: 'PGRST205', message: 'missing' }).client;
 
     const res = await GET();
     const json = await res.json();
@@ -103,7 +115,7 @@ describe('GET /api/feedback/unseen-count', () => {
 
   it('degrades to 0 on a genuine query error', async () => {
     getSessionEmailMock.mockResolvedValue('jamie@yulelovelights.com');
-    fakeClient = fakeSupabase(null, { code: '500', message: 'boom' });
+    fakeClient = fakeSupabase(null, { code: '500', message: 'boom' }).client;
 
     const res = await GET();
     const json = await res.json();

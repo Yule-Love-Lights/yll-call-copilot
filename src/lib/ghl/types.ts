@@ -28,11 +28,16 @@ export type CrmContact = {
   // (isCallable) — see queue.ts's quote-follow-up source, which used to
   // score a hydrated contact without ever reading these two back off it.
   dnd?: boolean;
+  dndSettings?: ContactDndSettings;
   tags?: string[];
   // IANA time zone (e.g. "America/Chicago"), used by the TCPA calling-hours
   // gate (src/lib/leads/callingHours.ts) — contact-local, not the server's.
   timezone?: string;
 };
+
+export type ContactDndChannel = 'Call' | 'Email' | 'SMS';
+export type ContactDndSetting = { status?: string; message?: string; code?: string };
+export type ContactDndSettings = Partial<Record<ContactDndChannel, ContactDndSetting>>;
 
 // ─── HighLevel API shape (subset) ─────────────────────────────────────────
 // Only the fields we actually consume. HighLevel's response is much larger;
@@ -54,6 +59,7 @@ export type HighLevelContact = {
   // GHL's do-not-disturb flag — the queue builder must never queue a contact
   // with dnd true.
   dnd?: boolean;
+  dndSettings?: ContactDndSettings;
   // Phase 2 lead queue (src/lib/leads/queue.ts) needs recency to find fresh
   // inbound inquiries. Field names verified against a LIVE contact payload
   // on 2026-07-08 (dateAdded, dateUpdated, tags, dnd, timezone all present).

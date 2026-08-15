@@ -69,7 +69,37 @@ jobs:
         run: supabase db start
 
       - name: Run pgTAP default-deny and impersonation tests
-        run: supabase test db --local
+        run: supabase test db --local supabase/tests/database
+
+      - name: Exercise the 0020 legacy backfill in deployment order
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          supabase db reset --local --no-seed --version 0019
+          docker exec -i supabase_db_yll-call-copilot-local-security \
+            psql --username postgres --dbname postgres --set ON_ERROR_STOP=on \
+            < supabase/tests/migration/0020_personal_touch_preflight.seed.sql
+          if migration_output="$(supabase migration up --local 2>&1)"; then
+            echo "Migration 0020 unexpectedly accepted unsafe personal-touch provenance"
+            exit 1
+          fi
+          if ! grep -Fq \
+            "Legacy personal-touch provenance requires reconciliation before migration 0020" \
+            <<< "${migration_output}"; then
+            echo "Migration 0020 failed for an unexpected reason"
+            exit 1
+          fi
+          supabase test db --local \
+            supabase/tests/migration/0020_personal_touch_preflight.test.sql
+
+          supabase db reset --local --no-seed --version 0019
+          docker exec -i supabase_db_yll-call-copilot-local-security \
+            psql --username postgres --dbname postgres --set ON_ERROR_STOP=on \
+            < supabase/tests/migration/0020_metric_scope_backfill.seed.sql
+          supabase migration up --local
+          supabase test db --local \
+            supabase/tests/migration/0020_metric_scope_backfill.test.sql
 
       - name: Stop and remove the local database
         if: always()

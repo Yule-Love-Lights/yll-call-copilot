@@ -304,6 +304,7 @@ export async function loadStatsInputs(
     const { data: callRows, error: callsError } = await supabase
       .from('calls')
       .select('id, lead_id, outcome, started_at')
+      .eq('metric_scope', 'performance')
       .in('lead_id', leadIds)
       .gte('started_at', startIso)
       .lte('started_at', endIso);
@@ -365,6 +366,7 @@ export async function loadStatsInputs(
   const { data: transcriptRows, error: transcriptsError } = await supabase
     .from('transcripts')
     .select('outcome')
+    .eq('metric_scope', 'performance')
     .eq('vertical_id', verticalId)
     .gte('created_at', startIso)
     .lte('created_at', endIso);

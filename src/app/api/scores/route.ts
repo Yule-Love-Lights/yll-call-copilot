@@ -40,6 +40,7 @@ export async function GET(request: Request) {
     .select(
       'id, transcript_id, rubric_version, rep_email, vertical_slug, called_at, emotional, sales, hospitality, hard_metrics, experience, experience_score, guarantees, overall, win, fix, scored_at',
     )
+    .eq('metric_scope', 'performance')
     .gte('scored_at', since)
     .order('scored_at', { ascending: false })
     .limit(RESULT_LIMIT);

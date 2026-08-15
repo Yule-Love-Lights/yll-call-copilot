@@ -1,195 +1,145 @@
-import twilio from 'twilio';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  getSupabaseServerClient: vi.fn(),
-  isSupabaseConfigured: vi.fn(),
-  isWithinCallingHours: vi.fn(),
+  rpc: vi.fn(),
+  buildVoiceTwiml: vi.fn(() => '<Response><Dial>server-number</Dial></Response>'),
+  getContact: vi.fn(),
+  getOpportunitiesForContact: vi.fn(),
+  getStageNameMap: vi.fn(),
 }));
 
-vi.mock('@/lib/supabase', () => ({
-  getSupabaseServerClient: mocks.getSupabaseServerClient,
-  isSupabaseConfigured: mocks.isSupabaseConfigured,
-}));
+const client = {
+  rpc: mocks.rpc,
+  from: vi.fn((table: string) => ({
+    select: () => ({
+      eq: () => ({
+        maybeSingle: async () => table === 'live_sessions'
+          ? { data: { dial_actor_auth_user_id: 'auth-user-1', lead_id: 'lead-1' }, error: null }
+          : { data: { ghl_contact_id: 'ghl-1' }, error: null },
+      }),
+    }),
+  })),
+};
 
-vi.mock('@/lib/leads/callingHours', () => ({
-  isWithinCallingHours: mocks.isWithinCallingHours,
+vi.mock('@/lib/supabase', () => ({ getSupabaseServerClient: () => client, isSupabaseConfigured: () => true }));
+vi.mock('@/lib/live/twilioVoice', () => ({
+  verifyTwilioSignature: () => true,
+  isTwilioConfigured: () => true,
+  hashDialGrant: () => 'dial-hash',
+  normalizeTwilioClientIdentity: () => 'client-identity',
+  twilioIdentityForAuthUserId: () => 'client-identity',
+  buildLiveBridgeStreamUrl: () => 'wss://bridge.example.com/streams/session/grant',
+  buildVoiceTwiml: mocks.buildVoiceTwiml,
+}));
+vi.mock('@/lib/ghl/client', () => ({
+  isHighLevelConfigured: () => true,
+  getContact: mocks.getContact,
+  getOpportunitiesForContact: mocks.getOpportunitiesForContact,
+  getStageNameMap: mocks.getStageNameMap,
 }));
 
 import { POST } from './route';
-import { hashMediaStreamGrant, twilioIdentityForAuthUserId } from '@/lib/live/twilioVoice';
 
-const URL = 'https://ops.example.com/api/twilio/voice';
-const AUTH_TOKEN = 'twilio-auth-token';
-const CLIENT_IDENTITY = twilioIdentityForAuthUserId('auth-user-1');
-
-function signedRequest(params: Record<string, string>): Request {
-  const signature = twilio.getExpectedTwilioSignature(AUTH_TOKEN, URL, params);
-  return new Request(URL, {
+function request(signal?: AbortSignal) {
+  const form = new FormData();
+  form.set('dialGrant', 'opaque-grant');
+  form.set('From', 'client:client-identity');
+  form.set('To', '+19999999999');
+  return new Request('https://ops.example.com/api/twilio/voice', {
     method: 'POST',
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-      'x-twilio-signature': signature,
-    },
-    body: new URLSearchParams(params),
+    headers: { 'x-twilio-signature': 'signed' },
+    body: form,
+    signal,
   });
-}
-
-function fakeSupabase(options: {
-  identity?: string;
-  consumed?: boolean;
-} = {}) {
-  const session = {
-    id: 'real-session',
-    call_id: 'call-1',
-    mode: 'twilio',
-    status: 'active',
-    transcript_running: '',
-    dial_grant_hash: 'hash',
-    dial_actor_auth_user_id: options.identity ?? 'auth-user-1',
-    dial_grant_expires_at: '2099-01-01T00:00:00.000Z',
-    dial_started_at: null,
-    started_at: '2026-08-07T12:00:00.000Z',
-    ended_at: null,
-  };
-  const update = vi.fn((payload: Record<string, unknown>) => {
-    void payload;
-    const chain: Record<string, unknown> = {};
-    chain.eq = vi.fn(() => chain);
-    chain.is = vi.fn(() => chain);
-    chain.gt = vi.fn(() => chain);
-    chain.select = vi.fn(async () => ({
-      data: options.consumed === false ? [] : [{ id: session.id }],
-      error: null,
-    }));
-    return chain;
-  });
-  const from = vi.fn((table: string) => {
-    if (table === 'live_sessions') {
-      return {
-        select: () => ({
-          eq: () => ({ maybeSingle: async () => ({ data: session, error: null }) }),
-        }),
-        update,
-      };
-    }
-    if (table === 'calls') {
-      return {
-        select: () => ({
-          eq: () => ({ maybeSingle: async () => ({ data: { id: 'call-1', lead_id: 'lead-1' }, error: null }) }),
-        }),
-      };
-    }
-    if (table === 'leads') {
-      return {
-        select: () => ({
-          eq: () => ({ maybeSingle: async () => ({ data: { phone: '+15551234567', timezone: 'America/New_York' }, error: null }) }),
-        }),
-      };
-    }
-    throw new Error(`unexpected table ${table}`);
-  });
-  return { client: { from }, from, update };
 }
 
 describe('POST /api/twilio/voice', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubEnv('TWILIO_AUTH_TOKEN', AUTH_TOKEN);
-    vi.stubEnv('TWILIO_CALLER_ID', '+15550000000');
-    vi.stubEnv('LIVE_BRIDGE_URL', 'wss://bridge.example.com');
-    mocks.isSupabaseConfigured.mockReturnValue(true);
-    mocks.isWithinCallingHours.mockReturnValue(true);
+    process.env.LIVE_BRIDGE_URL = 'wss://bridge.example.com';
+    mocks.getContact.mockResolvedValue({
+      id: 'ghl-1',
+      phone: '+1 (555) 123-4567',
+      timezone: 'America/New_York',
+      dnd: false,
+      tags: [],
+    });
+    mocks.getOpportunitiesForContact.mockResolvedValue([]);
+    mocks.getStageNameMap.mockResolvedValue(new Map());
   });
+  afterEach(() => delete process.env.LIVE_BRIDGE_URL);
 
-  afterEach(() => vi.unstubAllEnvs());
-
-  it('derives the destination and session from a one-time grant, ignoring forged client fields', async () => {
-    const database = fakeSupabase();
-    mocks.getSupabaseServerClient.mockReturnValue(database.client);
-
-    const response = await POST(signedRequest({
-      dialGrant: 'opaque-grant',
-      From: `client:${CLIENT_IDENTITY}`,
-      To: '+19999999999',
-      sessionId: 'forged-session',
-    }));
-    const xml = await response.text();
-
+  it('derives the destination from the locked grant and ignores forged client fields', async () => {
+    mocks.rpc.mockResolvedValue({
+      data: [{
+        result_code: 'authorized',
+        session_id: 'session-1',
+        call_id: 'call-1',
+        lead_id: 'lead-1',
+        to_number: '+15551234567',
+        contact_timezone: 'America/New_York',
+      }],
+      error: null,
+    });
+    const response = await POST(request());
     expect(response.status).toBe(200);
-    expect(xml).toContain('+15551234567');
-    expect(xml).toContain('value="real-session"');
-    const streamUrlMatch = xml.match(
-      /url="wss:\/\/bridge\.example\.com\/streams\/real-session\/([A-Za-z0-9_-]{43})"/,
-    );
-    expect(streamUrlMatch).not.toBeNull();
-    expect(xml).not.toContain('+19999999999');
-    expect(xml).not.toContain('forged-session');
-    expect(database.update).toHaveBeenCalledWith(expect.objectContaining({
-      dial_started_at: expect.any(String),
-      media_stream_grant_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
-      media_stream_grant_expires_at: expect.any(String),
-      media_stream_started_at: null,
+    expect(mocks.buildVoiceTwiml).toHaveBeenCalledWith(expect.objectContaining({
+      toNumber: '+15551234567',
+      sessionId: 'session-1',
     }));
-    const updatePayload = database.update.mock.calls[0][0] as {
-      media_stream_grant_hash: string;
-    };
-    expect(hashMediaStreamGrant(streamUrlMatch![1])).toBe(
-      updatePayload.media_stream_grant_hash,
-    );
+    expect(mocks.buildVoiceTwiml).not.toHaveBeenCalledWith(expect.objectContaining({ toNumber: '+19999999999' }));
+    expect(mocks.rpc).toHaveBeenCalledWith('consume_authorized_live_dial', expect.objectContaining({
+      p_verified_contact_id: 'ghl-1',
+      p_verified_to_number: '+15551234567',
+      p_verified_timezone: 'America/New_York',
+    }));
   });
 
-  it('rejects a grant used by a different Twilio client identity', async () => {
-    const database = fakeSupabase();
-    mocks.getSupabaseServerClient.mockReturnValue(database.client);
+  it('rechecks current CRM do-not-call state before consuming the grant', async () => {
+    mocks.getContact.mockResolvedValue({
+      id: 'ghl-1',
+      phone: '+15551234567',
+      dnd: false,
+      dndSettings: { Call: { status: 'active' } },
+      tags: [],
+    });
+    const response = await POST(request());
+    expect(response.status).toBe(409);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
 
-    const response = await POST(signedRequest({
-      dialGrant: 'opaque-grant',
-      From: `client:${twilioIdentityForAuthUserId('another-auth-user')}`,
-    }));
+  it('rejects a consumed, expired, or reassigned grant', async () => {
+    mocks.rpc.mockResolvedValue({ data: [{ result_code: 'invalid_or_expired' }], error: null });
+    const response = await POST(request());
+    expect(response.status).toBe(403);
+  });
+
+  it('rejects the customer-local quiet-hours boundary without dialing', async () => {
+    mocks.rpc.mockResolvedValue({ data: [{ result_code: 'outside_calling_hours' }], error: null });
+    const response = await POST(request());
+    expect(response.status).toBe(409);
+    expect(mocks.buildVoiceTwiml).not.toHaveBeenCalled();
+  });
+
+  it('rejects a verified-contact binding mismatch without dialing', async () => {
+    mocks.rpc.mockResolvedValue({ data: [{ result_code: 'contact_binding_mismatch' }], error: null });
+
+    const response = await POST(request());
 
     expect(response.status).toBe(403);
-    expect(database.update).not.toHaveBeenCalled();
+    expect(mocks.buildVoiceTwiml).not.toHaveBeenCalled();
   });
 
-  it('rejects an atomically consumed/replayed grant', async () => {
-    const database = fakeSupabase({ consumed: false });
-    mocks.getSupabaseServerClient.mockReturnValue(database.client);
+  it('does not consume the grant after the webhook request is cancelled', async () => {
+    const controller = new AbortController();
+    mocks.getContact.mockImplementation(async () => {
+      controller.abort();
+      return { id: 'ghl-1', phone: '+15551234567', dnd: false, tags: [] };
+    });
 
-    const response = await POST(signedRequest({
-      dialGrant: 'opaque-grant',
-      From: `client:${CLIENT_IDENTITY}`,
-    }));
-
-    expect(response.status).toBe(409);
-    expect(await response.text()).toContain('already used');
-  });
-
-  it('rechecks customer-local calling hours before consuming the grant', async () => {
-    mocks.isWithinCallingHours.mockReturnValue(false);
-    const database = fakeSupabase();
-    mocks.getSupabaseServerClient.mockReturnValue(database.client);
-
-    const response = await POST(signedRequest({
-      dialGrant: 'opaque-grant',
-      From: `client:${CLIENT_IDENTITY}`,
-    }));
-
-    expect(response.status).toBe(409);
-    expect(database.update).not.toHaveBeenCalled();
-  });
-
-  it('fails closed without consuming the grant when the public bridge URL is insecure', async () => {
-    vi.stubEnv('LIVE_BRIDGE_URL', 'ws://bridge.example.com');
-    const database = fakeSupabase();
-    mocks.getSupabaseServerClient.mockReturnValue(database.client);
-
-    const response = await POST(signedRequest({
-      dialGrant: 'opaque-grant',
-      From: `client:${CLIENT_IDENTITY}`,
-    }));
+    const response = await POST(request(controller.signal));
 
     expect(response.status).toBe(503);
-    expect(database.update).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
 });

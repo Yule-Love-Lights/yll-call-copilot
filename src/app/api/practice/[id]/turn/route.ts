@@ -13,21 +13,12 @@ import { getSessionEmail } from '@/lib/auth/session';
 import { isClaudeConfigured } from '@/lib/claude';
 import { customerReply, type EmotionalState } from '@/lib/practice/customer';
 import { buildSessionSystemPrompt } from '@/lib/practice/context';
+import { MAX_REP_TURNS, MAX_TURN_TEXT_LENGTH } from '@/lib/practice/limits';
 import type { PracticeSessionRow, PracticeTurn } from '@/lib/practice/types';
 
 function isOwnSession(repEmail: string | null, session: PracticeSessionRow): boolean {
   return !!repEmail && !!session.rep_email && repEmail.toLowerCase() === session.rep_email.toLowerCase();
 }
-
-// Caps the metered Claude cost of a single practice call. Without this, a
-// rep (or a stuck client auto-retrying) could keep the call open
-// indefinitely, racking up one customerReply call per turn forever.
-export const MAX_REP_TURNS = 30;
-
-// A generous cap on one turn's typed/transcribed text -- long enough for a
-// few sentences, short enough to keep a single turn from ballooning the
-// Claude prompt (and the eventual scored transcript) with a wall of text.
-export const MAX_TURN_TEXT_LENGTH = 4000;
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!isSupabaseConfigured()) {

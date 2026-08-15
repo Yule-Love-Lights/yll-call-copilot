@@ -34,26 +34,31 @@ export async function computeInsights(supabase: SupabaseClient, verticalId: stri
   const { data: transcriptRows, error: transcriptError } = await supabase
     .from('transcripts')
     .select('id, outcome')
-    .eq('vertical_id', verticalId);
+    .eq('vertical_id', verticalId)
+    .eq('metric_scope', 'performance');
   if (transcriptError) {
     if (!isMissingTableError(transcriptError)) console.error('Load transcripts for insights failed:', transcriptError);
     return { ok: false, missingTable: isMissingTableError(transcriptError) };
   }
 
-  const { data: learningsRows, error: learningsError } = await supabase
-    .from('learnings')
-    .select('objections, customer_language, what_worked, what_failed, price_talk, questions')
-    .eq('vertical_id', verticalId);
-  if (learningsError) {
-    if (!isMissingTableError(learningsError)) console.error('Load learnings for insights failed:', learningsError);
-    return { ok: false, missingTable: isMissingTableError(learningsError) };
-  }
-
   const transcripts = (transcriptRows ?? []) as Pick<TranscriptRow, 'id' | 'outcome'>[];
-  const learnings = (learningsRows ?? []) as Pick<
+  let learnings: Pick<
     LearningsRow,
     'objections' | 'customer_language' | 'what_worked' | 'what_failed' | 'price_talk' | 'questions'
-  >[];
+  >[] = [];
+  const transcriptIds = transcripts.map(t => t.id);
+  if (transcriptIds.length > 0) {
+    const { data: learningsRows, error: learningsError } = await supabase
+      .from('learnings')
+      .select('objections, customer_language, what_worked, what_failed, price_talk, questions')
+      .eq('vertical_id', verticalId)
+      .in('transcript_id', transcriptIds);
+    if (learningsError) {
+      if (!isMissingTableError(learningsError)) console.error('Load learnings for insights failed:', learningsError);
+      return { ok: false, missingTable: isMissingTableError(learningsError) };
+    }
+    learnings = (learningsRows ?? []) as typeof learnings;
+  }
 
   const totalCalls = transcripts.length;
   const booked = transcripts.filter(t => t.outcome === 'booked').length;

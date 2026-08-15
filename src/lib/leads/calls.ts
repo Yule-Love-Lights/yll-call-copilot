@@ -4,9 +4,7 @@
 // sequential Supabase/Claude work and stays a thin, untested orchestrator,
 // same convention as every other route in this app.
 
-import { CALL_OUTCOMES, type CallDirection, type CallOutcome } from './types';
-
-const CALL_DIRECTIONS: CallDirection[] = ['inbound', 'outbound'];
+import { CALL_OUTCOMES, type CallOutcome } from './types';
 
 // Loose UUID shape check, not a strict v4 validator — good enough to reject
 // garbage before it reaches a `.eq('id', callId)` query. Matches the shape
@@ -19,16 +17,12 @@ export type CallInput = {
   notes: string;
   // Trimmed; null means no transcript was pasted for this call.
   transcript: string | null;
-  // Set when this outcome belongs to a call POST /api/live/end already
-  // created (the rep just finished a live-coached call) — see
-  // POST /api/calls, which UPDATEs that row instead of inserting a second
-  // one. null for a plain outbound call logged straight from the console.
-  callId: string | null;
-  // Which way the call went — defaults to 'outbound' (every call started
-  // from the console/live-coaching flow is a rep dialing out), overridden
-  // to 'inbound' by the console when the lead's own source is 'inbound'
-  // (a webhook-logged call/text the rep is now logging the outcome of).
-  direction: CallDirection;
+  // Server-recovered pending live attempt. The database revalidates the
+  // session-to-call-to-lead chain; null means a manual call completion.
+  sessionId: string | null;
+  // Stable across retries. The database uses this key to return the original
+  // completed call instead of creating a second one after a lost response.
+  completionRequestId: string;
 };
 
 export type CallInputValidation = { valid: true; input: CallInput } | { valid: false; error: string };
@@ -43,6 +37,9 @@ export function validateCallInput(body: unknown): CallInputValidation {
   if (!leadId) {
     return { valid: false, error: 'leadId is required.' };
   }
+  if (!UUID_RE.test(leadId)) {
+    return { valid: false, error: 'leadId must be a valid id.' };
+  }
 
   const outcome = typeof b.outcome === 'string' ? b.outcome : '';
   if (!(CALL_OUTCOMES as string[]).includes(outcome)) {
@@ -52,17 +49,14 @@ export function validateCallInput(body: unknown): CallInputValidation {
   const notes = typeof b.notes === 'string' ? b.notes : '';
   const transcriptRaw = typeof b.transcript === 'string' ? b.transcript.trim() : '';
 
-  const callIdRaw = typeof b.callId === 'string' ? b.callId.trim() : '';
-  if (callIdRaw && !UUID_RE.test(callIdRaw)) {
-    return { valid: false, error: 'callId must be a valid id.' };
+  const sessionIdRaw = typeof b.sessionId === 'string' ? b.sessionId.trim() : '';
+  if (sessionIdRaw && !UUID_RE.test(sessionIdRaw)) {
+    return { valid: false, error: 'sessionId must be a valid id.' };
   }
 
-  let direction: CallDirection = 'outbound';
-  if (b.direction !== undefined) {
-    if (typeof b.direction !== 'string' || !(CALL_DIRECTIONS as string[]).includes(b.direction)) {
-      return { valid: false, error: 'direction must be "inbound" or "outbound".' };
-    }
-    direction = b.direction as CallDirection;
+  const completionRequestId = typeof b.completionRequestId === 'string' ? b.completionRequestId.trim() : '';
+  if (!UUID_RE.test(completionRequestId)) {
+    return { valid: false, error: 'completionRequestId must be a valid id.' };
   }
 
   return {
@@ -72,8 +66,8 @@ export function validateCallInput(body: unknown): CallInputValidation {
       outcome: outcome as CallOutcome,
       notes,
       transcript: transcriptRaw || null,
-      callId: callIdRaw || null,
-      direction,
+      sessionId: sessionIdRaw || null,
+      completionRequestId,
     },
   };
 }

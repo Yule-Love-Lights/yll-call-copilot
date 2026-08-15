@@ -1,32 +1,23 @@
-// PUT /api/followups/[id] — body {subject?, body?}. Lets a rep edit a draft
-// before sending. Only a 'draft' row can be edited — once sent or failed,
-// the record is history.
+// Edits only the signed-in employee's own draft. Owner/Admin team access is
+// read-only and cannot impersonate the call owner.
 
 import { NextResponse } from 'next/server';
+import { resolveCurrentHubActor } from '@/lib/auth/resource';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
-import { authorizeCallResource, resolveCurrentHubActor } from '@/lib/auth/resource';
-import type { FollowupRow } from '@/lib/leads/types';
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!isSupabaseConfigured()) {
-    return NextResponse.json({ configured: false, saved: false });
+    return NextResponse.json({ configured: false, saved: false }, { status: 503 });
   }
-
   const { id } = await params;
-  const rawBody = await request.json().catch(() => null);
-  if (!rawBody || typeof rawBody !== 'object') {
-    return NextResponse.json({ configured: true, saved: false, error: 'Invalid request body.' }, { status: 400 });
+  const body = await request.json().catch(() => null);
+  const messageBody = typeof body?.body === 'string' ? body.body.trim() : '';
+  const subject = typeof body?.subject === 'string' ? body.subject : null;
+  if (!UUID_PATTERN.test(id) || !messageBody) {
+    return NextResponse.json({ configured: true, saved: false, error: 'A valid follow-up and non-empty message are required.' }, { status: 400 });
   }
-  const body = rawBody as Record<string, unknown>;
-
-  const update: Record<string, string> = {};
-  if (typeof body.subject === 'string') update.subject = body.subject;
-  if (typeof body.body === 'string') update.body = body.body;
-  if (Object.keys(update).length === 0) {
-    return NextResponse.json({ configured: true, saved: false, error: 'No updatable fields provided.' }, { status: 400 });
-  }
-
-  const supabase = getSupabaseServerClient()!;
   const actorResolution = await resolveCurrentHubActor();
   if (actorResolution.status !== 'resolved') {
     return NextResponse.json(
@@ -34,69 +25,33 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       { status: actorResolution.status === 'unavailable' ? 503 : 403 },
     );
   }
-
-  const { data: existingData, error: existingError } = await supabase
-    .from('followups')
-    .select('id, call_id, status')
-    .eq('id', id)
-    .maybeSingle();
-  if (existingError) {
-    if (isMissingTableError(existingError)) {
-      return NextResponse.json({ configured: true, saved: false, reason: 'Run migration 0004 first.' });
-    }
-    console.error('Load followup for edit failed:', existingError);
-    return NextResponse.json({ configured: true, saved: false, error: 'Could not load the follow-up.' }, { status: 500 });
-  }
-  if (!existingData) {
-    return NextResponse.json({ configured: true, saved: false, error: 'Follow-up not found.' }, { status: 404 });
-  }
-  const existing = existingData as Pick<FollowupRow, 'id' | 'call_id' | 'status'>;
-  if (!existing.call_id) {
-    return NextResponse.json(
-      { configured: true, saved: false, error: 'Access denied.' },
-      { status: 403 },
-    );
-  }
-  const authorization = await authorizeCallResource(supabase, {
-    actor: actorResolution.actor,
-    callId: existing.call_id,
-    action: 'followup.edit',
-    resourceType: 'followup',
-    resourceId: id,
-    teamCapability: 'operations.admin',
+  const supabase = getSupabaseServerClient()!;
+  const { data, error } = await supabase.rpc('update_owned_followup_draft', {
+    p_actor_employee_id: actorResolution.actor.employeeId,
+    p_actor_email: actorResolution.actor.email,
+    p_followup_id: id,
+    p_subject: subject,
+    p_body: messageBody,
   });
-  if (authorization.status !== 'authorized') {
-    const status = authorization.status === 'unavailable' ? 503
-      : authorization.status === 'missing' ? 404 : 403;
-    return NextResponse.json(
-      { configured: true, saved: false, error: 'Access denied.' },
-      { status },
-    );
-  }
-  if (existing.status !== 'draft') {
-    return NextResponse.json(
-      { configured: true, saved: false, error: 'Only a draft follow-up can be edited.' },
-      { status: 409 },
-    );
-  }
-
-  const { data: updatedRows, error: updateError } = await supabase
-    .from('followups')
-    .update(update)
-    .eq('id', id)
-    .eq('call_id', existing.call_id)
-    .eq('status', 'draft')
-    .select('id');
-  if (updateError) {
-    console.error('Update followup failed:', updateError);
+  if (error) {
+    if (isMissingTableError(error)) {
+      return NextResponse.json({ configured: true, saved: false, migrated: false, reason: 'Run migration 0020 first.' });
+    }
+    console.error('Update follow-up draft failed:', error);
     return NextResponse.json({ configured: true, saved: false, error: 'Could not save the follow-up.' }, { status: 500 });
   }
-  if (!updatedRows || updatedRows.length !== 1) {
-    return NextResponse.json(
-      { configured: true, saved: false, error: 'Only a draft follow-up can be edited.' },
-      { status: 409 },
-    );
+  const code = ((Array.isArray(data) ? data[0] : data) as { result_code?: string } | null)?.result_code;
+  if (code === 'followup_missing') {
+    return NextResponse.json({ configured: true, saved: false, error: 'Follow-up not found.' }, { status: 404 });
   }
-
+  if (code === 'actor_inactive' || code === 'not_owned') {
+    return NextResponse.json({ configured: true, saved: false, error: 'Access denied.' }, { status: 403 });
+  }
+  if (code === 'not_draft') {
+    return NextResponse.json({ configured: true, saved: false, error: 'Only a draft follow-up can be edited.' }, { status: 409 });
+  }
+  if (code !== 'updated') {
+    return NextResponse.json({ configured: true, saved: false, error: 'Could not save the follow-up.' }, { status: code === 'invalid_input' ? 400 : 500 });
+  }
   return NextResponse.json({ configured: true, saved: true });
 }

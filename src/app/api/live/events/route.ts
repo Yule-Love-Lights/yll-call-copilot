@@ -1,9 +1,8 @@
 // GET /api/live/events?sessionId=&afterMs= -- the console polls this every
 // 2s (no websockets, per the brief) for new coaching cards. Also returns the
-// session's current running transcript so the same poll drives the "big
-// live transcript pane" for BOTH modes: the simulator already knows its own
-// script client-side, but Twilio mode's transcript text only exists here
-// (written by the bridge via POST /api/live/segment).
+// session's current running transcript so the same poll drives the live
+// transcript pane. Customer-call transcript text is written only by the
+// authenticated Twilio bridge through POST /api/live/segment.
 
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient, isMissingTableError, isSupabaseConfigured } from '@/lib/supabase';
@@ -47,6 +46,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ configured: true, error: 'Live session not found.' }, { status: 404 });
   }
   const session = sessionData as LiveSessionRow;
+  if (!session.call_id) {
+    return NextResponse.json({ configured: true, error: 'Live session is not linked to a call.' }, { status: 409 });
+  }
 
   const authorization = await authorizeCallResource(supabase, {
     actor: actorResolution.actor,

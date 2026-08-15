@@ -77,6 +77,7 @@ export async function loadCallScoreRows(supabase: SupabaseClient, from: string, 
   const { data, error } = await supabase
     .from('call_scores')
     .select('id, rep_email, overall, experience_score, win, fix, emotional, sales, hospitality, guarantees')
+    .eq('metric_scope', 'performance')
     .gte('called_at', startIso)
     .lte('called_at', endIso);
   if (error) {

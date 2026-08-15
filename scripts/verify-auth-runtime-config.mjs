@@ -27,6 +27,12 @@ if (ownerIds.length !== 2 || new Set(ownerIds).size !== 2 || ownerIds.some(id =>
 }
 
 if (process.env.GHL_WEBHOOK_SECRET) strongSecret('GHL_WEBHOOK_SECRET');
+if (process.env.GHL_FOLLOWUP_SEND_ENABLED && !['true', 'false'].includes(process.env.GHL_FOLLOWUP_SEND_ENABLED)) {
+  errors.push('GHL_FOLLOWUP_SEND_ENABLED must be exactly true or false');
+}
+if (process.env.GHL_FOLLOWUP_SEND_ENABLED === 'true') {
+  errors.push('GHL_FOLLOWUP_SEND_ENABLED must remain false until recipient refresh and uncertain-delivery reconciliation are implemented and approved');
+}
 if (process.env.LIVE_BRIDGE_URL || process.env.LIVE_APP_BASE_URL) {
   strongSecret('LIVE_BRIDGE_SECRET');
   required('TWILIO_AUTH_TOKEN');
@@ -72,6 +78,16 @@ const twilioNames = [
   'TWILIO_TWIML_APP_SID',
   'TWILIO_CALLER_ID',
 ];
+if (process.env.LIVE_CUSTOMER_CALLS_ENABLED && !['true', 'false'].includes(process.env.LIVE_CUSTOMER_CALLS_ENABLED)) {
+  errors.push('LIVE_CUSTOMER_CALLS_ENABLED must be exactly true or false');
+}
+if (process.env.LIVE_CUSTOMER_CALLS_ENABLED === 'true') {
+  errors.push('LIVE_CUSTOMER_CALLS_ENABLED must remain false until provider hangup, stream-drain, and two-track transcription smokes are implemented and approved');
+  for (const name of twilioNames) required(name);
+  required('LIVE_BRIDGE_URL');
+  required('LIVE_APP_BASE_URL');
+  strongSecret('LIVE_BRIDGE_SECRET');
+}
 if (twilioNames.some(name => process.env[name]?.trim())) {
   for (const name of twilioNames) required(name);
   required('LIVE_BRIDGE_URL');

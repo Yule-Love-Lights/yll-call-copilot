@@ -11,6 +11,7 @@ import {
 const AUTH_TOKEN = 'twilio-auth-token';
 const BASE_URL = 'wss://bridge.example.com/media';
 const SESSION_ID = '123e4567-e89b-12d3-a456-426614174000';
+const SOURCE_SEGMENT_ID = '223e4567-e89b-12d3-a456-426614174000';
 const STREAM_GRANT = 'a'.repeat(43);
 const REQUEST_PATH = `/media/streams/${SESSION_ID}/${STREAM_GRANT}`;
 const PUBLIC_URL = `wss://bridge.example.com${REQUEST_PATH}`;
@@ -117,8 +118,10 @@ describe('live bridge WebSocket upgrade authentication', () => {
       expect(options.headers['x-live-bridge-secret']).toBe('bridge-secret-at-least-16');
       expect(JSON.parse(options.body)).toMatchObject({
         sessionId: SESSION_ID,
+        sourceSegmentId: SOURCE_SEGMENT_ID,
         speaker: 'customer',
         text: 'private transcript',
+        atMs: 2500,
       });
       return { ok: false, status: 302 };
     };
@@ -127,8 +130,10 @@ describe('live bridge WebSocket upgrade authentication', () => {
       appBaseUrl: 'https://ops.example.com',
       bridgeSecret: 'bridge-secret-at-least-16',
       sessionId: SESSION_ID,
+      sourceSegmentId: SOURCE_SEGMENT_ID,
       speaker: 'customer',
       text: 'private transcript',
+      atMs: 2500,
       silenceMs: 1000,
       fetchImpl,
       signal: undefined,

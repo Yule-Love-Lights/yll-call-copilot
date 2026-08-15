@@ -27,7 +27,8 @@ export async function GET() {
   const supabase = getSupabaseServerClient()!;
   const { count, error } = await supabase
     .from('feedback_cards')
-    .select('id', { count: 'exact', head: true })
+    .select('id, call_scores!inner(metric_scope)', { count: 'exact', head: true })
+    .eq('call_scores.metric_scope', 'performance')
     .eq('rep_email', repEmail)
     .is('seen_at', null);
   if (error) {

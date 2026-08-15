@@ -32,7 +32,8 @@ export async function materializeFeedbackCards(
   const { data: scoreRows, error: scoresError } = await supabase
     .from('call_scores')
     .select('*')
-    .eq('rep_email', repEmail);
+    .eq('rep_email', repEmail)
+    .eq('metric_scope', 'performance');
   if (scoresError) throw scoresError;
   const scores = (scoreRows ?? []) as CallScoreRow[];
   if (scores.length === 0) return { created: 0 };
@@ -71,13 +72,14 @@ export async function materializeFeedbackCards(
 }
 
 // GET /api/feedback's feed read, after materializeFeedbackCards() has run.
-// A thin select, same split as leads/queue.ts (the interesting logic lives
-// in the function above; this is not worth its own dedicated test beyond
-// what the route-level manual check covers).
+// A thin select, same split as leads/queue.ts. The inner call_scores join is
+// intentional: legacy cards backed by training scores must not leak back into
+// the rep's performance feed.
 export async function listFeedbackCards(supabase: SupabaseClient, repEmail: string, limit = 30) {
   const { data, error } = await supabase
     .from('feedback_cards')
-    .select('*')
+    .select('*, call_scores!inner(metric_scope)')
+    .eq('call_scores.metric_scope', 'performance')
     .eq('rep_email', repEmail)
     .order('created_at', { ascending: false })
     .limit(limit);

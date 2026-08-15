@@ -88,7 +88,7 @@ describe('buildQueue — quote-follow-up DNC hydration (H1)', () => {
     getContactMock.mockReset();
   });
 
-  it('excludes a dnd-flagged contact even though the opportunity embeds a contact ref (no hardcoded dnd:undefined)', async () => {
+  it('excludes a channel-DND contact even though the opportunity embeds a contact ref', async () => {
     getOpenOpportunitiesMock.mockResolvedValue([quoteOpportunity()]);
     getContactMock.mockResolvedValue({
       id: 'c1',
@@ -96,7 +96,8 @@ describe('buildQueue — quote-follow-up DNC hydration (H1)', () => {
       fullName: 'Jordan Rivera',
       email: 'jordan@example.com',
       phone: '555-0100',
-      dnd: true,
+      dnd: false,
+      dndSettings: { Call: { status: 'active' } },
       tags: [],
     });
 
@@ -128,7 +129,7 @@ describe('buildQueue — quote-follow-up DNC hydration (H1)', () => {
     expect(insertedLeads.find(r => r.ghl_contact_id === 'c1')).toBeUndefined();
   });
 
-  it('queues a callable contact via the quote-follow-up source once hydrated', async () => {
+  it('queues a contact whose channel DND is inactive via the quote-follow-up source once hydrated', async () => {
     getOpenOpportunitiesMock.mockResolvedValue([quoteOpportunity()]);
     getContactMock.mockResolvedValue({
       id: 'c1',
@@ -137,6 +138,7 @@ describe('buildQueue — quote-follow-up DNC hydration (H1)', () => {
       email: 'jordan@example.com',
       phone: '555-0100',
       dnd: false,
+      dndSettings: { Call: { status: 'inactive' } },
       tags: [],
     });
 
@@ -162,5 +164,44 @@ describe('buildQueue — quote-follow-up DNC hydration (H1)', () => {
 
     expect(insertedLeads.find(r => r.ghl_contact_id === 'c1')).toBeUndefined();
     expect(loggedEvents.some(e => e.kind === 'queue_dnc_hydration_failed')).toBe(true);
+  });
+
+  it('propagates channel DND from the contact page into inbound scoring', async () => {
+    listContactsMock.mockResolvedValue([{
+      id: 'inbound-dnd',
+      contactName: 'Inbound Opt Out',
+      phone: '555-0101',
+      dateUpdated: new Date().toISOString(),
+      dnd: false,
+      dndSettings: { Call: { status: 'active' } },
+      tags: ['new lead'],
+    }]);
+
+    const { client, insertedLeads } = fakeSupabase();
+    fakeClient = client;
+
+    const result = await buildQueue();
+
+    expect(insertedLeads.find(r => r.ghl_contact_id === 'inbound-dnd')).toBeUndefined();
+    expect(result.added).toBe(0);
+  });
+
+  it('propagates channel DND from the contact page into season-play scoring', async () => {
+    listContactsMock.mockResolvedValue([{
+      id: 'season-dnd',
+      contactName: 'Past Customer Opt Out',
+      phone: '555-0102',
+      dnd: false,
+      dndSettings: { Call: { status: 'active' } },
+      tags: ['past customer'],
+    }]);
+
+    const { client, insertedLeads } = fakeSupabase();
+    fakeClient = client;
+
+    const result = await buildQueue();
+
+    expect(insertedLeads.find(r => r.ghl_contact_id === 'season-dnd')).toBeUndefined();
+    expect(result.added).toBe(0);
   });
 });

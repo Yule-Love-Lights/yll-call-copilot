@@ -68,7 +68,7 @@ async function collectCandidates(now: Date, supabase: SupabaseClient): Promise<L
     // Do-not-call gate first: dnd flag, DNC-ish tags, or a DNC-ish stage
     // (live pipelines include "DO NOT CALL", "Spam Calls", "Pause
     // Communications Until October") keep a contact out of the queue.
-    if (!isCallable({ dnd: c.dnd, tags: c.tags ?? [], stageNames: stageNamesFor(c.id) })) continue;
+    if (!isCallable({ dnd: c.dnd, dndSettings: c.dndSettings, tags: c.tags ?? [], stageNames: stageNamesFor(c.id) })) continue;
     const candidate = buildInboundCandidate({ contact: c, stageName: stageNamesFor(c.id)[0] ?? null, now });
     if (candidate) {
       candidates.push(candidate);
@@ -103,6 +103,7 @@ async function collectCandidates(now: Date, supabase: SupabaseClient): Promise<L
         email: hydrated.email ?? null,
         phone: hydrated.phone ?? null,
         dnd: hydrated.dnd,
+        dndSettings: hydrated.dndSettings,
         tags: hydrated.tags ?? [],
       };
     } catch (err) {
@@ -116,7 +117,7 @@ async function collectCandidates(now: Date, supabase: SupabaseClient): Promise<L
     await delay(GHL_RATE_LIMIT_GAP_MS);
     if (!contactRef) continue;
 
-    if (!isCallable({ dnd: contactRef.dnd, tags: contactRef.tags ?? [], stageNames: stageNamesFor(opp.contactId) })) continue;
+    if (!isCallable({ dnd: contactRef.dnd, dndSettings: contactRef.dndSettings, tags: contactRef.tags ?? [], stageNames: stageNamesFor(opp.contactId) })) continue;
 
     const candidate = buildQuoteFollowupCandidate({ opportunity: opp, stageName, contact: contactRef, now });
     if (candidate) {
@@ -133,7 +134,7 @@ async function collectCandidates(now: Date, supabase: SupabaseClient): Promise<L
   let seasonCount = 0;
   for (const c of contacts) {
     if (seasonCount >= MAX_LEADS_PER_SOURCE) break;
-    if (!isCallable({ dnd: c.dnd, tags: c.tags ?? [], stageNames: stageNamesFor(c.id) })) continue;
+    if (!isCallable({ dnd: c.dnd, dndSettings: c.dndSettings, tags: c.tags ?? [], stageNames: stageNamesFor(c.id) })) continue;
     const candidate = buildSeasonPlayCandidate({ contact: c, openStageNames: stageNamesFor(c.id), play });
     if (candidate) {
       candidates.push(candidate);

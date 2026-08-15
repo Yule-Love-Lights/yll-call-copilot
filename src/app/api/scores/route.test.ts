@@ -82,7 +82,10 @@ describe('GET /api/scores — rep role scoping (HIGH auth fix)', () => {
     const res = await GET(new Request('http://localhost/api/scores?rep=other@yulelovelights.com'));
     const json = await res.json();
 
-    expect(eqCalls).toEqual([['rep_email', 'me@yulelovelights.com']]);
+    expect(eqCalls).toEqual([
+      ['metric_scope', 'performance'],
+      ['rep_email', 'me@yulelovelights.com'],
+    ]);
     expect(json.scores.map((s: Row) => s.id)).toEqual(['1']);
   });
 
@@ -108,7 +111,10 @@ describe('GET /api/scores — rep role scoping (HIGH auth fix)', () => {
     const res = await GET(new Request('http://localhost/api/scores?rep=other@yulelovelights.com'));
     const json = await res.json();
 
-    expect(eqCalls).toEqual([['rep_email', 'other@yulelovelights.com']]);
+    expect(eqCalls).toEqual([
+      ['metric_scope', 'performance'],
+      ['rep_email', 'other@yulelovelights.com'],
+    ]);
     expect(json.scores.map((s: Row) => s.id)).toEqual(['2']);
   });
 
@@ -124,7 +130,7 @@ describe('GET /api/scores — rep role scoping (HIGH auth fix)', () => {
     const res = await GET(new Request('http://localhost/api/scores'));
     const json = await res.json();
 
-    expect(eqCalls).toEqual([]);
+    expect(eqCalls).toEqual([['metric_scope', 'performance']]);
     expect(json.scores).toHaveLength(2);
   });
 });

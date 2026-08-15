@@ -38,6 +38,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       'id, transcript_id, rubric_version, rep_email, vertical_slug, called_at, emotional, sales, hospitality, hard_metrics, experience, experience_score, guarantees, overall, win, fix, scored_at',
     )
     .eq('id', id)
+    .eq('metric_scope', 'performance')
     .maybeSingle();
   if (error) {
     if (isMissingTableError(error)) {
@@ -56,6 +57,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     .from('transcripts')
     .select('raw_text, customer_name, outcome, duration_seconds, called_at')
     .eq('id', call.transcript_id)
+    .eq('metric_scope', 'performance')
     .maybeSingle();
   if (transcriptError) {
     console.error('Load transcript for call review failed:', transcriptError);
