@@ -1,5 +1,5 @@
 // Shared shapes for #217 slice 1: the commitment extractor and its
-// call_commitments table (supabase/migrations/0020_call_commitments.sql).
+// call_commitments table (supabase/migrations/0021_call_commitments.sql).
 
 export type CommitmentKind = 'send_quote' | 'send_photos' | 'callback' | 'schedule_estimate' | 'send_info' | 'other';
 

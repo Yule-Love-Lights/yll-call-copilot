@@ -12,7 +12,7 @@
 //   between them, reproducing the mislabeling bug the HIGH fix was meant
 //   to prevent. Closed by moving the check-and-write into ONE database
 //   function (call_commitments_upsert_batch, supabase/migrations/
-//   0021_call_commitments_upsert_fn.sql) invoked through a single RPC call.
+//   0022_call_commitments_upsert_fn.sql) invoked through a single RPC call.
 //
 // This suite cannot exercise real concurrent transactions against a mocked
 // client -- there is no live Postgres here to race two sessions against.

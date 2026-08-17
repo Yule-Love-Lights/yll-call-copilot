@@ -3,7 +3,7 @@
 // (src/lib/transcripts/process.ts): a retried backfill batch must not
 // create duplicate rows for a transcript it already processed. The dedupe
 // key is (transcript_id, kind, extraction_index) -- see
-// supabase/migrations/0020_call_commitments.sql for why extraction_index,
+// supabase/migrations/0021_call_commitments.sql for why extraction_index,
 // not detail text, is the third column. #217
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -36,7 +36,7 @@ export type PersistResult = { ok: true } | { ok: false; reason: 'has_resolved_co
 // exactly that verify job.
 //
 // Fix: call_commitments_upsert_batch (supabase/migrations/
-// 0021_call_commitments_upsert_fn.sql) does the check AND the write inside
+// 0022_call_commitments_upsert_fn.sql) does the check AND the write inside
 // ONE plpgsql function, invoked via a single RPC round trip. It locks
 // every existing row for the transcript with `for update` before deciding,
 // so the whole check-then-act sequence is one statement's worth of

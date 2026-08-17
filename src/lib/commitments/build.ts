@@ -8,7 +8,7 @@ import type { CommitmentRow, RawCommitment } from './types';
 
 // extraction_index is the position of a commitment within its own kind
 // group, in the order the model returned them -- see
-// supabase/migrations/0020_call_commitments.sql's DEDUPE KEY note for why
+// supabase/migrations/0021_call_commitments.sql's DEDUPE KEY note for why
 // this (not the freeform `detail` text) is the third column of the unique
 // key: it stays stable across a re-extraction of the same transcript even
 // though Claude is not byte-deterministic about wording. A re-extraction
