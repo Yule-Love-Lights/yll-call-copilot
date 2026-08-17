@@ -44,8 +44,27 @@ function validSupabaseUrl(rawUrl: string, nodeEnvironment: string | undefined): 
   }
 }
 
+// Read each variable as a LITERAL `process.env.X` member expression. Next
+// inlines `NEXT_PUBLIC_*` at build time by substituting exactly that syntax, so
+// reading them off a `process.env` OBJECT REFERENCE (the previous
+// `environment: ServerAuthEnvironment = process.env` default) yields undefined
+// in bundles that rely on the substitution — the middleware bundle does. The
+// route-handler bundle kept them at runtime, which is why /api/health reported
+// `supabase: true` while proxy.ts simultaneously 503'd every non-public route
+// through this same function for eight days (2026-08-08 to 2026-08-16): all
+// crons dark, no calls captured. The explicit `environment` parameter stays,
+// because the tests inject fixtures through it; only the DEFAULT changed.
+function readServerAuthEnvironment(): ServerAuthEnvironment {
+  return {
+    NODE_ENV: process.env.NODE_ENV,
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  };
+}
+
 export function resolveServerAuthConfiguration(
-  environment: ServerAuthEnvironment = process.env,
+  environment: ServerAuthEnvironment = readServerAuthEnvironment(),
 ): ServerAuthConfiguration {
   const rawUrl = nonBlank(environment.NEXT_PUBLIC_SUPABASE_URL);
   const anonKey = nonBlank(environment.NEXT_PUBLIC_SUPABASE_ANON_KEY);
