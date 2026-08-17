@@ -23,10 +23,23 @@ export const maxDuration = 300;
 export async function GET(request: Request) {
   const auth = verifyCronRequest(request);
   if (auth !== 'authorized') {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: auth === 'unconfigured' ? 503 : 401 },
-    );
+    // 503 vs 401 is the whole diagnosis and it used to be invisible: both
+    // returned the same {"error":"Unauthorized"} body. 'unconfigured' means
+    // CRON_SECRET is absent or under 16 chars, so EVERY caller is rejected --
+    // including Vercel Cron itself. That silently dark-ed this pipeline for
+    // eight days (2026-08-08 to 2026-08-16, zero calls captured) while the
+    // body said "Unauthorized", which reads like a caller problem rather than
+    // a server misconfiguration. Names the variable, never its value.
+    return auth === 'unconfigured'
+      ? NextResponse.json(
+          {
+            error: 'CRON_SECRET is not configured',
+            code: 'CRON_SECRET_UNCONFIGURED',
+            hint: 'Set CRON_SECRET (16+ chars) in this environment; every cron caller is rejected until then.',
+          },
+          { status: 503 },
+        )
+      : NextResponse.json({ error: 'Unauthorized', code: 'CRON_AUTH_DENIED' }, { status: 401 });
   }
   if (process.env.CRON_ENABLED !== 'true') {
     return NextResponse.json({ ran: false, reason: 'CRON_ENABLED is not set.' });
