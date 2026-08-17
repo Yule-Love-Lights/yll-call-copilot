@@ -100,7 +100,21 @@ export function messageDuration(m: GhlMessage): number | null {
 // descending (the default the GHL Conversations API documents) so the scan
 // can stop the moment one conversation's lastMessageDate falls before the
 // sync window, instead of paging through the whole account every night.
-export async function listRecentCallRecordings(sinceIso: string, limit = 100): Promise<GhlCallRecordingMessage[]> {
+/** Truncated=true means the `limit` cap stopped the scan before the sync
+ *  window was exhausted, so MORE calls exist that were not returned. The
+ *  caller MUST NOT advance its cursor past the returned set in that case --
+ *  doing so permanently skips the remainder (a measured 29 real calls on the
+ *  2026-08 backlog). Returned as a field rather than inferred from
+ *  `messages.length === limit` so the caller cannot forget to check it. */
+export type RecentCallRecordingsPage = {
+  messages: GhlCallRecordingMessage[];
+  truncated: boolean;
+};
+
+export async function listRecentCallRecordings(
+  sinceIso: string,
+  limit = 100,
+): Promise<RecentCallRecordingsPage> {
   const { locationId } = requireConfig();
   const since = new Date(sinceIso).getTime();
   const results: GhlCallRecordingMessage[] = [];
@@ -124,8 +138,9 @@ export async function listRecentCallRecordings(sinceIso: string, limit = 100): P
       if (convo.lastMessageDate && new Date(convo.lastMessageDate).getTime() < since) {
         // Newest-first order means every remaining conversation (this page
         // and later ones) is also older than the window -- stop the whole
-        // scan here rather than paging further.
-        return results;
+        // scan here rather than paging further. The window is EXHAUSTED, so
+        // this is a complete result: the caller may safely advance its cursor.
+        return { messages: results, truncated: false };
       }
 
       const messagesPage = await ghlFetch<{ messages?: { messages?: GhlMessage[] } }>(
@@ -145,14 +160,18 @@ export async function listRecentCallRecordings(sinceIso: string, limit = 100): P
           dateAdded: m.dateAdded,
           durationSeconds: messageDuration(m),
         });
-        if (results.length >= limit) return results;
+        if (results.length >= limit) return { messages: results, truncated: true };
       }
     }
 
     offset += CONVERSATIONS_PAGE_LIMIT;
   }
 
-  return results;
+  // Falling out of the while loop means one of its guards stopped us rather
+  // than the window running out: either the limit cap or
+  // MAX_CONVERSATIONS_SCANNED. Both mean unseen calls may remain, so report
+  // truncated and let the caller hold its cursor.
+  return { messages: results, truncated: true };
 }
 
 // Raw-bytes fetch -- ghlFetch always json()s its response, which would

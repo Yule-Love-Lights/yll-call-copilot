@@ -71,7 +71,7 @@ export async function GET(request: Request) {
     // small overlap between runs, so re-seeing a few of the same messages
     // next time is free.
     const runStartedAt = new Date().toISOString();
-    const messages = await listRecentCallRecordings(since);
+    const { messages, truncated } = await listRecentCallRecordings(since);
 
     let inserted = 0;
     for (const m of messages) {
@@ -100,15 +100,37 @@ export async function GET(request: Request) {
       if (data && data.length > 0) inserted++;
     }
 
+    // TRUNCATION GUARD. listRecentCallRecordings stops at its limit cap (100)
+    // or the conversation-scan cap and reports truncated=true, meaning MORE
+    // calls exist in the window than it returned. Stamping runStartedAt in
+    // that case moves the cursor past everything it did not fetch, and the
+    // next run's `dateAdded < since` filter then excludes those calls
+    // FOREVER while the response still reads {ran:true, inserted:N}.
+    //
+    // Measured, not hypothetical: replaying this against the real 2026-08-08
+    // cursor found 129 calls in the window, a fetch capped at 100, and 29
+    // real sales calls that would have been silently dropped on the very run
+    // intended to recover the backlog.
+    //
+    // So when truncated, resume from the OLDEST message actually returned
+    // rather than from now. The ghl_message_id unique constraint makes the
+    // resulting overlap free, and successive runs walk the backlog down
+    // instead of skipping it.
+    const oldestReturned = messages.reduce<string | null>(
+      (oldest, m) => (m.dateAdded && (!oldest || m.dateAdded < oldest) ? m.dateAdded : oldest),
+      null,
+    );
+    const nextCursor = truncated && oldestReturned ? oldestReturned : runStartedAt;
+
     await supabase.from('recording_sync_state').upsert({
       id: 1,
-      last_synced_at: runStartedAt,
-      detail: { messages_seen: messages.length, inserted },
+      last_synced_at: nextCursor,
+      detail: { messages_seen: messages.length, inserted, truncated, cursor_held: nextCursor !== runStartedAt },
     });
 
     const result = await processPendingRecordings(supabase, RECORDING_BATCH_SIZE);
 
-    return NextResponse.json({ ran: true, since, messagesSeen: messages.length, inserted, ...result });
+    return NextResponse.json({ ran: true, since, messagesSeen: messages.length, inserted, truncated, cursorHeld: nextCursor !== runStartedAt, ...result });
   } catch (err) {
     if (isMissingTableError(err)) {
       return NextResponse.json({ ran: false, migrated: false, reason: 'Run migration 0007 first.' });

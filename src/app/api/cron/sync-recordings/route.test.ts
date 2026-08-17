@@ -89,7 +89,7 @@ describe('GET /api/cron/sync-recordings', () => {
     // whenever this mock resolves.
     listRecentCallRecordingsMock.mockImplementation(async () => {
       vi.setSystemTime(new Date('2026-07-14T12:00:05.000Z'));
-      return [];
+      return { messages: [], truncated: false };
     });
 
     const res = await GET(
@@ -102,5 +102,57 @@ describe('GET /api/cron/sync-recordings', () => {
     expect(json.ran).toBe(true);
     expect(syncStateUpserts).toHaveLength(1);
     expect(syncStateUpserts[0].last_synced_at).toBe('2026-07-14T12:00:00.000Z');
+  });
+
+  // Measured against the real 2026-08-08 backlog: 129 calls in the window, a
+  // fetch capped at 100, and the cursor stamped to now regardless -- which
+  // would have silently dropped 29 real sales calls on the very run meant to
+  // recover them, while the response read {ran:true, inserted:100}.
+  it('HOLDS the cursor at the oldest returned call when the fetch was truncated', async () => {
+    const { client, syncStateUpserts } = fakeSupabase({ lastSyncedAt: '2026-08-08T01:05:50.000Z' });
+    getSupabaseServerClientMock.mockReturnValue(client);
+    listRecentCallRecordingsMock.mockResolvedValue({
+      messages: [
+        { messageId: 'm-new', conversationId: 'c1', contactId: null, userId: null, direction: 'inbound', dateAdded: '2026-08-15T17:31:07.000Z', durationSeconds: 60 },
+        { messageId: 'm-old', conversationId: 'c2', contactId: null, userId: null, direction: 'inbound', dateAdded: '2026-08-08T14:02:07.000Z', durationSeconds: 60 },
+      ],
+      truncated: true,
+    });
+
+    const res = await GET(
+      new Request('https://ops.example.com/api/cron/sync-recordings', {
+        headers: { authorization: 'Bearer test-cron-secret-value' },
+      }),
+    );
+    const json = await res.json();
+
+    expect(json.ran).toBe(true);
+    expect(json.truncated).toBe(true);
+    expect(json.cursorHeld).toBe(true);
+    // The OLDEST returned call, never "now" -- so the 29 unfetched calls stay
+    // inside the next run's window instead of falling out of it.
+    expect(syncStateUpserts[0].last_synced_at).toBe('2026-08-08T14:02:07.000Z');
+  });
+
+  it('advances the cursor normally when the window was exhausted', async () => {
+    const { client, syncStateUpserts } = fakeSupabase({ lastSyncedAt: '2026-08-08T01:05:50.000Z' });
+    getSupabaseServerClientMock.mockReturnValue(client);
+    listRecentCallRecordingsMock.mockResolvedValue({
+      messages: [
+        { messageId: 'm1', conversationId: 'c1', contactId: null, userId: null, direction: 'inbound', dateAdded: '2026-08-15T17:31:07.000Z', durationSeconds: 60 },
+      ],
+      truncated: false,
+    });
+
+    const res = await GET(
+      new Request('https://ops.example.com/api/cron/sync-recordings', {
+        headers: { authorization: 'Bearer test-cron-secret-value' },
+      }),
+    );
+    const json = await res.json();
+
+    expect(json.truncated).toBe(false);
+    expect(json.cursorHeld).toBe(false);
+    expect(syncStateUpserts[0].last_synced_at).not.toBe('2026-08-15T17:31:07.000Z');
   });
 });
