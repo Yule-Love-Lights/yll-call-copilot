@@ -17,6 +17,10 @@ join public.ops_employee_auth_identities as auth_identity
   on auth_identity.employee_id = employee.id
  and auth_identity.state = 'active';
 
+-- Later assertions deliberately impersonate service_role. Grant that role
+-- access to this transaction-local test helper only.
+grant select on identity_test_current_employees to service_role;
+
 select set_eq(
   $sql$
     select slug

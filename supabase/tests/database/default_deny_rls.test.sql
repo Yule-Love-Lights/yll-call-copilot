@@ -441,6 +441,10 @@ grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on table public.app_users
   to anon, authenticated;
 
+-- Isolate the RLS assertion from the compatibility-projection guard. The
+-- trigger is tested separately below and otherwise rejects the probe first.
+alter table public.app_users disable trigger guard_app_users_projection;
+
 set local role anon;
 select is(
   (select count(*) from public.app_users where email = 'rls-probe@example.invalid'),
@@ -475,6 +479,10 @@ select throws_ok(
   null,
   'authenticated JWT cannot insert a row even with a temporary table grant'
 );
+
+reset role;
+alter table public.app_users enable trigger guard_app_users_projection;
+set local role authenticated;
 
 -- These labels are deliberately claims-shaped only: immutable employee and
 -- membership rows land in the next slice. The assertions prove that no
