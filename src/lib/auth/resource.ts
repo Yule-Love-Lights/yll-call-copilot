@@ -3,8 +3,13 @@ import { getSupabaseAuthServerClient, getSupabaseServerClient } from '@/lib/supa
 import { resolveHubActor, type ActorResolution } from './actor';
 import { hasCapability, type Capability, type HubActor } from './capabilities';
 
-export async function resolveCurrentHubActor(): Promise<ActorResolution> {
-  const authClient = await getSupabaseAuthServerClient();
+export async function resolveCurrentHubActor(
+  providedAuthClient?: SupabaseClient | null,
+  providedIdentityClient?: SupabaseClient | null,
+): Promise<ActorResolution> {
+  const authClient = providedAuthClient === undefined
+    ? await getSupabaseAuthServerClient()
+    : providedAuthClient;
   if (!authClient) return { status: 'unavailable' };
 
   const { data, error } = await authClient.auth.getUser();
@@ -12,7 +17,9 @@ export async function resolveCurrentHubActor(): Promise<ActorResolution> {
   if (!data.user) {
     return { status: 'denied', reason: 'invalid_session_identity' };
   }
-  return resolveHubActor(data.user);
+  return providedIdentityClient === undefined
+    ? resolveHubActor(data.user)
+    : resolveHubActor(data.user, providedIdentityClient);
 }
 
 export type OwnedResourceDecision = 'self' | 'team' | 'denied';

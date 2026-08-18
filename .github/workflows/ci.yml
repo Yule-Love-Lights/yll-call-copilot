@@ -101,6 +101,66 @@ jobs:
           supabase test db --local \
             supabase/tests/migration/0020_metric_scope_backfill.test.sql
 
+      - name: Exercise the 0023 identity upgrade and preflight failures
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expect_0023_failure() {
+            local seed_file="$1"
+            local expected_message="$2"
+            local forbidden_email="$3"
+            local forbidden_id_prefix="$4"
+            local migration_output
+
+            supabase db reset --local --no-seed --version 0022
+            docker exec -i supabase_db_yll-call-copilot-local-security \
+              psql --username postgres --dbname postgres --set ON_ERROR_STOP=on \
+              < "${seed_file}"
+            if migration_output="$(supabase migration up --local 2>&1)"; then
+              echo "Migration 0023 unexpectedly accepted unsafe identity data"
+              exit 1
+            fi
+            if ! grep -Fq "${expected_message}" <<< "${migration_output}"; then
+              echo "Migration 0023 failed for an unexpected reason"
+              exit 1
+            fi
+            if grep -Fiq "${forbidden_email}" <<< "${migration_output}" \
+              || grep -Fq "${forbidden_id_prefix}" <<< "${migration_output}"; then
+              echo "Migration 0023 preflight exposed a fixture identifier"
+              exit 1
+            fi
+          }
+
+          expect_0023_failure \
+            supabase/tests/migration/0023_identity_preflight_duplicate.seed.sql \
+            "Duplicate normalized app_users emails require review before migration 0023 (affected_app_users=2)" \
+            "duplicate@example.invalid" \
+            "b2000000"
+          expect_0023_failure \
+            supabase/tests/migration/0023_identity_preflight_missing.seed.sql \
+            "Missing normalized auth.users mapping before migration 0023 (affected_app_users=1)" \
+            "missing-auth@example.invalid" \
+            "b1000000"
+          expect_0023_failure \
+            supabase/tests/migration/0023_identity_preflight_ambiguous.seed.sql \
+            "Ambiguous normalized auth.users mapping before migration 0023 (affected_app_users=1)" \
+            "ambiguous@example.invalid" \
+            "b3000000"
+          expect_0023_failure \
+            supabase/tests/migration/0023_identity_preflight_malformed.seed.sql \
+            "Malformed normalized identity emails require review before migration 0023 (affected_app_users=1)" \
+            "malformed-email" \
+            "b4000000"
+
+          supabase db reset --local --no-seed --version 0022
+          docker exec -i supabase_db_yll-call-copilot-local-security \
+            psql --username postgres --dbname postgres --set ON_ERROR_STOP=on \
+            < supabase/tests/migration/0023_identity_upgrade.seed.sql
+          supabase migration up --local
+          supabase test db --local \
+            supabase/tests/migration/0023_identity_upgrade.test.sql
+
       - name: Stop and remove the local database
         if: always()
         continue-on-error: true

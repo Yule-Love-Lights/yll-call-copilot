@@ -48,4 +48,13 @@ describe('authorization runtime preflight', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('GHL_FOLLOWUP_SEND_ENABLED must remain false');
   });
+
+  it('rejects the same Owner/Admin UUID twice even when hex casing differs', () => {
+    const result = run({
+      HUB_OWNER_ADMIN_AUTH_USER_IDS:
+        '123e4567-e89b-42d3-a456-426614174000,123E4567-E89B-42D3-A456-426614174000',
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('exactly two unique Supabase Auth UUIDs');
+  });
 });

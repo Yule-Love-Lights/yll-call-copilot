@@ -1,9 +1,4 @@
-export const DEPARTMENTS = [
-  'office',
-  'advertising',
-  'installer',
-  'management',
-] as const;
+export const DEPARTMENTS = ['office', 'advertising', 'installer'] as const;
 
 export type Department = (typeof DEPARTMENTS)[number];
 
@@ -34,8 +29,7 @@ export const CAPABILITIES = [
 
 export type Capability = (typeof CAPABILITIES)[number];
 
-export const APP_USER_ROLES = [
-  'rep',
+export const OPS_EMPLOYEE_ROLES = [
   'office',
   'advertising',
   'installer',
@@ -44,21 +38,23 @@ export const APP_USER_ROLES = [
   'manager',
 ] as const;
 
-export type AppUserRole = (typeof APP_USER_ROLES)[number];
+export type OpsEmployeeRole = (typeof OPS_EMPLOYEE_ROLES)[number];
 export type HubRole = 'office' | 'advertising' | 'installer' | 'owner_admin';
 
 export interface HubActor {
   readonly principalType: 'employee';
   readonly authUserId: string;
   readonly employeeId: string;
+  // Existing call/coaching facts still use an email attribution column. This
+  // value comes from the UUID-linked employee row, never from auth metadata.
   readonly email: string;
   readonly active: true;
   readonly role: HubRole;
   readonly memberships: readonly Department[];
-  readonly membershipVersion: number | null;
-  readonly activeDepartmentContext: Department | null;
+  readonly membershipVersion: number;
+  readonly activeDepartmentContext: null;
   readonly capabilities: readonly Capability[];
-  readonly source: 'legacy_app_users';
+  readonly source: 'ops_identity';
 }
 
 const OFFICE_CAPABILITIES: readonly Capability[] = [
@@ -99,73 +95,84 @@ const OWNER_ADMIN_CAPABILITIES: readonly Capability[] = [
 ];
 
 const ROLE_POLICY: Readonly<
-  Record<Exclude<AppUserRole, 'manager'>, {
+  Record<Exclude<OpsEmployeeRole, 'manager'>, {
     role: HubRole;
-    memberships: readonly Department[];
     capabilities: readonly Capability[];
   }>
 > = {
-  rep: {
-    role: 'office',
-    memberships: ['office'],
-    capabilities: OFFICE_CAPABILITIES,
-  },
   office: {
     role: 'office',
-    memberships: ['office'],
     capabilities: OFFICE_CAPABILITIES,
   },
   advertising: {
     role: 'advertising',
-    memberships: ['advertising'],
     capabilities: ['internal_public.read', 'advertising.navigation'],
   },
   installer: {
     role: 'installer',
-    memberships: ['installer'],
     capabilities: ['internal_public.read', 'installer.navigation'],
   },
   owner: {
     role: 'owner_admin',
-    memberships: DEPARTMENTS,
     capabilities: OWNER_ADMIN_CAPABILITIES,
   },
   admin: {
     role: 'owner_admin',
-    memberships: DEPARTMENTS,
     capabilities: OWNER_ADMIN_CAPABILITIES,
   },
 };
 
-export function parseAppUserRole(value: unknown): AppUserRole | null {
+const MEMBERSHIP_NAVIGATION_CAPABILITIES: Readonly<
+  Record<Department, readonly Capability[]>
+> = {
+  office: [],
+  advertising: ['advertising.navigation'],
+  installer: ['installer.navigation'],
+};
+
+export function parseOpsEmployeeRole(value: unknown): OpsEmployeeRole | null {
   if (typeof value !== 'string') return null;
   const normalized = value.trim().toLowerCase();
-  return APP_USER_ROLES.find(role => role === normalized) ?? null;
+  return OPS_EMPLOYEE_ROLES.find(role => role === normalized) ?? null;
 }
 
-export function buildLegacyActor(input: {
+export function buildHubActor(input: {
   authUserId: string;
   employeeId: string;
-  email: string;
-  appUserRole: AppUserRole;
+  compatibilityEmail: string;
+  employeeRole: OpsEmployeeRole;
+  memberships: readonly Department[];
+  membershipVersion: number;
 }): HubActor | null {
   // Manager exists in the design vocabulary solely so negative tests can prove
   // that it is not provisioned in V1.
-  if (input.appUserRole === 'manager') return null;
+  if (input.employeeRole === 'manager') return null;
 
-  const policy = ROLE_POLICY[input.appUserRole];
+  const policy = ROLE_POLICY[input.employeeRole];
+  const memberships = DEPARTMENTS.filter(department =>
+    input.memberships.includes(department),
+  );
+  const grantedCapabilities = new Set<Capability>(policy.capabilities);
+  memberships.forEach(department => {
+    MEMBERSHIP_NAVIGATION_CAPABILITIES[department].forEach(capability =>
+      grantedCapabilities.add(capability),
+    );
+  });
+  const capabilities = CAPABILITIES.filter(capability =>
+    grantedCapabilities.has(capability),
+  );
   return Object.freeze({
     principalType: 'employee',
     authUserId: input.authUserId,
     employeeId: input.employeeId,
-    email: input.email.toLowerCase(),
+    email: input.compatibilityEmail.toLowerCase(),
     active: true,
     role: policy.role,
-    memberships: Object.freeze([...policy.memberships]),
-    membershipVersion: null,
+    memberships: Object.freeze(memberships),
+    membershipVersion: input.membershipVersion,
     activeDepartmentContext: null,
-    capabilities: Object.freeze([...policy.capabilities]),
-    source: 'legacy_app_users',
+    capabilities: Object.freeze(capabilities),
+    source: 'ops_identity',
   });
 }
 

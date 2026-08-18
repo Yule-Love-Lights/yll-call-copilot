@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { buildLegacyActor } from './capabilities';
+import { buildHubActor } from './capabilities';
 import {
   auditTeamResourceAccess,
   authorizeCallResource,
@@ -8,11 +8,13 @@ import {
 } from './resource';
 
 function actor(role: 'rep' | 'owner') {
-  const value = buildLegacyActor({
+  const value = buildHubActor({
     authUserId: `auth-${role}`,
     employeeId: `employee-${role}`,
-    email: `${role}@example.com`,
-    appUserRole: role,
+    compatibilityEmail: `${role}@example.com`,
+    employeeRole: role === 'rep' ? 'office' : role,
+    memberships: ['office'],
+    membershipVersion: 1,
   });
   if (!value) throw new Error('expected actor');
   return value;

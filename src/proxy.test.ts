@@ -37,11 +37,16 @@ function completeConfiguration() {
   vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'service-role-key');
 }
 
-function signedIn(email = 'jason@example.com') {
+function signedIn(email: string | null = 'jason@example.com') {
   mocks.createServerClient.mockReturnValue({
     auth: {
       getUser: vi.fn(async () => ({
-        data: { user: { id: 'auth-user-1', email } },
+        data: {
+          user: {
+            id: 'auth-user-1',
+            ...(email === null ? {} : { email }),
+          },
+        },
         error: null,
       })),
     },
@@ -59,12 +64,12 @@ function actorWith(capabilities: string[], role = 'office') {
       active: true,
       role,
       memberships: role === 'owner_admin'
-        ? ['office', 'advertising', 'installer', 'management']
+        ? ['office', 'advertising', 'installer']
         : ['office'],
-      membershipVersion: null,
+      membershipVersion: 1,
       activeDepartmentContext: null,
       capabilities,
-      source: 'legacy_app_users',
+      source: 'ops_identity',
     },
   };
 }
@@ -312,6 +317,17 @@ describe('root authentication proxy', () => {
       id: 'auth-user-1',
       email: 'jason@example.com',
     });
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('passes a phone-only Supabase session to the immutable actor resolver', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    completeConfiguration();
+    signedIn(null);
+
+    const response = await proxy(request('/scoreboard'));
+
+    expect(mocks.resolveHubActor).toHaveBeenCalledWith({ id: 'auth-user-1' });
     expect(response.headers.get('x-middleware-next')).toBe('1');
   });
 

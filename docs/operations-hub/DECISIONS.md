@@ -119,13 +119,14 @@ work. `RULED` is authorized by the signed master plan or canonical contract.
 | 13 | No-GPS behavior for time, offline, and desktop office punches | OPEN | Track A contract / Track C punch UI |
 | 14 | Completion camera/gallery provenance and GPS requirements | OPEN — media itself is optional with at most three prompts | Track C completion media |
 | 15 | Forgotten daily clock-out rule and reminder cadence | OPEN | Track A time / Track C reminders |
-| 16 | Production SMS/OTP provider and recovery/support process | OPEN | Phase 0 identity |
+| 16 | Production SMS/OTP provider and recovery/support process | RULED 2026-08-15: invite-only Supabase Phone Auth delivered through Twilio Verify; Turnstile; Naldo/Jason-only recovery with no employee self-service; maximum 30-day remembered session; password identities revoked at activation with Supabase-console break-glass | Phase 0 identity |
 | 17 | Versioned cross-repository contract | RULED and completed by Quote Tool PR #701 plus exact Hub mirror | Phase 0 contract gate |
-| 18 | New-run connectivity, cached-session grace, and deactivated-device upload quarantine | OPEN | Phase 0 auth/offline safety / Track B |
+| 18 | New-run connectivity, cached-session grace, and deactivated-device upload quarantine | RULED 2026-08-15: Placement Runs start online; an accepted run may capture offline for at most 12 hours; expired, deactivated, revoked, or otherwise ineligible-device uploads quarantine for Naldo/Jason review and never automatically count toward pay or inventory | Phase 0 auth/offline safety / Track B |
 | 19 | Manager department-time behavior | SUPERSEDED for V1 — Manager tier is unprovisioned | Later Manager release |
 | 20 | Advertising placement/photo visibility by employee, campaign, notes, coordinates, and history | OPEN | Track B authorization/RLS |
 | 21 | Forgotten-run anchor and zero-photo behavior | RULED by the signed master plan | Track B run recovery |
 | 22 | Offline queue limits and pending-upload policy for uninstall, data clearing, account switch, and device replacement | OPEN | Phase 0 offline design / Track B release |
+| 23 | Management classification | RULED 2026-08-15: Management is an Owner/Admin view and digest type, not an employee department membership or paid-work context | Phase 0 identity / navigation |
 
 ## Open items owned by neither plan yet (PLAN-COMPARISON.md section 4)
 

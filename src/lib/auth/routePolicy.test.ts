@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildLegacyActor } from './capabilities';
+import { buildHubActor } from './capabilities';
 import {
   APP_ROUTE_POLICIES,
   isPublicRuntimeAsset,
@@ -120,11 +120,16 @@ describe('route authorization policy', () => {
 });
 
 function actor(role: 'rep' | 'office' | 'advertising' | 'installer' | 'owner') {
-  const result = buildLegacyActor({
+  const employeeRole = role === 'rep' ? 'office' : role;
+  const result = buildHubActor({
     authUserId: `auth-${role}`,
     employeeId: `employee-${role}`,
-    email: `${role}@example.com`,
-    appUserRole: role,
+    compatibilityEmail: `${role}@example.com`,
+    employeeRole,
+    memberships: employeeRole === 'owner'
+      ? ['office', 'advertising', 'installer']
+      : [employeeRole],
+    membershipVersion: 1,
   });
   if (!result) throw new Error(`expected actor for ${role}`);
   return result;

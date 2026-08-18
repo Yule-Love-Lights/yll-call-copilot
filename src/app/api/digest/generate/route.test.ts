@@ -37,8 +37,8 @@ import { POST, maxDuration } from './route';
 
 function fakeSupabase(role: string | null) {
   const from = vi.fn((table: string) => {
-    if (table === 'app_users') {
-      return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: role ? { role } : null, error: null }) }) }) };
+    if (table === 'ops_employees') {
+      return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: role ? { role, active: true } : null, error: null }) }) }) };
     }
     throw new Error(`Unexpected table in test: ${table}`);
   });
@@ -57,7 +57,7 @@ describe('POST /api/digest/generate -- role gate', () => {
 
   it('403s a rep and never calls runWeeklyDigest', async () => {
     getSessionEmailMock.mockResolvedValue('rep@yulelovelights.com');
-    fakeClient = fakeSupabase('rep');
+    fakeClient = fakeSupabase('office');
 
     const res = await POST(postRequest());
 

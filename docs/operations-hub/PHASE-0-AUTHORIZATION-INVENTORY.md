@@ -1,13 +1,11 @@
 # Operations Hub Phase 0 authorization inventory
 
-Status: **route and database base-role gates merged; lead-work resource slice in progress; field provisioning blocked**
-Date: 2026-08-13
-Merged base: PRs #41 through #43 at
-`master@7962a8f025186c54acab66d47c32e93991e59a30`. The lead-work resource
-slice is on `codex/operations-hub-phase-0-lead-access`; it remains unmerged and
-its local repository, database, build, and unauthenticated responsive-smoke
-gates passed on 2026-08-13. CI, human review, hosted checks, and authenticated
-production smokes remain.
+Status: **lead-work resource authorization merged; immutable identity foundation in progress; field provisioning blocked**
+Date: 2026-08-18
+Merged base: PRs #41 through #49 at
+`master@699af86011625a61212727a1510c57d71fafb3a8`. The additive identity
+foundation is on `codex/operations-hub-identity-foundation`. It does not enable
+phone OTP or authorize Advertising or Installer provisioning.
 
 This document records what the Phase 0 capability branch actually enforces.
 It does not amend the byte-mirrored integration contract and does not authorize
@@ -15,12 +13,21 @@ Advertising or Installer identities.
 
 ## 1. Central actor
 
-`src/lib/auth/actor.ts` resolves one email-linked bootstrap request actor from
-the Supabase Auth user and matching `app_users.id`. This is not yet the final
-immutable identity link. `src/lib/auth/capabilities.ts` maps
-only a closed role vocabulary to explicit Hub-local capabilities.
+On this branch, `src/lib/auth/actor.ts` resolves the Supabase Auth UUID through
+one active `ops_employee_auth_identities` record to one active
+`ops_employees` row. Each link record has an immutable Auth UUID and explicit
+revocation history, so a later owner-approved phone-login replacement can keep
+the employee UUID unchanged. The resolver ignores Auth email/phone metadata.
+The employee row supplies the stored Office compatibility email, closed role,
+active state, monotonic `membership_version`, and effective membership
+snapshot.
 
-- `rep` and `office` map to the legacy Office employee profile.
+`src/lib/auth/capabilities.ts` maps only a closed role vocabulary to explicit
+Hub-local capabilities. Membership controls eligibility/navigation; it never
+creates capabilities by itself.
+
+- `office` maps to the existing Office employee profile. Legacy provisioning
+  inputs `rep` and `office` both persist canonical role `office`.
 - `advertising` and `installer` are denied at actor resolution until the field
   release gates pass. Their future profiles remain available only to policy
   unit tests.
@@ -28,16 +35,26 @@ only a closed role vocabulary to explicit Hub-local capabilities.
   when the immutable Supabase Auth UUID is present in the server-only approved
   Naldo/Jason ceiling. Missing/mismatched configuration fails closed.
 - `manager` is recognized for negative testing and always denied in V1.
+- Management is not a fourth employee department. It is an audited Naldo/Jason
+  view and digest type; it never becomes a paid-work context.
 - Any missing, blank, misspelled, disabled, or unknown role is denied. It never
   becomes elevated by being “not rep.”
 - A missing row is a 403 denial; an unavailable identity dependency is a
   generic 503. Neither becomes an employee fallback.
 
-The current source is explicitly labeled `legacy_app_users`. Row presence is
-the current active-status fact; department membership is inferred from the
-closed profile; `membershipVersion` and `activeDepartmentContext` are null.
-The additive Hub identity schema must replace those bootstrap facts before
-field provisioning.
+The actor source is `ops_identity`. It rejects an inactive employee, malformed,
+missing, or revoked Auth link, missing compatibility projection, unknown role, invalid
+membership version/snapshot, no active membership, field role, unprovisioned
+Manager, or unapproved Owner/Admin UUID. `membershipVersion` is a positive Hub
+fact. `activeDepartmentContext` deliberately remains null until the Quote-owned
+current-context projection exists; the Hub never invents that paid-time fact.
+
+`app_users` remains only a guarded Office compatibility projection for legacy
+call/coaching columns. The CLI no longer writes it directly. A narrowly granted
+service-role routine atomically creates/verifies the employee, active Auth-link
+record, Office membership, audit record, and compatibility row. Existing Office
+employee UUIDs are preserved so PR #46 ownership and historical statistics do
+not split across identities.
 
 ## 2. Route and method inventory
 
@@ -69,7 +86,7 @@ Resource-scope metadata is an inventory, not a substitute for handler checks.
 Merged PR #43 closes direct database access for every browser role; it
 intentionally does not make a service-role handler safe.
 
-The current lead-work branch binds lead claims and calls to immutable
+Merged PR #46 binds lead claims and calls to immutable
 `app_users.id` employee identifiers while retaining normalized email only as a
 compatibility assertion. Ordinary Office employees can see redacted unclaimed
 queue rows and their own claimed customer; they cannot read or mutate another
@@ -85,9 +102,10 @@ HighLevel contact and the relevant Call, SMS, or Email permission, including
 global/channel DND, tags, stage, and the exact current destination. Previously
 issued access does not override a later opt-out. The branch also adds explicit
 `pending`, `performance`, and `training` provenance so operational metrics use
-only positively identified performance records. These controls remain branch
-implementation, not release evidence, until the full gates pass and a human
-merges the branch.
+only positively identified performance records. Application/database checks
+and Vercel passed before/after its human-authorized merge at `9000c683`.
+Railway remained intentionally red because the disabled live-call bridge
+correctly refused to start; this is not field-release evidence.
 
 ## 3. Machine callers
 
@@ -143,11 +161,14 @@ to place customer calls. Customer live calling is positively disabled. See
 
 ## 4. Compatibility boundaries
 
-Existing handlers that still call `resolveStaffRole` or `resolveRepRole` now
-receive only `rep`, `owner`, `admin`, or null. Field, Manager, and arbitrary
-values cannot pass legacy `role !== 'rep'` checks. The legacy user-creation
-script accepts only `rep` or `office`; it cannot provision Owner/Admin,
-Advertising, Installer, Manager, or an arbitrary role.
+Existing handlers that still call `resolveStaffRole` or `resolveRepRole` receive
+only a least-privilege projection of the UUID-linked active `ops_employees`
+actor: `rep`, `owner`, `admin`, or null. Field, Manager, inactive, unlinked, and
+arbitrary values cannot pass legacy `role !== 'rep'` checks. The legacy
+user-creation script accepts only `rep` or `office`, normalizes both to canonical
+Office through the guarded atomic routine, and cannot provision Owner/Admin,
+Advertising, Installer, Manager, or an arbitrary role. It prints no employee
+identifier, phone, email, password, or provider error detail.
 
 Every existing Office route is labeled `legacy_pending_projection`, not
 "paid context unnecessary." The Quote-owned current-context read does not yet
@@ -168,10 +189,13 @@ This slice does **not** clear the field-user release stop:
    does not yet define a canonical current-context read/projection for the Hub
    resolver. The Hub must not invent a second context ledger.
 3. Production must configure and verify exactly the approved Naldo/Jason Auth
-   UUID ceiling and migrate from email-linked `app_users` to the additive
-   immutable employee/auth link. A role string never grants privilege alone.
+   UUID ceiling. This branch may add the immutable employee/auth link while
+   preserving existing `app_users.id` values; a role string never grants
+   privilege alone. Hosted provisioning evidence still remains.
 4. The additive Hub employee, membership, active-state, audit, and integration
-   schema has not landed. Phone OTP and revocation have not landed.
+   schema is current branch work, not merged release evidence. Phone OTP,
+   Turnstile, provider delivery, owner recovery, and session revocation remain
+   deferred to a separately reviewed activation PR.
 5. PR #43 enables and forces RLS on all 31 existing tables, removes client
    schema/table/column/sequence access, and runs real `anon`, `authenticated`,
    and `service_role` impersonation in CI. Hosted preflight and semantic
@@ -180,8 +204,12 @@ This slice does **not** clear the field-user release stop:
    `assigned`, or `resource` scope.
 6. HighLevel's legacy query-secret compatibility path must be removed after the
    workflow is reconfigured for signed delivery or a secret header.
-7. Open owner decisions for cached sessions, deactivated-device writes, and
-   placement/photo visibility remain protective-default deny.
+7. Owner ruled a 30-day maximum Hub session and an online Placement Run start
+   with up to 12 hours of authorized offline capture. Expired, deactivated, or
+   revoked-device writes quarantine for Naldo/Jason review and never
+   automatically count toward pay or inventory. Those behaviors are not
+   implemented by this foundation. Placement/photo visibility remains an open
+   protective-default-deny decision.
 8. The lead-work branch introduces positive metric provenance for future
    reads, but historical derived records that may already combine performance
    and practice data still require a separately reviewed audit and data repair.
@@ -195,10 +223,10 @@ This slice does **not** clear the field-user release stop:
 
 Until these gates pass, no Advertising or Installer account may be provisioned.
 
-## 6. Current lead-work authorization slice
+## 6. Merged lead-work authorization slice
 
-The current branch addresses the Office blockers from the PR #43 adversarial
-review without weakening the field-provisioning stop:
+PR #46 addresses the Office blockers from the PR #43 adversarial review without
+weakening the field-provisioning stop:
 
 1. Lead claim/dismiss, manual completion, live start/dial/stream/segment/end,
    and follow-up edit/send use narrowly granted transaction routines rather
@@ -220,21 +248,53 @@ review without weakening the field-provisioning stop:
 7. The simulator customer-call path is removed in favor of Practice, and live
    customer calling remains disabled behind the positive activation gate.
 
-The implementation and local gates are present on the branch. Verification on
-2026-08-13 passed the pinned-contract check, TypeScript, ESLint, 1,008 Vitest
-tests across 119 files, the standard production build, 117 lead-work pgTAP
-assertions, 259 default-deny assertions, 18 legacy-backfill assertions, and
-desktop plus 390px login-shell smokes without overflow or console errors.
-Authentication was intentionally not bypassed, so hosted authenticated and
+Verification on 2026-08-13 passed the pinned-contract check, TypeScript, ESLint,
+1,008 Vitest tests across 119 files, the standard production build, 117
+lead-work pgTAP assertions, 259 default-deny assertions, 18 legacy-backfill
+assertions, and desktop plus 390px login-shell smokes without overflow or
+console errors. GitHub checks and Vercel then passed before/after the
+human-authorized merge at `9000c683`; Railway correctly remained red because
+the disabled live-call bridge refused to start. Authenticated production and
 real-provider smokes remain.
 
-## 7. Work remaining after this slice
+## 7. Identity-foundation verification and remaining work
 
-1. Receive CI and human review, run the hosted checks, and human-merge the
-   lead-work branch.
+The local PostgreSQL/parser harness applied all 23 migrations and passed the
+seeded legacy upgrade, service-role provisioning and exact retry, deactivation
+denial, all four preflight-failure seeds, and exact manifests of 38 tables, 27
+routines, and 12 triggers. The authored pgTAP suites expect 51 identity and 17
+seeded-upgrade assertions, while default-deny expands to 304 assertions. Those
+counts remain CI-pending because the local Mac has neither the Supabase CLI nor
+Docker.
+
+1. Complete independent review and CI execution for the immutable Hub
+   employee/Auth link, active state, membership versioning, local identity
+   audit, and semantic persona tests without enabling field provisioning.
+   Cross-boundary outbox/inbox/DLQ envelopes wait for the canonical shared
+   schema.
 2. Audit and repair or invalidate historical derived performance outputs.
-3. Complete the additive immutable Hub identity, phone OTP, revocation,
-   membership, and Quote-owned active-context projection work.
-4. Complete hosted preflight and semantic persona integration tests.
-5. Keep live customer calling disabled until the separate activation checklist
+3. Land the Quote-owned capability/policy-version transport, current-context
+   projection, and canonical shared schema/OpenAPI artifacts before consuming
+   them in the Hub.
+4. Implement invite-only Supabase Phone Auth, Turnstile, Twilio Verify delivery,
+   owner-only recovery, 30-day session enforcement, password-identity revocation
+   with Supabase-console owner break-glass, and the ruled Placement Run offline
+   quarantine behavior in a later activation PR.
+5. Before that activation exposes Auth-link replacement, make every `0020`
+   employee mutation atomically lock and verify the current active Auth link
+   against its supplied Auth UUID. The foundation exposes no replacement path,
+   and its legacy Office provisioner refuses any employee with link history.
+   The future Owner/Admin routine must also audit actor, reason, revocation, and
+   replacement creation in the same transaction.
+6. Before exposing membership changes, atomically synchronize membership
+   revocation into the `app_users` compatibility projection or make every
+   `0020` employee mutation verify the current effective membership. The
+   foundation exposes no service/browser membership mutation path.
+7. Before field activation, replace the Office-only required compatibility
+   email in the runtime actor/legacy attribution bridge with an explicit
+   phone-only field shape. Nullable field storage does not by itself make a
+   phone-only Advertising or Installer actor resolvable.
+8. Complete hosted preflight, authenticated recovery, real-token denial, and
+   semantic persona integration tests before any field account is provisioned.
+9. Keep live customer calling disabled until the separate activation checklist
    is fully implemented, tested, reviewed, and approved.

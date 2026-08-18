@@ -150,9 +150,99 @@ select is(
   'all metric-scope positive allowlists are validated'
 );
 
-insert into public.app_users (id, email, role) values
-  ('10000000-0000-0000-0000-000000000001', 'rep-one@example.invalid', 'office'),
-  ('10000000-0000-0000-0000-000000000002', 'rep-two@example.invalid', 'office');
+insert into auth.users (
+  id,
+  email,
+  confirmation_token,
+  recovery_token,
+  email_change,
+  email_change_token_new
+) values
+  (
+    '11000000-0000-4000-8000-000000000001',
+    'rep-one@example.invalid',
+    '',
+    '',
+    '',
+    ''
+  ),
+  (
+    '11000000-0000-4000-8000-000000000002',
+    'rep-two@example.invalid',
+    '',
+    '',
+    '',
+    ''
+  );
+
+insert into public.ops_employees (
+  id,
+  compatibility_email,
+  role,
+  active,
+  membership_version,
+  entity_version
+) values
+  (
+    '10000000-0000-0000-0000-000000000001',
+    'rep-one@example.invalid',
+    'office',
+    true,
+    1,
+    1
+  ),
+  (
+    '10000000-0000-0000-0000-000000000002',
+    'rep-two@example.invalid',
+    'office',
+    true,
+    1,
+    1
+  );
+
+insert into public.ops_employee_auth_identities (
+  employee_id,
+  auth_user_id,
+  state,
+  entity_version,
+  effective_at
+) values
+  (
+    '10000000-0000-0000-0000-000000000001',
+    '11000000-0000-4000-8000-000000000001',
+    'active',
+    1,
+    now()
+  ),
+  (
+    '10000000-0000-0000-0000-000000000002',
+    '11000000-0000-4000-8000-000000000002',
+    'active',
+    1,
+    now()
+  );
+
+insert into public.ops_employee_department_memberships (
+  employee_id,
+  department_id,
+  state,
+  membership_version,
+  effective_at
+) values
+  (
+    '10000000-0000-0000-0000-000000000001',
+    '00000000-0000-4000-8000-000000000001',
+    'active',
+    1,
+    now()
+  ),
+  (
+    '10000000-0000-0000-0000-000000000002',
+    '00000000-0000-4000-8000-000000000001',
+    'active',
+    1,
+    now()
+  );
 
 insert into public.leads (
   id,

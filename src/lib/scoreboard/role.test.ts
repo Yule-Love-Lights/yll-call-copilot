@@ -12,19 +12,18 @@ function fakeClient(result: { data: unknown; error: unknown }) {
 
 describe('resolveRepRole', () => {
   it.each([
-    ['rep', 'rep'],
     ['office', 'rep'],
     ['owner', 'owner'],
     ['admin', 'admin'],
   ] as const)('maps closed role %s to %s', async (stored, expected) => {
-    const { client } = fakeClient({ data: { role: stored }, error: null });
+    const { client } = fakeClient({ data: { role: stored, active: true }, error: null });
     expect(await resolveRepRole('Person@Example.com', client)).toBe(expected);
   });
 
   it.each(['manager', 'advertising', 'installer', 'coach', 'manger', '']) (
     'returns null for non-Office or unknown role %j',
     async stored => {
-      const { client } = fakeClient({ data: { role: stored }, error: null });
+      const { client } = fakeClient({ data: { role: stored, active: true }, error: null });
       expect(await resolveRepRole('person@example.com', client)).toBeNull();
     },
   );
@@ -39,8 +38,13 @@ describe('resolveRepRole', () => {
   });
 
   it('normalizes the lookup email', async () => {
-    const { client, eq } = fakeClient({ data: { role: 'rep' }, error: null });
+    const { client, eq } = fakeClient({ data: { role: 'office', active: true }, error: null });
     await resolveRepRole('Person@Example.com', client);
-    expect(eq).toHaveBeenCalledWith('email', 'person@example.com');
+    expect(eq).toHaveBeenCalledWith('compatibility_email', 'person@example.com');
+  });
+
+  it('fails closed for an inactive employee', async () => {
+    const { client } = fakeClient({ data: { role: 'owner', active: false }, error: null });
+    expect(await resolveRepRole('owner@example.com', client)).toBeNull();
   });
 });

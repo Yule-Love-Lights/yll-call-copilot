@@ -20,7 +20,8 @@ strongSecret('CRON_SECRET');
 const ownerIds = (process.env.HUB_OWNER_ADMIN_AUTH_USER_IDS ?? '')
   .split(',')
   .map(value => value.trim())
-  .filter(Boolean);
+  .filter(Boolean)
+  .map(value => value.toLowerCase());
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 if (ownerIds.length !== 2 || new Set(ownerIds).size !== 2 || ownerIds.some(id => !uuid.test(id))) {
   errors.push('HUB_OWNER_ADMIN_AUTH_USER_IDS must contain exactly two unique Supabase Auth UUIDs (Naldo and Jason)');

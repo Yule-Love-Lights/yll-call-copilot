@@ -6,10 +6,10 @@ Internal tool for Yule Love Lights. It helps human reps handle inbound calls and
 
 1. `npm install`
 2. Copy `.env.example` to `.env.local` and fill the values from the Yule Love Lights accounts (GoHighLevel private integration token + location id, Supabase project keys). HighLevel Marketplace webhooks use signed-body verification; a private workflow may temporarily use the `GHL_WEBHOOK_SECRET` compatibility path described in `.env.example`.
-3. Create an Office staff login -- there is no self-signup; sign-in requires both a Supabase Auth account and an `app_users` row, and `node scripts/create-user.mjs <email> <temp-password> [role]` creates the closed `rep`/`office` bootstrap roles. Owner/Admin is never created by this script; production must use the separately reviewed Naldo/Jason immutable-ID path. Don't leave the password lying around in a file once you've signed in with it.
+3. Create a legacy Office staff login. There is no self-signup. `node scripts/create-user.mjs <email> <temp-password> [role]` accepts only the closed `rep`/`office` bootstrap inputs and calls the service-role-only provisioning routine that atomically ensures the immutable employee/Auth UUID link, Office membership, audit, and guarded `app_users` compatibility projection. It does not print an employee identifier and never creates Owner/Admin, Advertising, Installer, or Manager access. Production phone OTP and field provisioning remain disabled until their later reviewed activation.
 4. `npm run dev` and open http://localhost:3000, then sign in with the account from step 3.
 
-Authentication and authorization fail closed: protected pages and non-health APIs return a generic 503 until the complete Supabase configuration is present. Once configured, every employee route requires a signed-in user, a resolved `app_users` actor, and the route's explicit capabilities.
+Authentication and authorization fail closed: protected pages and non-health APIs return a generic 503 until the complete Supabase configuration is present. Once configured, every employee route requires a signed-in user, a resolved immutable employee actor, and the route's explicit capabilities. The identity-foundation branch preserves existing Office employee UUIDs while adding the new Hub-owned identity and membership model; it does not activate phone OTP.
 
 ## Checks
 
@@ -21,17 +21,15 @@ npm run lint
 npm test
 ```
 
-## Live coaching (Phase 4)
+## Live coaching safety status
 
-`/call/[leadId]/live` works with zero extra setup: click "Start coached call" and it runs the built-in simulator (a scripted realistic call), which drives the real trigger-detection engine and real Claude-generated coaching cards -- only the audio is fake. No Twilio or Deepgram account exists yet.
-
-To switch a call over to a real phone call once those accounts exist:
-
-1. Fill in the Twilio/Deepgram vars in `.env.local` (see `.env.example` for what each one is and where to find it).
-2. Start the standalone media bridge alongside `npm run dev`: `node scripts/live-bridge.mjs`. It listens locally on port 8787 and transcribes only Twilio-signed Media Stream upgrades whose five-minute grant the Hub atomically consumes once. Twilio requires a `wss://` URL, so put a TLS tunnel (e.g. `ngrok http 8787`, using its `wss://` forwarding address) in front of it and set the same query-free `LIVE_BRIDGE_URL` base URL for both the app and bridge. Set `LIVE_APP_BASE_URL` to the Hub's HTTPS origin (loopback HTTP is allowed only locally) so the bridge can consume the durable grant and post transcript segments. The app appends a unique session path for each call.
-3. Point the Twilio TwiML App's Voice "request URL" at `https://<this app>/api/twilio/voice`.
-
-This path is coded against Twilio's and Deepgram's documented APIs but has never run against a live account -- treat it as unverified until someone confirms a real call end to end.
+Practice calls are isolated in the Practice surface. The former simulated
+customer-call path has been removed. Real customer calling is positively
+disabled with `LIVE_CUSTOMER_CALLS_ENABLED=false`, and customer follow-up sends
+are independently disabled with `GHL_FOLLOWUP_SEND_ENABLED=false`. Do not turn
+either flag on from setup instructions. Each requires the separately reviewed
+provider, recovery, permission, idempotency, and real-browser activation gates
+in `docs/operations-hub/LIVE-CALLING-ACTIVATION-BLOCKERS.md`.
 
 ## Deploy note (Vercel)
 
@@ -44,5 +42,5 @@ Twilio/live-bridge/legacy-HighLevel credential set without printing values.
 
 ## Notes
 
-- Auth is live and capability-gated in `src/proxy.ts`; every current page/API method is declared in `src/lib/auth/routePolicy.ts`. Supabase row-level security and resource-scoped service-role handler checks remain Phase 0 release blockers.
+- Auth is live and capability-gated in `src/proxy.ts`; every current page/API method is declared in `src/lib/auth/routePolicy.ts`. Default-deny row-level security is merged. Hosted preflight, remaining resource-scoped service-role checks, immutable identity integration, and semantic persona tests remain field-release gates.
 - Never commit `.env.local` or paste real key values into code, logs, or chat.

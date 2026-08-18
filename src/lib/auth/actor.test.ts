@@ -2,10 +2,60 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { resolveHubActor } from './actor';
 
+const AUTH_USER_ID = '123e4567-e89b-42d3-a456-426614174000';
+const SECOND_ADMIN_ID = '223e4567-e89b-42d3-a456-426614174000';
+const OTHER_AUTH_ID = '323e4567-e89b-42d3-a456-426614174000';
+const EMPLOYEE_ID = '423e4567-e89b-42d3-a456-426614174000';
+const AUTH_IDENTITY_ID = '523e4567-e89b-42d3-a456-426614174000';
+
+function activeMembership(
+  slug: string = 'office',
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    state: 'active',
+    effective_at: '2026-01-01T00:00:00.000Z',
+    revoked_at: null,
+    membership_version: 1,
+    department: { slug, active: true },
+    ...overrides,
+  };
+}
+
+function authIdentity(
+  employeeOverrides: Record<string, unknown> = {},
+  identityOverrides: Record<string, unknown> = {},
+) {
+  return {
+    id: AUTH_IDENTITY_ID,
+    employee_id: EMPLOYEE_ID,
+    auth_user_id: AUTH_USER_ID,
+    state: 'active',
+    entity_version: 1,
+    effective_at: '2026-01-01T00:00:00.000Z',
+    revoked_at: null,
+    employee: {
+      id: EMPLOYEE_ID,
+      compatibility_email: 'Rep@YuleLoveLights.com',
+      role: 'office',
+      active: true,
+      membership_version: 1,
+      entity_version: 1,
+      effective_at: '2026-01-01T00:00:00.000Z',
+      deactivated_at: null,
+      memberships: [activeMembership()],
+      ...employeeOverrides,
+    },
+    ...identityOverrides,
+  };
+}
+
 function fakeClient(result: { data: unknown; error: unknown }) {
   const maybeSingle = vi.fn(async () => result);
-  const eq = vi.fn(() => ({ maybeSingle }));
-  const select = vi.fn(() => ({ eq }));
+  const eq = vi.fn();
+  const query = { eq, maybeSingle };
+  eq.mockReturnValue(query);
+  const select = vi.fn(() => query);
   const from = vi.fn(() => ({ select }));
   return {
     client: { from } as unknown as SupabaseClient,
@@ -15,121 +65,390 @@ function fakeClient(result: { data: unknown; error: unknown }) {
   };
 }
 
-const sessionUser = {
-  id: '123e4567-e89b-42d3-a456-426614174000',
-  email: 'Rep@YuleLoveLights.com',
-};
-
 describe('resolveHubActor', () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it('resolves a legacy rep into an immutable Office actor', async () => {
-    const { client, from, select, eq } = fakeClient({
-      data: { id: 'employee-1', role: 'rep' },
-      error: null,
-    });
+  it('resolves a phone-only session through its active versioned auth link', async () => {
+    const { client, from, select, eq } = fakeClient({ data: authIdentity(), error: null });
 
-    const result = await resolveHubActor(sessionUser, client);
+    const result = await resolveHubActor({ id: AUTH_USER_ID }, client);
 
     expect(result.status).toBe('resolved');
     if (result.status !== 'resolved') throw new Error('expected a resolved actor');
     expect(result.actor).toMatchObject({
       principalType: 'employee',
-      authUserId: '123e4567-e89b-42d3-a456-426614174000',
-      employeeId: 'employee-1',
+      authUserId: AUTH_USER_ID,
+      employeeId: EMPLOYEE_ID,
       email: 'rep@yulelovelights.com',
       active: true,
       role: 'office',
       memberships: ['office'],
-      membershipVersion: null,
+      membershipVersion: 1,
       activeDepartmentContext: null,
-      source: 'legacy_app_users',
+      source: 'ops_identity',
     });
     expect(result.actor.capabilities).toContain('office.tools.use');
     expect(result.actor.capabilities).not.toContain('office.coaching.settings.manage');
+    expect(Object.isFrozen(result.actor.memberships)).toBe(true);
     expect(Object.isFrozen(result.actor.capabilities)).toBe(true);
     expect(Object.isFrozen(result.actor)).toBe(true);
-    expect(from).toHaveBeenCalledWith('app_users');
-    expect(select).toHaveBeenCalledWith('id, role');
-    expect(eq).toHaveBeenCalledWith('email', 'rep@yulelovelights.com');
+    expect(from).toHaveBeenCalledWith('ops_employee_auth_identities');
+    expect(select).toHaveBeenCalledWith(
+      expect.stringContaining('employee:ops_employees!inner'),
+    );
+    expect(eq).toHaveBeenCalledWith('auth_user_id', AUTH_USER_ID);
+    expect(eq).toHaveBeenCalledWith('state', 'active');
   });
 
-  it.each(['owner', 'admin'])('grants the closed owner/admin capability set to %s', async role => {
-    vi.stubEnv('HUB_OWNER_ADMIN_AUTH_USER_IDS', '123e4567-e89b-42d3-a456-426614174000,223e4567-e89b-42d3-a456-426614174000');
-    const { client } = fakeClient({ data: { id: 'owner-id', role }, error: null });
-    const result = await resolveHubActor(sessionUser, client);
+  it('ignores auth email metadata and returns the employee compatibility email', async () => {
+    const { client } = fakeClient({ data: authIdentity(), error: null });
+    const result = await resolveHubActor(
+      { id: AUTH_USER_ID, email: 'spoofed-owner@example.com' },
+      client,
+    );
 
     expect(result.status).toBe('resolved');
     if (result.status !== 'resolved') throw new Error('expected a resolved actor');
-    expect(result.actor.role).toBe('owner_admin');
-    expect(result.actor.memberships).toEqual(['office', 'advertising', 'installer', 'management']);
-    expect(result.actor.capabilities).toContain('operations.admin');
-    expect(result.actor.capabilities).toContain('advertising.navigation');
+    expect(result.actor.email).toBe('rep@yulelovelights.com');
+  });
+
+  it('accepts an older active grant under a later employee membership snapshot', async () => {
+    const { client } = fakeClient({
+      data: authIdentity({ membership_version: 3 }),
+      error: null,
+    });
+    const result = await resolveHubActor({ id: AUTH_USER_ID }, client);
+
+    expect(result.status).toBe('resolved');
+    if (result.status !== 'resolved') throw new Error('expected a resolved actor');
+    expect(result.actor.membershipVersion).toBe(3);
+    expect(result.actor.memberships).toEqual(['office']);
+  });
+
+  it('adds Installer navigation, but no sensitive grants, to Office with an Installer membership', async () => {
+    const { client } = fakeClient({
+      data: authIdentity({
+        memberships: [activeMembership('office'), activeMembership('installer')],
+      }),
+      error: null,
+    });
+    const result = await resolveHubActor({ id: AUTH_USER_ID }, client);
+
+    expect(result.status).toBe('resolved');
+    if (result.status !== 'resolved') throw new Error('expected a resolved actor');
+    expect(result.actor.memberships).toEqual(['office', 'installer']);
     expect(result.actor.capabilities).toContain('installer.navigation');
+    expect(result.actor.capabilities).not.toContain('operations.admin');
+    expect(result.actor.capabilities).not.toContain('office.coaching.team.read');
+    expect(result.actor.capabilities).not.toContain('office.job_operations');
   });
 
-  it.each(['advertising', 'installer'] as const)('blocks %s provisioning until the field release gates pass', async role => {
-    const { client } = fakeClient({ data: { id: `${role}-id`, role }, error: null });
-    expect(await resolveHubActor(sessionUser, client)).toEqual({
-      status: 'denied',
-      reason: 'field_provisioning_blocked',
-    });
+  it.each(['owner', 'admin'] as const)(
+    'grants the closed Owner/Admin capability set to an approved %s identity',
+    async role => {
+      vi.stubEnv('HUB_OWNER_ADMIN_AUTH_USER_IDS', `${AUTH_USER_ID},${SECOND_ADMIN_ID}`);
+      const { client } = fakeClient({
+        data: authIdentity({
+          role,
+          memberships: [
+            activeMembership('installer'),
+            activeMembership('office'),
+            activeMembership('advertising'),
+          ],
+        }),
+        error: null,
+      });
+      const result = await resolveHubActor({ id: AUTH_USER_ID }, client);
+
+      expect(result.status).toBe('resolved');
+      if (result.status !== 'resolved') throw new Error('expected a resolved actor');
+      expect(result.actor.role).toBe('owner_admin');
+      expect(result.actor.memberships).toEqual(['office', 'advertising', 'installer']);
+      expect(result.actor.capabilities).toContain('operations.admin');
+    },
+  );
+
+  it('enforces the exact two-person Owner/Admin UUID ceiling', async () => {
+    const { client } = fakeClient({ data: authIdentity({ role: 'owner' }), error: null });
+
+    for (const ceiling of [
+      '',
+      AUTH_USER_ID,
+      `${AUTH_USER_ID},${AUTH_USER_ID}`,
+      `${SECOND_ADMIN_ID},${OTHER_AUTH_ID}`,
+      `${AUTH_USER_ID},not-a-uuid`,
+      `${AUTH_USER_ID},${SECOND_ADMIN_ID},not-a-uuid`,
+      `${AUTH_USER_ID},${SECOND_ADMIN_ID},${OTHER_AUTH_ID}`,
+    ]) {
+      vi.stubEnv('HUB_OWNER_ADMIN_AUTH_USER_IDS', ceiling);
+      await expect(resolveHubActor({ id: AUTH_USER_ID }, client)).resolves.toEqual({
+        status: 'denied',
+        reason: 'owner_admin_identity_not_approved',
+      });
+    }
   });
 
-  it('fails closed for an unapproved Owner/Admin auth UUID', async () => {
-    vi.stubEnv('HUB_OWNER_ADMIN_AUTH_USER_IDS', '223e4567-e89b-42d3-a456-426614174000,323e4567-e89b-42d3-a456-426614174000');
-    const { client } = fakeClient({ data: { id: 'owner-id', role: 'owner' }, error: null });
-    expect(await resolveHubActor(sessionUser, client)).toEqual({
-      status: 'denied',
-      reason: 'owner_admin_identity_not_approved',
-    });
-  });
+  it.each(['advertising', 'installer'] as const)(
+    'blocks %s provisioning even with a valid linked membership',
+    async role => {
+      const { client } = fakeClient({
+        data: authIdentity({ role, memberships: [activeMembership(role)] }),
+        error: null,
+      });
+      await expect(resolveHubActor({ id: AUTH_USER_ID }, client)).resolves.toEqual({
+        status: 'denied',
+        reason: 'field_provisioning_blocked',
+      });
+    },
+  );
+
+  it.each([
+    ['advertising', 'installer'],
+    ['installer', 'advertising'],
+  ] as const)(
+    'denies %s before the field gate when its active membership is only %s',
+    async (role, membership) => {
+      const { client } = fakeClient({
+        data: authIdentity({ role, memberships: [activeMembership(membership)] }),
+        error: null,
+      });
+      await expect(resolveHubActor({ id: AUTH_USER_ID }, client)).resolves.toEqual({
+        status: 'denied',
+        reason: 'no_active_memberships',
+      });
+    },
+  );
+
+  it.each(['advertising', 'installer'] as const)(
+    'returns the intentional field gate for phone-only %s rows without a compatibility email',
+    async role => {
+      const { client } = fakeClient({
+        data: authIdentity({
+          role,
+          compatibility_email: null,
+          memberships: [activeMembership(role)],
+        }),
+        error: null,
+      });
+      await expect(resolveHubActor({ id: AUTH_USER_ID }, client)).resolves.toEqual({
+        status: 'denied',
+        reason: 'field_provisioning_blocked',
+      });
+    },
+  );
 
   it('hard-denies the designed but unprovisioned Manager role', async () => {
-    const { client } = fakeClient({ data: { id: 'manager-id', role: 'manager' }, error: null });
-    expect(await resolveHubActor(sessionUser, client)).toEqual({
+    const { client } = fakeClient({ data: authIdentity({ role: 'manager' }), error: null });
+    await expect(resolveHubActor({ id: AUTH_USER_ID }, client)).resolves.toEqual({
       status: 'denied',
       reason: 'manager_unprovisioned',
     });
   });
 
+  it('denies inactive and unlinked employees', async () => {
+    const inactive = fakeClient({ data: authIdentity({ active: false }), error: null });
+    await expect(resolveHubActor({ id: AUTH_USER_ID }, inactive.client)).resolves.toEqual({
+      status: 'denied',
+      reason: 'employee_inactive',
+    });
+
+    const unlinked = fakeClient({ data: null, error: null });
+    await expect(resolveHubActor({ id: AUTH_USER_ID }, unlinked.client)).resolves.toEqual({
+      status: 'denied',
+      reason: 'not_staff',
+    });
+  });
+
+  it.each([
+    { effective_at: '2999-01-01T00:00:00.000Z' },
+    { deactivated_at: '2026-02-01T00:00:00.000Z' },
+  ])('denies an employee whose active state is not currently effective: %#', async override => {
+    const { client } = fakeClient({ data: authIdentity(override), error: null });
+    await expect(resolveHubActor({ id: AUTH_USER_ID }, client)).resolves.toEqual({
+      status: 'denied',
+      reason: 'employee_inactive',
+    });
+  });
+
+  it.each([
+    { entity_version: 0 },
+    { entity_version: '1' },
+    { effective_at: 'not-a-timestamp' },
+  ])('denies malformed employee version or effective time: %#', async override => {
+    const { client } = fakeClient({ data: authIdentity(override), error: null });
+    await expect(resolveHubActor({ id: AUTH_USER_ID }, client)).resolves.toEqual({
+      status: 'denied',
+      reason: 'invalid_employee_identity',
+    });
+  });
+
+  it('treats a revoked auth link as unlinked staff', async () => {
+    const revoked = fakeClient({
+      data: authIdentity({}, {
+        state: 'revoked',
+        entity_version: 2,
+        revoked_at: '2026-02-01T00:00:00.000Z',
+      }),
+      error: null,
+    });
+    await expect(resolveHubActor({ id: AUTH_USER_ID }, revoked.client)).resolves.toEqual({
+      status: 'denied',
+      reason: 'not_staff',
+    });
+  });
+
+  it('allows a rotated active auth UUID to resolve the same stable employee ID', async () => {
+    const rotated = fakeClient({
+      data: authIdentity({}, {
+        auth_user_id: OTHER_AUTH_ID,
+        entity_version: 3,
+      }),
+      error: null,
+    });
+    const result = await resolveHubActor({ id: OTHER_AUTH_ID }, rotated.client);
+
+    expect(result.status).toBe('resolved');
+    if (result.status !== 'resolved') throw new Error('expected a resolved actor');
+    expect(result.actor.authUserId).toBe(OTHER_AUTH_ID);
+    expect(result.actor.employeeId).toBe(EMPLOYEE_ID);
+  });
+
+  it('denies malformed or mismatched immutable identities', async () => {
+    const valid = fakeClient({ data: authIdentity(), error: null });
+    await expect(resolveHubActor({ id: 'not-a-uuid' }, valid.client)).resolves.toEqual({
+      status: 'denied',
+      reason: 'invalid_session_identity',
+    });
+    expect(valid.from).not.toHaveBeenCalled();
+
+    const mismatched = fakeClient({
+      data: authIdentity({}, { auth_user_id: OTHER_AUTH_ID }),
+      error: null,
+    });
+    await expect(resolveHubActor({ id: AUTH_USER_ID }, mismatched.client)).resolves.toEqual({
+      status: 'denied',
+      reason: 'invalid_employee_identity',
+    });
+
+    const wrongEmployee = fakeClient({
+      data: authIdentity({ id: OTHER_AUTH_ID }),
+      error: null,
+    });
+    await expect(resolveHubActor({ id: AUTH_USER_ID }, wrongEmployee.client)).resolves.toEqual({
+      status: 'denied',
+      reason: 'invalid_employee_identity',
+    });
+  });
+
+  it.each([
+    { entity_version: 0 },
+    { effective_at: 'not-a-timestamp' },
+    { effective_at: '2999-01-01T00:00:00.000Z' },
+    { employee: null },
+  ])('denies malformed active auth link %#', async identityOverride => {
+    const { client } = fakeClient({
+      data: authIdentity({}, identityOverride),
+      error: null,
+    });
+    await expect(resolveHubActor({ id: AUTH_USER_ID }, client)).resolves.toEqual({
+      status: 'denied',
+      reason: 'invalid_employee_identity',
+    });
+  });
+
+  it('requires a compatibility email while legacy attribution columns remain', async () => {
+    const { client } = fakeClient({
+      data: authIdentity({ compatibility_email: null }),
+      error: null,
+    });
+    await expect(resolveHubActor({ id: AUTH_USER_ID }, client)).resolves.toEqual({
+      status: 'denied',
+      reason: 'compatibility_email_missing',
+    });
+  });
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, null, '1'])(
+    'denies invalid employee membership version %j',
+    async membershipVersion => {
+      const { client } = fakeClient({
+        data: authIdentity({ membership_version: membershipVersion }),
+        error: null,
+      });
+      await expect(resolveHubActor({ id: AUTH_USER_ID }, client)).resolves.toEqual({
+        status: 'denied',
+        reason: 'invalid_membership_version',
+      });
+    },
+  );
+
+  it.each([
+    { memberships: null },
+    { memberships: [activeMembership('management')] },
+    {
+      memberships: [activeMembership(), activeMembership()],
+    },
+    {
+      memberships: [activeMembership('office', { revoked_at: '2026-02-01T00:00:00.000Z' })],
+    },
+    {
+      memberships: [activeMembership('office', { department: { slug: 'office' } })],
+    },
+    {
+      memberships: [activeMembership('office', { membership_version: 2 })],
+    },
+  ])('denies an invalid membership snapshot %#', async override => {
+    const { client } = fakeClient({ data: authIdentity(override), error: null });
+    await expect(resolveHubActor({ id: AUTH_USER_ID }, client)).resolves.toEqual({
+      status: 'denied',
+      reason: 'invalid_membership_snapshot',
+    });
+  });
+
+  it('requires at least one current membership and the role membership', async () => {
+    const revoked = fakeClient({
+      data: authIdentity({
+        memberships: [
+          activeMembership('office', {
+            state: 'revoked',
+            revoked_at: '2026-02-01T00:00:00.000Z',
+          }),
+        ],
+      }),
+      error: null,
+    });
+    await expect(resolveHubActor({ id: AUTH_USER_ID }, revoked.client)).resolves.toEqual({
+      status: 'denied',
+      reason: 'no_active_memberships',
+    });
+
+    const wrongDepartment = fakeClient({
+      data: authIdentity({ memberships: [activeMembership('installer')] }),
+      error: null,
+    });
+    await expect(resolveHubActor({ id: AUTH_USER_ID }, wrongDepartment.client)).resolves.toEqual({
+      status: 'denied',
+      reason: 'no_active_memberships',
+    });
+  });
+
   it.each(['coach', 'manger', 'disabled', 'owner-ish', '', '   '])(
-    'denies unknown role value %j instead of treating it as elevated',
+    'denies unknown role value %j',
     async role => {
-      const { client } = fakeClient({ data: { id: 'employee-1', role }, error: null });
-      expect(await resolveHubActor(sessionUser, client)).toEqual({
+      const { client } = fakeClient({ data: authIdentity({ role }), error: null });
+      await expect(resolveHubActor({ id: AUTH_USER_ID }, client)).resolves.toEqual({
         status: 'denied',
         reason: 'unknown_role',
       });
     },
   );
 
-  it('distinguishes missing staff from an unavailable authorization dependency', async () => {
-    const missing = fakeClient({ data: null, error: null });
-    expect(await resolveHubActor(sessionUser, missing.client)).toEqual({
-      status: 'denied',
-      reason: 'not_staff',
-    });
-
+  it('distinguishes missing staff from an unavailable identity dependency', async () => {
     const failed = fakeClient({ data: null, error: { message: 'database unavailable' } });
-    expect(await resolveHubActor(sessionUser, failed.client)).toEqual({
+    await expect(resolveHubActor({ id: AUTH_USER_ID }, failed.client)).resolves.toEqual({
       status: 'unavailable',
     });
-    expect(await resolveHubActor(sessionUser, null)).toEqual({ status: 'unavailable' });
-  });
-
-  it('denies malformed session and employee identities without granting a fallback actor', async () => {
-    const validRow = fakeClient({ data: { id: 'employee-1', role: 'rep' }, error: null });
-    expect(await resolveHubActor({ id: '', email: 'person@example.com' }, validRow.client)).toEqual({
-      status: 'denied',
-      reason: 'invalid_session_identity',
-    });
-    expect(validRow.from).not.toHaveBeenCalled();
-
-    const invalidRow = fakeClient({ data: { id: '  ', role: 'rep' }, error: null });
-    expect(await resolveHubActor(sessionUser, invalidRow.client)).toEqual({
-      status: 'denied',
-      reason: 'invalid_employee_identity',
+    await expect(resolveHubActor({ id: AUTH_USER_ID }, null)).resolves.toEqual({
+      status: 'unavailable',
     });
   });
 });

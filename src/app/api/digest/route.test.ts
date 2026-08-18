@@ -4,7 +4,7 @@
 // @/lib/auth/session (who's signed in) and @/lib/supabase (config + the
 // service-role client), same fake-Supabase-client style as
 // src/lib/auth/allowlist.test.ts / src/lib/leads/queue.test.ts. Exercises
-// the real resolveStaffRole (src/lib/auth/role.ts) against a fake app_users
+// the real resolveStaffRole (src/lib/auth/role.ts) against a fake ops_employees
 // row rather than mocking it, so the gate is tested end to end.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -29,8 +29,8 @@ import { GET } from './route';
 
 function fakeSupabase(role: string | null, digestRows: Record<string, unknown>[] = []) {
   const from = vi.fn((table: string) => {
-    if (table === 'app_users') {
-      return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: role ? { role } : null, error: null }) }) }) };
+    if (table === 'ops_employees') {
+      return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: role ? { role, active: true } : null, error: null }) }) }) };
     }
     if (table === 'weekly_digests') {
       return { select: () => ({ order: () => ({ limit: async () => ({ data: digestRows, error: null }) }) }) };
@@ -47,7 +47,7 @@ describe('GET /api/digest -- role gate', () => {
 
   it('403s a rep instead of returning the team digest', async () => {
     getSessionEmailMock.mockResolvedValue('rep@yulelovelights.com');
-    fakeClient = fakeSupabase('rep');
+    fakeClient = fakeSupabase('office');
 
     const res = await GET();
 
@@ -56,7 +56,7 @@ describe('GET /api/digest -- role gate', () => {
     expect(json.error).toBe("The weekly digest is for the coach's Friday review.");
   });
 
-  it('403s (fail closed) when the caller has no app_users row', async () => {
+  it('403s (fail closed) when the caller has no ops_employees row', async () => {
     getSessionEmailMock.mockResolvedValue('stranger@yulelovelights.com');
     fakeClient = fakeSupabase(null);
 

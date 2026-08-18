@@ -1,20 +1,14 @@
-// Resolves the signed-in staff member's email for routes that attribute an
-// action to a person (claiming a lead, logging a call). Factored out for the
-// same reason allowlist.ts is: a single seam the rest of the app reads
-// through. No Supabase config means no session, same "auth degrades to
-// nothing configured" convention as the rest of the app.
+// Compatibility projection for routes that still attribute existing facts by
+// email. The value is loaded from the immutable UUID-linked employee actor,
+// not from Supabase auth metadata, so phone-only sessions work unchanged.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { getSupabaseAuthServerClient } from '../supabase';
+import { resolveCurrentHubActor } from './resource';
 
-// `client` is undefined by default (fetches the real auth-cookie client);
-// tests pass a mock directly. Can't default-initialize it with `await` (not
-// allowed in a parameter initializer), hence the explicit undefined check.
-export async function getSessionEmail(client?: SupabaseClient | null): Promise<string | null> {
-  const supabase = client === undefined ? await getSupabaseAuthServerClient() : client;
-  if (!supabase) return null;
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user?.email ?? null;
+export async function getSessionEmail(
+  authClient?: SupabaseClient | null,
+  identityClient?: SupabaseClient | null,
+): Promise<string | null> {
+  const resolution = await resolveCurrentHubActor(authClient, identityClient);
+  return resolution.status === 'resolved' ? resolution.actor.email : null;
 }
