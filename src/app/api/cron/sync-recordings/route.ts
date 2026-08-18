@@ -18,6 +18,8 @@ import { processPendingRecordings } from '@/lib/recordings/pipeline';
 import { RECORDING_BATCH_SIZE, resolveSyncWindowStart } from '@/lib/recordings/sync';
 import { verifyCronRequest } from '@/lib/auth/machine';
 
+const BACKLOG_FETCH_LIMIT = 500;
+
 export const maxDuration = 300;
 
 export async function GET(request: Request) {
@@ -71,7 +73,16 @@ export async function GET(request: Request) {
     // small overlap between runs, so re-seeing a few of the same messages
     // next time is free.
     const runStartedAt = new Date().toISOString();
-    const { messages, truncated } = await listRecentCallRecordings(since);
+    // BACKLOG_FETCH_LIMIT vs the 100 default: the scan is newest-first with a
+    // cap, so a cap SMALLER than the backlog can never drain it. Holding the
+    // cursor (the guard below) stops us LOSING the remainder, but the next run
+    // then re-fetches the same newest N and the cursor never moves -- safe,
+    // and stuck. Raising the cap so a real backlog fits in ONE window is what
+    // actually makes progress. 500 covers the measured 2026-08 gap (129 calls)
+    // with headroom; the conversation scan still stops the moment a
+    // conversation falls outside the window, so a high cap costs nothing on a
+    // normal night with a handful of calls.
+    const { messages, truncated } = await listRecentCallRecordings(since, BACKLOG_FETCH_LIMIT);
 
     let inserted = 0;
     for (const m of messages) {
