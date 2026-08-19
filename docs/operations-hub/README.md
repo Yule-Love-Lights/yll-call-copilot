@@ -1,16 +1,17 @@
 # Operations Hub final-review pack
 
-Status: **owner-approved; immutable identity foundation merged; staging activation in progress**
-Updated: 2026-08-18
-Merged Hub source: PRs #37 and #40 through #51 at
-`master@f2c9bd0761365a275f4793cd4f70dcf9c75cee26`. The current contract mirror
-remains the byte-identical PR #44 pin recorded in `SOURCE-PINS.md`.
+Status: **owner-approved; contract/schema mirror current; staging activation in progress**
+Updated: 2026-08-19
+Merged Hub source: PRs #37 and #40 through #52 at
+`master@0b33c23b456cacc70a85ea717bb5df9eb311beda`. The current contract and
+schema artifact pins are recorded in `SOURCE-PINS.md`.
 
 This pack is the reconciled and approved source for the Operations Hub.
 Quote Tool PR #701 established the original canonical baseline, PR #716 made it
 self-contained, Naldo signed the master plan, and Hub PR #37 was human-merged.
-The current byte-identical mirror is `v1.4.0-draft`, pinned to Quote commit
-`0a69fc0efc4998b59136057671e5705d8e5583f6` and merged through Hub PR #44.
+The current byte-identical mirror is `v1.4.0-draft`, pinned to Quote Tool PR
+#803 merge `c60bce4927a7fc47a8d6ee1d14a6eb88257755aa`. Its independent schema
+version is `1.0.0-draft`.
 
 ## Read in this order
 
@@ -20,19 +21,21 @@ The current byte-identical mirror is `v1.4.0-draft`, pinned to Quote commit
    the Hub.
 4. `INTEGRATION-CONTRACT.md` — byte-identical mirror of the merged Quote Tool
    canonical contract.
-5. `CONTRACT-V1.3-PROPOSAL.md` — historical proposal retained for audit; it
+5. `ops-contract-schema/` — byte-identical canonical manifest, OpenAPI, and
+   generated JSON Schema artifacts.
+6. `CONTRACT-V1.3-PROPOSAL.md` — historical proposal retained for audit; it
    is not authoritative.
-6. `FINAL-REVIEW-FINDINGS.md` — persona and cross-repository failure review.
-7. `FEATURE-BACKLOG.md` — committed scope, launch blockers, and later ideas.
-8. `SOURCE-PINS.md` — the exact source revisions reconciled here.
-9. `CLAUDE-FINAL-REVIEW-HANDOFF.md` — historical final-review prompt.
-10. `PHASE-0-CHECKLIST.md` — live safety gates and the field-provisioning stop.
-11. `PHASE-0-AUTHORIZATION-INVENTORY.md` — current Hub-local actor, route,
+7. `FINAL-REVIEW-FINDINGS.md` — persona and cross-repository failure review.
+8. `FEATURE-BACKLOG.md` — committed scope, launch blockers, and later ideas.
+9. `SOURCE-PINS.md` — the exact source revisions reconciled here.
+10. `CLAUDE-FINAL-REVIEW-HANDOFF.md` — historical final-review prompt.
+11. `PHASE-0-CHECKLIST.md` — live safety gates and the field-provisioning stop.
+12. `PHASE-0-AUTHORIZATION-INVENTORY.md` — current Hub-local actor, route,
     machine-auth coverage, deployment requirements, and remaining release
     blocks.
-12. `PHASE-0-RLS-RUNBOOK.md` — the API-only database boundary, CI proof,
+13. `PHASE-0-RLS-RUNBOOK.md` — the API-only database boundary, CI proof,
     hosted preflight, safe rollout order, and remaining identity tests.
-13. `LIVE-CALLING-ACTIVATION-BLOCKERS.md` — the positive customer-call kill
+14. `LIVE-CALLING-ACTIVATION-BLOCKERS.md` — the positive customer-call kill
     switch and the evidence required before live calling may be enabled.
 
 ## Scoped authority
@@ -56,7 +59,8 @@ Completed:
   PR #716 merged the self-contained canonical contract.
 - Naldo's four P16 rulings are recorded in `DECISIONS.md`.
 - Naldo signed the master-plan approval and authorized Phase 0.
-- The Hub contract mirror is byte-identical to the canonical file.
+- The Hub contract, manifest, OpenAPI, and JSON Schema mirrors are
+  byte-identical to the Quote Tool canonical files.
 - Fail-closed production auth, centralized capabilities, API-only database RLS,
   and Office lead/call resource authorization merged through PR #46.
 - Hub PR #50 merged the immutable employee, versioned Auth-link, department
@@ -65,9 +69,8 @@ Completed:
 
 Phase 0 must now deliver:
 
-- The shared JSON Schema/OpenAPI artifacts from their canonical Quote Tool
-  owner, vendored byte-identically in the Hub.
-- CI validation of contract/schema bytes and runtime version compatibility.
+- Authenticated CI validation of canonical cross-repository bytes and runtime
+  version compatibility.
 - RLS/authorization checklists and impersonated-role tests are defined for
   every field-facing Hub table and endpoint.
 - Staging phone OTP, session-age enforcement, owner-only recovery, password and
@@ -91,8 +94,8 @@ staging Supabase project. Real staging activation still requires hosted
 provider configuration, disabled public signup, enforced CAPTCHA, reviewed SMS
 rate limits, a short access-token lifetime, and test identities. Field
 provisioning, paid workflow, and production phone auth remain blocked on the
-Quote-owned capability and current-context surfaces, canonical shared
-schema/OpenAPI artifacts, hosted identity-persona proof, recovery, and
+Quote-owned capability and current-context surfaces, hosted identity-persona
+proof, recovery, and
 password/session revocation. Naldo ruled the Advertising placement/photo
 visibility boundary on 2026-08-18; implementation and hosted authorization
 proof remain Track B work.

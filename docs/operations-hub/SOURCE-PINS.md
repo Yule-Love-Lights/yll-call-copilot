@@ -1,10 +1,10 @@
 # Source revisions reconciled by this review
 
-Prepared: 2026-08-07
+Prepared: 2026-08-07; last reconciled: 2026-08-19
 
-Current contract pin verified: 2026-08-15
+Current contract/schema pin verified: 2026-08-19
 
-Current Hub implementation baseline verified: 2026-08-18
+Current Hub implementation baseline verified: 2026-08-19
 
 | Source | Branch / PR | Pinned head | Use |
 |---|---|---|---|
@@ -12,10 +12,12 @@ Current Hub implementation baseline verified: 2026-08-18
 | Claude combined plan | `claude/operations-hub-plan`, PR #36 | `cdc1cb2fbe7356bab503f3af4a3f4d2682033882` | Decisions, shared master plan, backlog, contract mirror |
 | Quote Tool canonical contract baseline | `claude/copilot-labor-tracking-a14bf3`, PR #701 | head `ada0d732c354dc9b869cf77efc8af4161d14f649`; merge `72c2eb89b0533221e0966cbc9df25f39f5f8e7e9` | Accepted canonical time/pay/integration contract v1.3.0-draft baseline |
 | Quote Tool self-contained canonical contract | `naldo/ops-contract-v130-clarifications`, PR #716 | head `d2cf098658a595da1bd7b5b35ae553605fcbd1a0`; merge `5d56ebb62e23b2fe592cdc1912359b1ddf137270` | Canonical v1.3.0-draft consumed by the Operations Hub |
-| Quote Tool Flow H canonical update | Quote Tool canonical history | `0a69fc0efc4998b59136057671e5705d8e5583f6` | Current canonical v1.4.0-draft, including Flow H commitment-verification events |
+| Quote Tool Flow H canonical update | Quote Tool canonical history | `0a69fc0efc4998b59136057671e5705d8e5583f6` | Historical pre-schema v1.4.0-draft, including Flow H commitment-verification events |
+| Quote Tool contract/schema publication | `codex/ops-contract-schema-v1-4`, PR #803 | head `0cf17a4ab4accd4187bd631ebae0eac3abbbd7e3`; merge `c60bce4927a7fc47a8d6ee1d14a6eb88257755aa` | Current canonical v1.4.0-draft contract plus schema v1.0.0-draft manifest, OpenAPI, and JSON Schema |
 | Hub Flow H mirror | `naldo/217-flow-h-mirror`, PR #44 | head `277db428c880adf5350ed01b0d7918241587f576`; merge `0756b611c1e3bd7d6d3eeb4318b8677412ae0ad7` | Current byte-identical Hub mirror and contract pin |
 | Hub immutable identity foundation | `codex/operations-hub-identity-foundation`, PR #50 | head `72487ae216c2d24b0870ed44852a668dc31596e6`; merge `44989e1ac1c7830ffdcd4d1e1f623db692547e9e` | Stable employee IDs, versioned Auth links, memberships, identity audit, and guarded compatibility projection |
 | Hub recording sync backlog cap | `naldo/recording-sync-backlog-cap`, PR #51 | head `0724b31242d39caac1e5d53847af14e36b4d0fed`; merge `f2c9bd0761365a275f4793cd4f70dcf9c75cee26` | Merged Hub implementation baseline before the Phase 0 completion branch |
+| Hub Phase 0 completion | `codex/operations-hub-phase-0-completion`, PR #52 | head `c4d5b52a835196a354077adf74d3aa5d1e86e083`; merge `0b33c23b456cacc70a85ea717bb5df9eb311beda` | Staging safeguards, commitment extraction, recording sync, and Phase 0 ledger corrections |
 
 ## Known source condition
 
@@ -40,17 +42,22 @@ Current Hub implementation baseline verified: 2026-08-18
 - Historical v1.3 canonical and Hub mirror byte length: `41336`
 - Paired Hub branch: `codex/operations-hub-final-review`; its PR reports the
   exact commit that carries these bytes.
-- Shared JSON Schema SHA-256: `PENDING` — the canonical Phase 0 artifact is not
-  yet published in the Quote Tool repository.
+- The historical v1.3 baseline did not publish the shared machine-readable
+  schema. Quote Tool PR #803 supersedes that gap for v1.4.
 
 ## Current contract pin
 
 - Contract version: `v1.4.0-draft`
 - Quote Tool canonical commit:
-  `0a69fc0efc4998b59136057671e5705d8e5583f6`
-- Hub mirror merge: PR #44 at
-  `0756b611c1e3bd7d6d3eeb4318b8677412ae0ad7`
+  `c60bce4927a7fc47a8d6ee1d14a6eb88257755aa`
 - Canonical and Hub mirror SHA-256:
-  `70ec41d325d7fb6ad907f0979b2389fa2cb6effb35e10bfd228c822cd42bfee4`
-- Canonical and Hub mirror byte length: `47692`
+  `d3551f65561863af42721d020b357888acc6c90eb0c8c586f7bc151305395e7f`
+- Canonical and Hub mirror byte length: `56963`
+- Schema version: `v1.0.0-draft`
+- Canonical manifest SHA-256:
+  `f55582fbbc7a99a5f1f1d06f9aa6897af96886ddcd94833a820e4cbd315956dd`
+- Canonical OpenAPI SHA-256:
+  `2b57dec5de60cfdae774897905988e0ce855c3b38211abebce48d39a6b8d9ae1`
+- Canonical JSON Schema SHA-256:
+  `dd78f02291718bdcbc68c68487885ff2ea69888801c641f4ca8a93436db2047a`
 - Machine-readable authority: `docs/operations-hub/contract-pin.json`

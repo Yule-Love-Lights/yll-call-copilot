@@ -1,9 +1,9 @@
 # Operations Hub Phase 0 safety checklist
 
 Status: **immutable identity foundation merged; staging activation in progress; field-user provisioning blocked**
-Date: 2026-08-18
-Merged base: Hub `master@f2c9bd0761365a275f4793cd4f70dcf9c75cee26`
-after the human-authorized merges through PR #51. PR #50 merged the additive
+Date: 2026-08-19
+Merged base: Hub `master@0b33c23b456cacc70a85ea717bb5df9eb311beda`
+after the human-authorized merges through PR #52. PR #50 merged the additive
 identity foundation. Hosted database, provider, persona, and field-launch
 gates remain open.
 
@@ -69,17 +69,19 @@ RLS, and impersonated-role gates below pass.
 - [x] Quote Tool PR #701 established the `v1.3.0-draft` baseline and PR #716
       made it self-contained. The current canonical/mirror pin is
       `v1.4.0-draft` at Quote commit
-      `0a69fc0efc4998b59136057671e5705d8e5583f6` after the Flow H addition.
-- [x] Hub PR #44 copied the current mirror exactly: 47,692 bytes, SHA-256
-      `70ec41d325d7fb6ad907f0979b2389fa2cb6effb35e10bfd228c822cd42bfee4`.
+      `c60bce4927a7fc47a8d6ee1d14a6eb88257755aa` after Quote Tool PR #803.
+- [x] The paired Hub mirror copies the current contract exactly: 56,963 bytes,
+      SHA-256 `d3551f65561863af42721d020b357888acc6c90eb0c8c586f7bc151305395e7f`.
 - [x] `contract-pin.json` records one version, source commit/path, byte length,
       and raw-byte SHA-256.
 - [x] Local verification detects mirror/pin drift and clearly reports
       `LOCAL_PIN_OK`; this is not represented as cross-repository trust.
 - [x] Local cross-repository verification against a separate Quote Tool clone
       reports `CROSS_REPO_BYTES_OK` and rejects same-file/hardlink shortcuts.
-- [ ] Quote Tool publishes `docs/context/ops-contract-schema/` canonically.
-- [ ] Hub vendors the schema/OpenAPI files byte-identically.
+- [x] Quote Tool publishes `docs/context/ops-contract-schema/` canonically at
+      schema version `1.0.0-draft`.
+- [x] Hub vendors the manifest, OpenAPI, and JSON Schema files
+      byte-identically and pins each byte length and SHA-256.
 - [ ] A required authenticated CI job fetches the Quote file at the pinned
       commit and compares it as data without executing PR-authored code.
 - [ ] Contract, schema, and supported-version deploy smoke fails closed on skew.
@@ -350,7 +352,8 @@ ledger, compensation result, pay-period close, or payroll export.
    permission checks, and metric provenance (merged in PR #46).
 6. Additive Hub identity/audit/integration scaffolding (merged in PR #50; no
    OTP activation or field provisioning).
-7. Vendor Quote-owned schemas; add version health and deploy-skew smoke tests.
+7. Add authenticated cross-repository CI plus version-health and deploy-skew
+   smoke tests for the vendored Quote-owned schemas.
 8. Fail-closed phone-OTP code and tests may proceed only in a separate staging
    Vercel preview and staging Supabase project. Field provisioning, paid
    workflows, and production phone-auth activation still wait for all above

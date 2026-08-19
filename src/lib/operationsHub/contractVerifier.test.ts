@@ -21,6 +21,8 @@ const mirrorPath = resolve(
   'docs/operations-hub/INTEGRATION-CONTRACT.md',
 );
 const pinPath = resolve(repositoryRoot, 'docs/operations-hub/contract-pin.json');
+const artifactDirectory = resolve(repositoryRoot, 'docs/operations-hub/ops-contract-schema');
+const artifactNames = ['manifest.json', 'common.openapi.json', 'common.schema.json'];
 
 function cleanEnvironment() {
   const environment = { ...process.env };
@@ -45,15 +47,24 @@ describe('Operations Hub contract verifier', () => {
       env: cleanEnvironment(),
     });
 
-    expect(output).toContain('LOCAL_PIN_OK contract_version=1.4.0-draft 47692 bytes');
+    expect(output).toContain('LOCAL_PIN_OK contract_version=1.4.0-draft 56963 bytes');
+    expect(output).toContain('LOCAL_ARTIFACTS_OK schema_version=1.0.0-draft files=3');
   });
 
   it('accepts an independent exact canonical byte copy from another cwd', () => {
     withTemporaryDirectory(resolve(tmpdir()), (temporaryDirectory) => {
       const workingDirectory = resolve(temporaryDirectory, 'path with spaces');
       const canonicalPath = resolve(temporaryDirectory, 'canonical contract.md');
+      const canonicalArtifactDirectory = resolve(temporaryDirectory, 'ops-contract-schema');
       mkdirSync(workingDirectory);
+      mkdirSync(canonicalArtifactDirectory);
       copyFileSync(mirrorPath, canonicalPath);
+      for (const artifactName of artifactNames) {
+        copyFileSync(
+          resolve(artifactDirectory, artifactName),
+          resolve(canonicalArtifactDirectory, artifactName),
+        );
+      }
 
       const environment = cleanEnvironment();
       environment.OPS_HUB_CANONICAL_CONTRACT_PATH = canonicalPath;
@@ -63,7 +74,9 @@ describe('Operations Hub contract verifier', () => {
         env: environment,
       });
 
-      expect(output).toContain('CROSS_REPO_BYTES_OK');
+      expect(output).toContain(
+        'CROSS_REPO_BYTES_OK contract and 3 schema artifacts are byte-identical',
+      );
     });
   });
 
@@ -92,6 +105,36 @@ describe('Operations Hub contract verifier', () => {
 
       expect(result.status).toBe(1);
       expect(result.stderr).toContain('Hub mirror SHA-256');
+    });
+  });
+
+  it('rejects schema artifact digest drift in the pin', () => {
+    withTemporaryDirectory(resolve(tmpdir()), (temporaryDirectory) => {
+      const validPin = JSON.parse(readFileSync(pinPath, 'utf8')) as {
+        artifacts: Array<Record<string, unknown>>;
+      } & Record<string, unknown>;
+      const modifiedPin = {
+        ...validPin,
+        artifacts: validPin.artifacts.map((artifact) => (
+          artifact.name === 'json_schema'
+            ? {
+                ...artifact,
+                sha256: '0'.repeat(64),
+              }
+            : artifact
+        )),
+      };
+      const modifiedPinPath = resolve(temporaryDirectory, 'pin.json');
+      writeFileSync(modifiedPinPath, JSON.stringify(modifiedPin));
+
+      const result = spawnSync(
+        process.execPath,
+        [verifierPath, '--pin', modifiedPinPath],
+        { cwd: repositoryRoot, encoding: 'utf8', env: cleanEnvironment() },
+      );
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('Hub json_schema SHA-256');
     });
   });
 
@@ -131,9 +174,17 @@ describe('Operations Hub contract verifier', () => {
   it('rejects a same-length canonical mutation while the local mirror stays valid', () => {
     withTemporaryDirectory(resolve(tmpdir()), (temporaryDirectory) => {
       const canonicalPath = resolve(temporaryDirectory, 'canonical.md');
+      const canonicalArtifactDirectory = resolve(temporaryDirectory, 'ops-contract-schema');
+      mkdirSync(canonicalArtifactDirectory);
       const modifiedBytes = Buffer.from(readFileSync(mirrorPath));
       modifiedBytes[modifiedBytes.length - 2] ^= 1;
       writeFileSync(canonicalPath, modifiedBytes);
+      for (const artifactName of artifactNames) {
+        copyFileSync(
+          resolve(artifactDirectory, artifactName),
+          resolve(canonicalArtifactDirectory, artifactName),
+        );
+      }
       const result = spawnSync(
         process.execPath,
         [verifierPath, '--canonical', canonicalPath],
@@ -141,6 +192,28 @@ describe('Operations Hub contract verifier', () => {
       );
       expect(result.status).toBe(1);
       expect(result.stderr).toContain('canonical SHA-256');
+    });
+  });
+
+  it('rejects a canonical schema artifact mutation while local mirrors stay valid', () => {
+    withTemporaryDirectory(resolve(tmpdir()), (temporaryDirectory) => {
+      const canonicalPath = resolve(temporaryDirectory, 'canonical.md');
+      const canonicalArtifactDirectory = resolve(temporaryDirectory, 'ops-contract-schema');
+      mkdirSync(canonicalArtifactDirectory);
+      copyFileSync(mirrorPath, canonicalPath);
+      for (const artifactName of artifactNames) {
+        const bytes = Buffer.from(readFileSync(resolve(artifactDirectory, artifactName)));
+        if (artifactName === 'common.openapi.json') bytes[bytes.length - 2] ^= 1;
+        writeFileSync(resolve(canonicalArtifactDirectory, artifactName), bytes);
+      }
+
+      const result = spawnSync(
+        process.execPath,
+        [verifierPath, '--canonical', canonicalPath],
+        { cwd: repositoryRoot, encoding: 'utf8', env: cleanEnvironment() },
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('canonical openapi SHA-256');
     });
   });
 
@@ -172,8 +245,11 @@ describe('Operations Hub contract verifier', () => {
       const cases: Array<[string, Record<string, unknown>, string]> = [
         ['unknown', { ...validPin, unreviewed_field: true }, 'unknown key'],
         ['version', { ...validPin, contract_version: 'v1.3.0-draft' }, 'semantic contract_version'],
+        ['schema-version', { ...validPin, schema_version: 'draft' }, 'semantic schema_version'],
         ['hash', { ...validPin, sha256: 'not-a-hash' }, 'SHA-256'],
         ['length', { ...validPin, byte_length: 0 }, 'byte_length'],
+        ['repository', { ...validPin, canonical_repository: 'other/repo' }, 'approved layout'],
+        ['artifacts', { ...validPin, artifacts: [] }, 'exactly three schema artifacts'],
       ];
 
       for (const [name, pin, expectedError] of cases) {
