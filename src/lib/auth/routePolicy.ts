@@ -180,6 +180,7 @@ export const APP_ROUTE_POLICIES: readonly AppRoutePolicy[] = [
   api('/api/live/stream/authorize', { POST: machineRoute('live_bridge') }),
   api('/api/live/segment', { POST: machineRoute('live_bridge') }),
   api('/api/cron/brain-review', { GET: machineRoute('cron_brain_review') }),
+  api('/api/cron/extract-commitments', { GET: machineRoute('cron_extract_commitments') }),
   api('/api/cron/score-calls', { GET: machineRoute('cron_score_calls') }),
   api('/api/cron/second-mile', { GET: machineRoute('cron_second_mile') }),
   api('/api/cron/sync-recordings', { GET: machineRoute('cron_sync_recordings') }),

@@ -5,17 +5,11 @@
 // audio download needs its own raw-bytes fetch since ghlFetch always
 // json()s the response.
 //
-// UNVERIFIED against a live GHL payload -- flagged honestly, same
-// convention as HighLevelOpportunity's date fields in ./types.ts. The
-// Conversations API (GET /conversations/search, GET /conversations/
-// {id}/messages) is documented and used here because it is the closest
-// confirmed-real GHL endpoint pair to "list completed calls with
-// recordings" for a Private Integration token, but the exact field names
-// for a call message's duration/status have not been probed against a real
-// payload (scripts/ghl-probe.mjs has no call-message probe yet). Before the
-// nightly cron goes live, run a probe against a real conversation that has
-// a completed call message and adjust the field mapping below if it
-// doesn't match. The recording download endpoint shape (GET
+// The listing path and field mapping are pinned to HighLevel's official
+// 2021-07-28 generated OpenAPI schema cited beside the export implementation
+// below. They have not yet been probed against this location's live payload.
+// Before the nightly cron goes live, run a read-only probe against a real
+// completed call. The recording download endpoint shape (GET
 // /conversations/messages/{messageId}/locations/{locationId}/recording) was
 // given directly by the workstream brief, also unverified live.
 
@@ -54,27 +48,30 @@ export type GhlCallRecordingMessage = {
   durationSeconds: number | null;
 };
 
-type GhlConversationSummary = { id: string; contactId?: string; lastMessageDate?: string };
-
 type GhlMessage = {
   id: string;
   type?: string;
   messageType?: string;
+  conversationId?: string;
   contactId?: string;
   userId?: string;
   direction?: string;
   dateAdded?: string;
-  meta?: { call?: { status?: string; duration?: number } };
+  meta?: {
+    call?: { status?: string; duration?: number };
+    callStatus?: string;
+    callDuration?: string | number;
+  };
   callDuration?: number;
   callStatus?: string;
 };
 
-const CONVERSATIONS_PAGE_LIMIT = 50;
-const MESSAGES_PAGE_LIMIT = 50;
-// Hard cap on conversations scanned per sync run -- a runaway pagination
-// loop (e.g. a field-name mismatch means lastMessageDate never crosses
-// `sinceIso`) must not turn a nightly cron into an unbounded crawl.
-const MAX_CONVERSATIONS_SCANNED = 500;
+// HighLevel's official location-wide export is cursor-paginated and accepts up
+// to 1,000 messages per request. This replaces the old N+1 conversation scan,
+// which both lost calls after the first 50 messages in a conversation and
+// could exceed HighLevel's 100 requests / 10 seconds burst limit.
+const EXPORT_PAGE_LIMIT = 1000;
+const MAX_EXPORT_PAGES = 20;
 
 // Exported for tests -- pure classification of one GHL message as a
 // finished, recorded call. "completed" is GHL's documented terminal status
@@ -83,95 +80,152 @@ const MAX_CONVERSATIONS_SCANNED = 500;
 export function isCompletedCallMessage(m: GhlMessage): boolean {
   const type = (m.messageType ?? m.type ?? '').toUpperCase();
   if (!type.includes('CALL')) return false;
-  const status = (m.meta?.call?.status ?? m.callStatus ?? '').toLowerCase();
+  const status = (m.meta?.callStatus ?? m.meta?.call?.status ?? m.callStatus ?? '').toLowerCase();
   return status === 'completed';
 }
 
 // Exported for tests -- pulls a call message's duration from whichever
 // field shape the payload actually uses.
 export function messageDuration(m: GhlMessage): number | null {
-  const d = m.meta?.call?.duration ?? m.callDuration;
-  return typeof d === 'number' ? d : null;
+  const d = m.meta?.callDuration ?? m.meta?.call?.duration ?? m.callDuration;
+  const parsed = typeof d === 'string' ? Number(d) : d;
+  return typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : null;
 }
 
-// Pages through conversations newest-first, then each conversation's
-// messages, collecting completed call messages added since `sinceIso` (up
-// to `limit`). Conversations are assumed sorted by last-message-date
-// descending (the default the GHL Conversations API documents) so the scan
-// can stop the moment one conversation's lastMessageDate falls before the
-// sync window, instead of paging through the whole account every night.
-/** Truncated=true means the `limit` cap stopped the scan before the sync
- *  window was exhausted, so MORE calls exist that were not returned. The
- *  caller MUST NOT advance its cursor past the returned set in that case --
- *  doing so permanently skips the remainder (a measured 29 real calls on the
- *  2026-08 backlog). Returned as a field rather than inferred from
- *  `messages.length === limit` so the caller cannot forget to check it. */
+// HighLevel documents /conversations/messages/export for the pinned
+// 2021-07-28 API version with locationId, channel=Call, start/end dates,
+// ascending sort, and a short-lived nextCursor. Reproducible primary schema:
+// https://marketplace.gohighlevel.com/docs/2021-07-28/ghl/conversations/export-messages-by-location
+// generated OpenAPI asset https://marketplace.gohighlevel.com/docs/assets/js/fafdaa05.8964fc18.js,
+// module 664011. We consume the provider cursor only inside one invocation,
+// then expose a durable time continuation after proving the whole boundary
+// timestamp was scanned.
+export type RecentCallRecordingsStopReason = 'window_exhausted' | 'result_limit' | 'provider_page_cap';
+
+/**
+ * `nextSince` is present only when every call through that exclusive instant
+ * was returned. The caller may persist it and continue draining the same
+ * window. A provider-page-cap result advances only through a timestamp group
+ * that a later provider message proved complete.
+ */
 export type RecentCallRecordingsPage = {
   messages: GhlCallRecordingMessage[];
   truncated: boolean;
+  stopReason: RecentCallRecordingsStopReason;
+  nextSince: string | null;
 };
 
 export async function listRecentCallRecordings(
   sinceIso: string,
   limit = 100,
+  untilIso = new Date().toISOString(),
 ): Promise<RecentCallRecordingsPage> {
   const { locationId } = requireConfig();
   const since = new Date(sinceIso).getTime();
-  const results: GhlCallRecordingMessage[] = [];
-  let offset = 0;
-  let scanned = 0;
+  const until = new Date(untilIso).getTime();
+  if (!Number.isFinite(since) || !Number.isFinite(until) || until < since) {
+    throw new GhlRecordingError('Invalid recording export window.');
+  }
 
-  while (results.length < limit && scanned < MAX_CONVERSATIONS_SCANNED) {
+  if (!Number.isFinite(limit)) throw new GhlRecordingError('Invalid recording export limit.');
+  const safeLimit = Math.max(1, Math.floor(limit));
+  const results: GhlCallRecordingMessage[] = [];
+  const seenProviderCursors = new Set<string>();
+  let providerCursor: string | null = null;
+  let lastSeenTime: number | null = null;
+  let safeThroughTime: number | null = null;
+
+  for (let pageNumber = 0; pageNumber < MAX_EXPORT_PAGES; pageNumber++) {
     const params = new URLSearchParams({
       locationId,
-      limit: String(CONVERSATIONS_PAGE_LIMIT),
-      offset: String(offset),
-      sort: 'desc',
-      sortBy: 'last_message_date',
+      channel: 'Call',
+      limit: String(EXPORT_PAGE_LIMIT),
+      sortBy: 'createdAt',
+      sortOrder: 'asc',
+      startDate: new Date(since).toISOString(),
+      endDate: new Date(until).toISOString(),
     });
-    const page = await ghlFetch<{ conversations?: GhlConversationSummary[] }>(`/conversations/search?${params}`);
-    const conversations = page.conversations ?? [];
-    if (conversations.length === 0) break;
+    if (providerCursor) params.set('cursor', providerCursor);
 
-    for (const convo of conversations) {
-      scanned++;
-      if (convo.lastMessageDate && new Date(convo.lastMessageDate).getTime() < since) {
-        // Newest-first order means every remaining conversation (this page
-        // and later ones) is also older than the window -- stop the whole
-        // scan here rather than paging further. The window is EXHAUSTED, so
-        // this is a complete result: the caller may safely advance its cursor.
-        return { messages: results, truncated: false };
+    const page = await ghlFetch<{ messages?: GhlMessage[]; nextCursor?: string | null }>(
+      `/conversations/messages/export?${params}`,
+    );
+    const messages = page.messages ?? [];
+
+    for (const m of messages) {
+      const addedAt = m.dateAdded ? new Date(m.dateAdded).getTime() : Number.NaN;
+      if (!Number.isFinite(addedAt)) {
+        throw new GhlRecordingError('HighLevel export returned a message without a valid dateAdded.');
       }
+      if (lastSeenTime !== null && addedAt < lastSeenTime) {
+        throw new GhlRecordingError('HighLevel export violated the requested ascending date order.');
+      }
+      if (lastSeenTime !== null && addedAt > lastSeenTime) safeThroughTime = lastSeenTime;
+      lastSeenTime = addedAt;
 
-      const messagesPage = await ghlFetch<{ messages?: { messages?: GhlMessage[] } }>(
-        `/conversations/${encodeURIComponent(convo.id)}/messages?limit=${MESSAGES_PAGE_LIMIT}`,
-      ).catch(() => ({ messages: { messages: [] } }));
-      const messages = messagesPage.messages?.messages ?? [];
+      if (addedAt < since || addedAt > until || !isCompletedCallMessage(m)) continue;
+      if (!m.id || !m.conversationId) {
+        throw new GhlRecordingError('HighLevel export returned a completed call without its required ids.');
+      }
+      results.push({
+        messageId: m.id,
+        conversationId: m.conversationId,
+        contactId: m.contactId ?? null,
+        userId: m.userId ?? null,
+        direction: m.direction === 'inbound' || m.direction === 'outbound' ? m.direction : null,
+        dateAdded: new Date(addedAt).toISOString(),
+        durationSeconds: messageDuration(m),
+      });
+    }
 
-      for (const m of messages) {
-        if (!m.dateAdded || new Date(m.dateAdded).getTime() < since) continue;
-        if (!isCompletedCallMessage(m)) continue;
-        results.push({
-          messageId: m.id,
-          conversationId: convo.id,
-          contactId: m.contactId ?? convo.contactId ?? null,
-          userId: m.userId ?? null,
-          direction: m.direction === 'inbound' || m.direction === 'outbound' ? m.direction : null,
-          dateAdded: m.dateAdded,
-          durationSeconds: messageDuration(m),
-        });
-        if (results.length >= limit) return { messages: results, truncated: true };
+    const ordered = results.sort((a, b) => {
+      const byDate = new Date(a.dateAdded!).getTime() - new Date(b.dateAdded!).getTime();
+      return byDate || a.messageId.localeCompare(b.messageId);
+    });
+    if (ordered.length > safeLimit) {
+      const boundaryTime = new Date(ordered[safeLimit - 1].dateAdded!).getTime();
+      // Seeing a later provider message, or exhausting the export, proves no
+      // call sharing this boundary timestamp remains on an unseen page.
+      if (lastSeenTime !== null && (lastSeenTime > boundaryTime || !page.nextCursor)) {
+        const boundaryMessages = ordered.filter(message => new Date(message.dateAdded!).getTime() <= boundaryTime);
+        return {
+          messages: boundaryMessages,
+          truncated: true,
+          stopReason: 'result_limit',
+          nextSince: new Date(boundaryTime + 1).toISOString(),
+        };
       }
     }
 
-    offset += CONVERSATIONS_PAGE_LIMIT;
+    const nextProviderCursor = page.nextCursor ?? null;
+    if (!nextProviderCursor) {
+      return { messages: ordered, truncated: false, stopReason: 'window_exhausted', nextSince: null };
+    }
+    if (seenProviderCursors.has(nextProviderCursor)) {
+      throw new GhlRecordingError('HighLevel export repeated a pagination cursor.');
+    }
+    seenProviderCursors.add(nextProviderCursor);
+    providerCursor = nextProviderCursor;
   }
 
-  // Falling out of the while loop means one of its guards stopped us rather
-  // than the window running out: either the limit cap or
-  // MAX_CONVERSATIONS_SCANNED. Both mean unseen calls may remain, so report
-  // truncated and let the caller hold its cursor.
-  return { messages: results, truncated: true };
+  // A hard page cap protects the Vercel function without creating the old
+  // liveness trap. Advance only through a timestamp group that a later raw
+  // provider message proved complete; otherwise fail and keep the old cursor.
+  if (safeThroughTime === null || safeThroughTime < since) {
+    throw new GhlRecordingError('HighLevel export page cap reached without a safe continuation.');
+  }
+  const ordered = results
+    .filter(message => new Date(message.dateAdded!).getTime() <= safeThroughTime)
+    .sort((a, b) => {
+      const byDate = new Date(a.dateAdded!).getTime() - new Date(b.dateAdded!).getTime();
+      return byDate || a.messageId.localeCompare(b.messageId);
+    });
+  return {
+    messages: ordered,
+    truncated: true,
+    stopReason: 'provider_page_cap',
+    nextSince: new Date(safeThroughTime + 1).toISOString(),
+  };
 }
 
 // Raw-bytes fetch -- ghlFetch always json()s its response, which would

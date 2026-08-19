@@ -3,44 +3,70 @@
 // src/lib/scoring/batch.ts's scoreNextBatch and src/lib/transcripts/
 // process.ts's processTranscriptBatch. #217
 //
-// Candidate selection is a best-effort cost optimization, not a
-// correctness guarantee: a transcript that legitimately has zero rep
-// commitments never gets a call_commitments row, so it can never be marked
-// "already extracted" by presence alone and will be re-scanned (and
-// re-billed to Claude) on every backfill run. That's wasted cost, not a
-// bug -- persistCommitments is idempotent regardless, and this is a
-// manually-triggered backfill, not an autonomous cron. A later slice can
-// add real processed-tracking if that cost becomes worth solving.
+// Migration 0024 adds durable transcript-level completion markers. They are
+// required even when extraction finds zero commitments, and the database
+// filters them before applying the batch limit so an older transcript cannot
+// be hidden forever behind a full window of already-processed recent rows.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { isMissingTableError } from '../supabase';
-import { extractRawCommitments } from './extract';
+import {
+  extractRawCommitments,
+  EXTRACT_MODEL,
+  isTerminalCommitmentExtractionError,
+} from './extract';
 import { buildCommitmentRows } from './build';
 import { persistCommitments } from './persist';
 
-// Bounded read window, same rationale as scoring/batch.ts's
-// CANDIDATE_WINDOW: several consecutive runs clear a same-day backlog
-// without an unbounded scan of the whole transcripts table.
+// Batch cap only. The database filters durable extraction markers BEFORE
+// applying this bound, so processed recent transcripts cannot hide older work.
 const CANDIDATE_WINDOW = 200;
 
 export type BackfillCandidate = {
   id: string;
   raw_text: string;
   called_at: string | null;
+  commitment_extraction_last_attempt_at: string | null;
   rep_email: string | null;
   ghl_contact_id: string | null;
+  metric_scope: 'performance';
 };
 
-export type BackfillResult = { done: number; skipped: number; failed: number; refused: number };
+export type BackfillResult = {
+  done: number;
+  skipped: number;
+  failed: number;
+  refused: number;
+  quarantined: number;
+};
 
-// Pure selection, mirroring selectScoreCandidates: drop transcripts that
-// already have at least one commitment row, then cap at `limit`.
+// Pure selection helper retained for callers/tests that already have a set of
+// completed ids. The normal database path has filtered durable markers first.
 export function selectBackfillCandidates(
   candidates: BackfillCandidate[],
   alreadyExtractedIds: ReadonlySet<string>,
   limit: number,
 ): BackfillCandidate[] {
-  return candidates.filter(c => !alreadyExtractedIds.has(c.id)).slice(0, limit);
+  const eligible = candidates.filter(c => !alreadyExtractedIds.has(c.id));
+  const byCallTime = (left: BackfillCandidate, right: BackfillCandidate) =>
+    (left.called_at ?? '').localeCompare(right.called_at ?? '') || left.id.localeCompare(right.id);
+  const fresh = eligible
+    .filter(candidate => candidate.commitment_extraction_last_attempt_at === null)
+    .sort(byCallTime);
+  const retries = eligible
+    .filter(candidate => candidate.commitment_extraction_last_attempt_at !== null)
+    .sort((left, right) =>
+      left.commitment_extraction_last_attempt_at!.localeCompare(
+        right.commitment_extraction_last_attempt_at!,
+      ) || byCallTime(left, right));
+
+  // Reserve one slot for the oldest retry whenever one exists. New calls
+  // therefore keep moving while a deterministic failure still reaches its
+  // bounded third-attempt quarantine under steady transcript intake.
+  const retrySlots = retries.length > 0 && limit > 0 ? 1 : 0;
+  return [
+    ...fresh.slice(0, Math.max(0, limit - retrySlots)),
+    ...retries.slice(0, retrySlots),
+  ];
 }
 
 export async function backfillCommitments(
@@ -48,59 +74,107 @@ export async function backfillCommitments(
   verticalName: string,
   limit: number,
 ): Promise<BackfillResult> {
-  const { data: transcriptRows, error: transcriptsError } = await supabase
+  const batchLimit = Math.max(1, Math.min(limit, CANDIDATE_WINDOW));
+  const selectColumns = 'id, raw_text, called_at, commitment_extraction_last_attempt_at, rep_email, ghl_contact_id, metric_scope';
+  const retryQuery = supabase
     .from('transcripts')
-    .select('id, raw_text, called_at, rep_email, ghl_contact_id')
-    .order('called_at', { ascending: false, nullsFirst: false })
-    .limit(CANDIDATE_WINDOW);
-  if (transcriptsError) {
-    if (isMissingTableError(transcriptsError)) return { done: 0, skipped: 0, failed: 0, refused: 0 };
-    console.error('Load candidate transcripts for commitment backfill failed:', transcriptsError);
-    return { done: 0, skipped: 0, failed: 0, refused: 0 };
-  }
-  const candidates = (transcriptRows ?? []) as BackfillCandidate[];
-  if (candidates.length === 0) return { done: 0, skipped: 0, failed: 0, refused: 0 };
+    .select(selectColumns)
+    .is('commitments_extracted_at', null)
+    .is('commitment_extraction_quarantined_at', null)
+    .eq('metric_scope', 'performance')
+    .not('commitment_extraction_last_attempt_at', 'is', null)
+    .order('commitment_extraction_last_attempt_at', { ascending: true })
+    .order('called_at', { ascending: true, nullsFirst: true })
+    .order('id', { ascending: true })
+    .limit(1);
+  const { data: retryRows, error: retryError } = await retryQuery;
+  if (retryError) throw retryError;
 
-  const candidateIds = candidates.map(c => c.id);
-  const { data: existingRows, error: existingError } = await supabase
-    .from('call_commitments')
-    .select('transcript_id')
-    .in('transcript_id', candidateIds);
-  if (existingError && !isMissingTableError(existingError)) {
-    console.error('Load already-extracted transcript ids for commitment backfill failed:', existingError);
-    return { done: 0, skipped: 0, failed: 0, refused: 0 };
+  const retryCandidates = (retryRows ?? []) as BackfillCandidate[];
+  const freshLimit = Math.max(0, batchLimit - Math.min(1, retryCandidates.length));
+  let freshRows: BackfillCandidate[] = [];
+  if (freshLimit > 0) {
+    const { data, error } = await supabase
+      .from('transcripts')
+      .select(selectColumns)
+      .is('commitments_extracted_at', null)
+      .is('commitment_extraction_quarantined_at', null)
+      .eq('metric_scope', 'performance')
+      .is('commitment_extraction_last_attempt_at', null)
+      .order('called_at', { ascending: true, nullsFirst: true })
+      .order('id', { ascending: true })
+      .limit(freshLimit);
+    if (error) throw error;
+    freshRows = (data ?? []) as BackfillCandidate[];
   }
-  const alreadyExtracted = new Set((existingRows ?? []).map(r => (r as { transcript_id: string }).transcript_id));
+  // Keep the same positive gate in application code in case a mock, proxy, or
+  // future query change returns more than the requested database scope.
+  const candidates = [...freshRows, ...retryCandidates]
+    .filter(row => row.metric_scope === 'performance') as BackfillCandidate[];
+  if (candidates.length === 0) {
+    return { done: 0, skipped: 0, failed: 0, refused: 0, quarantined: 0 };
+  }
 
-  const selected = selectBackfillCandidates(candidates, alreadyExtracted, limit);
-  const skipped = candidates.length - alreadyExtracted.size - selected.length;
-  if (selected.length === 0) return { done: 0, skipped: Math.max(0, skipped), failed: 0, refused: 0 };
+  const selected = selectBackfillCandidates(candidates, new Set(), limit);
+  if (selected.length === 0) {
+    return { done: 0, skipped: 0, failed: 0, refused: 0, quarantined: 0 };
+  }
 
   let done = 0;
+  let skipped = 0;
   let failed = 0;
   let refused = 0;
+  let quarantined = 0;
   for (const t of selected) {
     try {
       const raw = await extractRawCommitments(t.raw_text, verticalName);
       const rows = buildCommitmentRows(raw, t.called_at);
-      // This candidate list already excludes every transcript_id that has
-      // ANY existing call_commitments row (open or resolved), so the
-      // refusal branch below is not expected to fire through this normal
-      // selection path -- it exists because persistCommitments is also
-      // callable directly (a forced re-extraction bypassing candidate
-      // selection), and this call site must still handle that result
-      // honestly rather than assuming it can never happen.
-      const result = await persistCommitments(supabase, t.id, t.rep_email, t.ghl_contact_id, rows);
+      // A transcript can reach this branch with preexisting rows if a prior
+      // process wrote commitments but crashed before writing the completion
+      // marker. Persist remains idempotent for open rows and refuses resolved
+      // rows; either outcome is then marked so it cannot starve older work.
+      const result = await persistCommitments(
+        supabase,
+        t.id,
+        t.rep_email,
+        t.ghl_contact_id,
+        rows,
+        EXTRACT_MODEL,
+      );
       if (result.ok) {
-        done++;
+        if (result.alreadyFinalized) skipped++;
+        else done++;
       } else {
         refused++;
       }
     } catch (err) {
       console.error(`Failed to extract commitments for transcript ${t.id}:`, err);
+      const failureCode = isTerminalCommitmentExtractionError(err)
+        ? 'deterministic_extraction_failed'
+        : 'transient_dependency_failed';
+      const { data: failureState, error: failureStateError } = await supabase.rpc(
+        'record_commitment_extraction_failure',
+        { p_transcript_id: t.id, p_failure_code: failureCode },
+      );
+      if (failureStateError) throw failureStateError;
+      if (
+        failureState !== 'retry_scheduled'
+        && failureState !== 'quarantined'
+        && failureState !== 'already_finalized'
+        && failureState !== 'already_quarantined'
+      ) {
+        throw new Error(`Unexpected commitment failure-state result: ${String(failureState)}`);
+      }
+      if (failureState === 'already_finalized') {
+        skipped++;
+        continue;
+      }
+      if (failureState === 'quarantined' || failureState === 'already_quarantined') {
+        quarantined++;
+      }
       failed++;
     }
   }
 
-  return { done, skipped: Math.max(0, skipped), failed, refused };
+  return { done, skipped, failed, refused, quarantined };
 }

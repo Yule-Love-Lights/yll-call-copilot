@@ -104,7 +104,7 @@ work. `RULED` is authorized by the signed master plan or canonical contract.
 
 | # | Decision | Status | Affected work |
 |---|---|---|---|
-| 1 | Door-hanger location terminology/privacy | OPEN — pay is OFF; capture unit and residential visibility remain open | Track B door-hanger capture |
+| 1 | Door-hanger location terminology/privacy | PARTIALLY RULED: P16.5 fixes the residential privacy boundary and keeps pay OFF; only the door-hanger capture-unit terminology remains open | Track B door-hanger capture |
 | 2 | Approver and pre-approval counting for placement accuracy worse than 20 m | OPEN | Track B review and pay-input acceptance |
 | 3 | GPS retry duration and sample-freshness window | OPEN | Track B camera validation |
 | 4 | Forgotten-run reconciliation at local midnight | RULED — closes at the last durable shutter; zero-photo run is abandoned/reviewed | Track B run recovery |
@@ -120,13 +120,14 @@ work. `RULED` is authorized by the signed master plan or canonical contract.
 | 14 | Completion camera/gallery provenance and GPS requirements | OPEN — media itself is optional with at most three prompts | Track C completion media |
 | 15 | Forgotten daily clock-out rule and reminder cadence | OPEN | Track A time / Track C reminders |
 | 16 | Production SMS/OTP provider and recovery/support process | RULED 2026-08-15: invite-only Supabase Phone Auth delivered through Twilio Verify; Turnstile; Naldo/Jason-only recovery with no employee self-service; maximum 30-day remembered session; password identities revoked at activation with Supabase-console break-glass | Phase 0 identity |
-| 17 | Versioned cross-repository contract | RULED and completed by Quote Tool PR #701 plus exact Hub mirror | Phase 0 contract gate |
+| 17 | Versioned cross-repository contract | PARTIALLY COMPLETE: the normative Markdown mirror is byte-identical through `v1.4.0-draft`; JSON Schema/OpenAPI artifacts, authenticated cross-repository CI, and deploy-skew smoke remain open | Phase 0 contract gate |
 | 18 | New-run connectivity, cached-session grace, and deactivated-device upload quarantine | RULED 2026-08-15: Placement Runs start online; an accepted run may capture offline for at most 12 hours; expired, deactivated, revoked, or otherwise ineligible-device uploads quarantine for Naldo/Jason review and never automatically count toward pay or inventory | Phase 0 auth/offline safety / Track B |
 | 19 | Manager department-time behavior | SUPERSEDED for V1 — Manager tier is unprovisioned | Later Manager release |
-| 20 | Advertising placement/photo visibility by employee, campaign, notes, coordinates, and history | OPEN | Track B authorization/RLS |
+| 20 | Advertising placement/photo visibility by employee, campaign, notes, coordinates, and history | RULED 2026-08-18: an employee sees exact coordinates, photos, notes, and history for their own placements; active employees may see team totals, approved campaign coverage, hotspots, and avoid zones only without another employee's exact route trail or private placement evidence; Naldo/Jason may see all exact placement evidence and route history. Residential door-hanger evidence remains governed by the separate protective rule. | Track B authorization/RLS |
 | 21 | Forgotten-run anchor and zero-photo behavior | RULED by the signed master plan | Track B run recovery |
 | 22 | Offline queue limits and pending-upload policy for uninstall, data clearing, account switch, and device replacement | OPEN | Phase 0 offline design / Track B release |
 | 23 | Management classification | RULED 2026-08-15: Management is an Owner/Admin view and digest type, not an employee department membership or paid-work context | Phase 0 identity / navigation |
+| 24 | Staging-only phone-auth implementation before shared-schema completion | RULED 2026-08-18: fail-closed phone-auth code and tests may proceed in a separate Vercel preview with a separate staging Supabase project; no field provisioning, paid workflow, or production phone-auth activation may proceed until the canonical schema/current-context, hosted identity/persona, provider, recovery, and revocation gates pass | Phase 0 staging identity |
 
 ## Open items owned by neither plan yet (PLAN-COMPARISON.md section 4)
 

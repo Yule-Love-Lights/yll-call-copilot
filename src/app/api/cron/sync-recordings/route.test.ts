@@ -31,7 +31,11 @@ vi.mock('@/lib/recordings/pipeline', () => ({
 
 import { GET } from './route';
 
-function fakeSupabase(opts: { lastSyncedAt?: string | null } = {}) {
+function fakeSupabase(opts: {
+  lastSyncedAt?: string | null;
+  callRecordingError?: { message: string } | null;
+  storedCursor?: string;
+} = {}) {
   const syncStateUpserts: Record<string, unknown>[] = [];
   const from = vi.fn((table: string) => {
     if (table === 'recording_sync_state') {
@@ -41,20 +45,23 @@ function fakeSupabase(opts: { lastSyncedAt?: string | null } = {}) {
             maybeSingle: async () => ({ data: { last_synced_at: opts.lastSyncedAt ?? null }, error: null }),
           }),
         }),
-        upsert: async (row: Record<string, unknown>) => {
-          syncStateUpserts.push(row);
-          return { error: null };
-        },
       };
     }
     if (table === 'call_recordings') {
       return {
-        upsert: () => ({ select: async () => ({ data: [], error: null }) }),
+        upsert: () => ({ select: async () => ({ data: [], error: opts.callRecordingError ?? null }) }),
       };
     }
     throw new Error(`Unexpected table in test: ${table}`);
   });
-  return { client: { from }, syncStateUpserts };
+  const rpc = vi.fn((_fn: string, args: Record<string, unknown>) => {
+    syncStateUpserts.push({
+      last_synced_at: args.p_next_cursor,
+      detail: args.p_detail,
+    });
+    return Promise.resolve({ data: opts.storedCursor ?? args.p_next_cursor, error: null });
+  });
+  return { client: { from, rpc }, syncStateUpserts, rpc };
 }
 
 describe('GET /api/cron/sync-recordings', () => {
@@ -76,7 +83,7 @@ describe('GET /api/cron/sync-recordings', () => {
     vi.useRealTimers();
   });
 
-  it('stamps last_synced_at from BEFORE the GHL fetch, not after, so a call added mid-fetch is not skipped next run', async () => {
+  it('pins the provider export end before the fetch and retains its visibility overlap', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-14T12:00:00.000Z'));
 
@@ -89,7 +96,7 @@ describe('GET /api/cron/sync-recordings', () => {
     // whenever this mock resolves.
     listRecentCallRecordingsMock.mockImplementation(async () => {
       vi.setSystemTime(new Date('2026-07-14T12:00:05.000Z'));
-      return { messages: [], truncated: false };
+      return { messages: [], truncated: false, stopReason: 'window_exhausted', nextSince: null };
     });
 
     const res = await GET(
@@ -101,14 +108,19 @@ describe('GET /api/cron/sync-recordings', () => {
 
     expect(json.ran).toBe(true);
     expect(syncStateUpserts).toHaveLength(1);
-    expect(syncStateUpserts[0].last_synced_at).toBe('2026-07-14T12:00:00.000Z');
+    expect(listRecentCallRecordingsMock).toHaveBeenCalledWith(
+      '2026-07-13T12:00:00.000Z',
+      500,
+      '2026-07-14T12:00:00.000Z',
+    );
+    expect(syncStateUpserts[0].last_synced_at).toBe('2026-07-13T12:00:00.000Z');
   });
 
   // Measured against the real 2026-08-08 backlog: 129 calls in the window, a
   // fetch capped at 100, and the cursor stamped to now regardless -- which
   // would have silently dropped 29 real sales calls on the very run meant to
   // recover them, while the response read {ran:true, inserted:100}.
-  it('HOLDS the cursor at the oldest returned call when the fetch was truncated', async () => {
+  it('advances only to the fetcher-provided safe boundary when an oldest-first page is truncated', async () => {
     const { client, syncStateUpserts } = fakeSupabase({ lastSyncedAt: '2026-08-08T01:05:50.000Z' });
     getSupabaseServerClientMock.mockReturnValue(client);
     listRecentCallRecordingsMock.mockResolvedValue({
@@ -117,6 +129,8 @@ describe('GET /api/cron/sync-recordings', () => {
         { messageId: 'm-old', conversationId: 'c2', contactId: null, userId: null, direction: 'inbound', dateAdded: '2026-08-08T14:02:07.000Z', durationSeconds: 60 },
       ],
       truncated: true,
+      stopReason: 'result_limit',
+      nextSince: '2026-08-08T14:02:07.001Z',
     });
 
     const res = await GET(
@@ -128,10 +142,31 @@ describe('GET /api/cron/sync-recordings', () => {
 
     expect(json.ran).toBe(true);
     expect(json.truncated).toBe(true);
+    expect(json.cursorHeld).toBe(false);
+    expect(syncStateUpserts[0].last_synced_at).toBe('2026-08-08T14:02:07.001Z');
+  });
+
+  it('holds the original cursor when a truncated provider result has no proven continuation', async () => {
+    const originalCursor = '2026-08-08T01:05:50.000Z';
+    const { client, syncStateUpserts } = fakeSupabase({ lastSyncedAt: originalCursor });
+    getSupabaseServerClientMock.mockReturnValue(client);
+    listRecentCallRecordingsMock.mockResolvedValue({
+      messages: [],
+      truncated: true,
+      stopReason: 'provider_page_cap',
+      nextSince: null,
+    });
+
+    const res = await GET(
+      new Request('https://ops.example.com/api/cron/sync-recordings', {
+        headers: { authorization: 'Bearer test-cron-secret-value' },
+      }),
+    );
+    const json = await res.json();
+
+    expect(json.truncated).toBe(true);
     expect(json.cursorHeld).toBe(true);
-    // The OLDEST returned call, never "now" -- so the 29 unfetched calls stay
-    // inside the next run's window instead of falling out of it.
-    expect(syncStateUpserts[0].last_synced_at).toBe('2026-08-08T14:02:07.000Z');
+    expect(syncStateUpserts[0].last_synced_at).toBe(originalCursor);
   });
 
   it('advances the cursor normally when the window was exhausted', async () => {
@@ -142,6 +177,8 @@ describe('GET /api/cron/sync-recordings', () => {
         { messageId: 'm1', conversationId: 'c1', contactId: null, userId: null, direction: 'inbound', dateAdded: '2026-08-15T17:31:07.000Z', durationSeconds: 60 },
       ],
       truncated: false,
+      stopReason: 'window_exhausted',
+      nextSince: null,
     });
 
     const res = await GET(
@@ -153,6 +190,57 @@ describe('GET /api/cron/sync-recordings', () => {
 
     expect(json.truncated).toBe(false);
     expect(json.cursorHeld).toBe(false);
-    expect(syncStateUpserts[0].last_synced_at).not.toBe('2026-08-15T17:31:07.000Z');
+    expect(syncStateUpserts[0].last_synced_at).not.toBe('2026-08-08T01:05:50.000Z');
+  });
+
+  it('holds the original cursor when any recording upsert fails so the call is retried instead of skipped', async () => {
+    const originalCursor = '2026-08-08T01:05:50.000Z';
+    const { client, syncStateUpserts } = fakeSupabase({
+      lastSyncedAt: originalCursor,
+      callRecordingError: { message: 'temporary database error' },
+    });
+    getSupabaseServerClientMock.mockReturnValue(client);
+    listRecentCallRecordingsMock.mockResolvedValue({
+      messages: [
+        { messageId: 'm1', conversationId: 'c1', contactId: null, userId: null, direction: 'inbound', dateAdded: '2026-08-15T17:31:07.000Z', durationSeconds: 60 },
+      ],
+      truncated: false,
+      stopReason: 'window_exhausted',
+      nextSince: null,
+    });
+
+    const res = await GET(
+      new Request('https://ops.example.com/api/cron/sync-recordings', {
+        headers: { authorization: 'Bearer test-cron-secret-value' },
+      }),
+    );
+    const json = await res.json();
+
+    expect(json.upsertFailed).toBe(1);
+    expect(json.cursorHeld).toBe(true);
+    expect(syncStateUpserts[0].last_synced_at).toBe(originalCursor);
+  });
+
+  it('uses the database-returned monotonic cursor when an overlapping run already advanced farther', async () => {
+    const originalCursor = '2026-08-08T01:05:50.000Z';
+    const newerStoredCursor = '2026-08-15T12:00:00.000Z';
+    const { client, rpc } = fakeSupabase({ lastSyncedAt: originalCursor, storedCursor: newerStoredCursor });
+    getSupabaseServerClientMock.mockReturnValue(client);
+    listRecentCallRecordingsMock.mockResolvedValue({
+      messages: [],
+      truncated: true,
+      stopReason: 'provider_page_cap',
+      nextSince: '2026-08-10T00:00:00.000Z',
+    });
+
+    const res = await GET(new Request('https://ops.example.com/api/cron/sync-recordings', {
+      headers: { authorization: 'Bearer test-cron-secret-value' },
+    }));
+    const json = await res.json();
+
+    expect(rpc).toHaveBeenCalledWith('advance_recording_sync_cursor', expect.objectContaining({
+      p_next_cursor: '2026-08-10T00:00:00.000Z',
+    }));
+    expect(json.cursorHeld).toBe(false);
   });
 });

@@ -8,7 +8,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getClaudeClient } from '../claude';
 import { truncateTranscript } from '../transcripts/extract';
-import { COMMITMENT_KINDS } from './types';
+import { COMMITMENT_KINDS, MAX_PROMISED_DAY_OFFSET } from './types';
 import type { RawCommitment } from './types';
 
 // Haiku, not Sonnet -- same rationale as EXTRACT_MODEL in
@@ -16,6 +16,19 @@ import type { RawCommitment } from './types';
 // backfill of up to ~2000 calls, so cost per call matters far more than it
 // does for a one-off generation call.
 export const EXTRACT_MODEL = 'claude-haiku-4-5-20251001';
+
+export class TerminalCommitmentExtractionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TerminalCommitmentExtractionError';
+  }
+}
+
+export function isTerminalCommitmentExtractionError(
+  error: unknown,
+): error is TerminalCommitmentExtractionError {
+  return error instanceof TerminalCommitmentExtractionError;
+}
 
 const SYSTEM_PROMPT = `You are reviewing one real sales-call transcript for Yule Love Lights, a residential and commercial lighting company. Extract only PROMISES THE REP MADE to the customer during this call -- something the rep committed to doing after the call (sending a quote, sending photos, calling back, scheduling an estimate, sending information, or another concrete promise).
 
@@ -53,6 +66,8 @@ const EMIT_COMMITMENTS_TOOL: Anthropic.Tool = {
             },
             promised_day_offset: {
               anyOf: [{ type: 'integer' }, { type: 'null' }],
+              minimum: 0,
+              maximum: MAX_PROMISED_DAY_OFFSET,
               description: 'Days after the call date this falls on: 0 for later today, 1 for tomorrow. Null if no specific time was mentioned.',
             },
           },
@@ -103,6 +118,15 @@ function validateCommitments(value: unknown): ValidationResult {
     }
     if (!isNullableInt(r.promised_day_offset)) {
       return { valid: false, error: 'promised_day_offset must be an integer or null.' };
+    }
+    if (
+      r.promised_day_offset !== null
+      && (r.promised_day_offset < 0 || r.promised_day_offset > MAX_PROMISED_DAY_OFFSET)
+    ) {
+      return {
+        valid: false,
+        error: `promised_day_offset must be between 0 and ${MAX_PROMISED_DAY_OFFSET}, or null.`,
+      };
     }
     result.push({
       kind: r.kind,
@@ -160,7 +184,9 @@ export async function extractRawCommitments(transcript: string, verticalName: st
     if (response.stop_reason === 'max_tokens') {
       response = await callExtract(MAX_TOKENS_RETRY);
       if (response.stop_reason === 'max_tokens') {
-        throw new Error('Commitment extraction ran past the token limit; nothing was saved.');
+        throw new TerminalCommitmentExtractionError(
+          'Commitment extraction ran past the token limit; nothing was saved.',
+        );
       }
     }
 
@@ -168,7 +194,7 @@ export async function extractRawCommitments(transcript: string, verticalName: st
       (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use' && block.name === 'emit_commitments',
     );
     if (!toolUse) {
-      throw new Error('Claude did not return commitments.');
+      throw new TerminalCommitmentExtractionError('Claude did not return commitments.');
     }
 
     const checked = validateCommitments(toolUse.input);
@@ -195,5 +221,7 @@ export async function extractRawCommitments(transcript: string, verticalName: st
     }
   }
 
-  throw new Error(`Claude returned incomplete commitments (${lastError}); nothing was saved.`);
+  throw new TerminalCommitmentExtractionError(
+    `Claude returned incomplete commitments (${lastError}); nothing was saved.`,
+  );
 }

@@ -1,8 +1,9 @@
 # Yule Love Lights Operations Hub — product specification
 
-Status: **final candidate for review**  
-Version: `1.3-review-1`  
-Date: 2026-08-06
+Status: **owner-approved Hub behavior; implementation incomplete**
+Version: `1.3-review-1`
+Approved: 2026-08-07
+Last reconciled: 2026-08-18
 
 This file is the normative Hub-side behavior specification. Cross-repository
 fields, commands, events, time, pay, and Quote Tool behavior are authoritative
@@ -250,10 +251,15 @@ An accepted placement MAY later receive an append-only `reversed` event.
 - Hotspots and avoid areas MAY be suggested by employees and appear immediately
   as Suggested. Naldo/Jason SHALL approve canonical guidance.
 - Assigned advertising employees SHALL see their assignments, their own
-  placements, approved historical placements relevant to their campaign, and
-  approved hotspot/avoid guidance.
+  placements, approved historical campaign coverage summaries, and approved
+  hotspot/avoid guidance. Those summaries SHALL exclude another employee's
+  exact point, photo, note, and placement history.
 - Exact employee route trails SHALL be visible only to the employee and
   Naldo/Jason unless Naldo approves a narrower operational need.
+- Active employees MAY see team totals, approved campaign coverage, hotspots,
+  and avoid zones. Another employee's exact coordinates, placement photos,
+  notes, history, and route trail SHALL remain hidden. Naldo/Jason MAY see all
+  exact placement evidence and route history.
 - Before verification, the capturing employee MAY see exact door-hanger
   evidence only while it is local/pending/under review or inside its correction
   window. After verification, residential points SHALL be Naldo/Jason-only;

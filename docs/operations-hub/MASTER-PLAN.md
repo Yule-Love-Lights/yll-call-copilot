@@ -1,8 +1,9 @@
 # Yule Love Lights Operations Hub — master plan
 
-Status: **owner-approved; canonical contract mirrored; Phase 0 identity foundation in progress**
+Status: **owner-approved; canonical contract mirrored; Phase 0 identity foundation merged**
 Version: `1.3-review-1`
-Date: 2026-08-15
+Approved: 2026-08-07
+Last reconciled: 2026-08-18
 
 ## 1. Mission
 
@@ -202,9 +203,10 @@ shutter; a zero-photo run is abandoned/reviewed.
 - Sign Number and physical inventory are separate concepts.
 - Inventory uses an append-only ledger: receive/restock, issue weekly
   allocation, transfer, place, return, damage/loss observation, and correction.
-- Expected back equals issued minus accepted placements minus approved
-  damage/loss adjustments. Variances feed review and restock planning; they are
-  never a wage deduction.
+- Expected back equals issued plus transferred in minus transferred out minus
+  accepted sign placements. Returned inventory, approved damage/loss, and
+  variance remain separate facts for review and restock planning; none is a
+  wage deduction.
 - Quote Tool pay consumes acknowledged accepted-placement counts, not camera
   shutters, inventory subtraction alone, or Hub-calculated money.
 - Initial advertising compensation is $2.50 per accepted placement with a
@@ -408,3 +410,6 @@ clean weeks.
 - [x] Hub PR #44 mirrored the canonical `v1.4.0-draft` Flow H update at
       `master@0756b611c1e3bd7d6d3eeb4318b8677412ae0ad7`; the contract mirror
       remains canonical Quote Tool-owned and is not edited by Hub identity work.
+- [x] Hub PR #50 merged the immutable Hub identity foundation at
+      `master@44989e1ac1c7830ffdcd4d1e1f623db692547e9e`; all required Hub CI,
+      pgTAP, build, and Vercel checks passed before the human-authorized merge.

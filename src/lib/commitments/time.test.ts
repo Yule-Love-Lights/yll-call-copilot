@@ -58,4 +58,8 @@ describe('resolvePromisedAt', () => {
     const withZero = resolvePromisedAt('2026-01-15T18:30:00Z', '15:00', 0);
     expect(withNull).toBe(withZero);
   });
+
+  it.each([-1, 31])('returns null for promised_day_offset %s outside the supported 0..30 day window', offset => {
+    expect(resolvePromisedAt('2026-01-15T18:30:00Z', '15:00', offset)).toBeNull();
+  });
 });

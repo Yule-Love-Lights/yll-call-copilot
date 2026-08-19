@@ -1,12 +1,11 @@
 # Operations Hub Phase 0 safety checklist
 
-Status: **lead-work authorization merged; immutable identity foundation in progress; field-user provisioning blocked**
+Status: **immutable identity foundation merged; staging activation in progress; field-user provisioning blocked**
 Date: 2026-08-18
-Branch base: Hub `master@699af86011625a61212727a1510c57d71fafb3a8`
-after the human-authorized merges through PR #49. The additive identity work
-is isolated on
-`codex/operations-hub-identity-foundation`. It remains branch work until its
-repository, database, security, CI, hosted, and human-review gates pass.
+Merged base: Hub `master@f2c9bd0761365a275f4793cd4f70dcf9c75cee26`
+after the human-authorized merges through PR #51. PR #50 merged the additive
+identity foundation. Hosted database, provider, persona, and field-launch
+gates remain open.
 
 This checklist records the actual repository baseline and the safety gates that
 must precede Advertising or Installer accounts. It does not authorize Hub-owned
@@ -20,7 +19,7 @@ was built for a small office allowlist:
 - login is still email/password, while the approved Operations Hub target is
   invite-only Supabase Phone Auth. Twilio Verify delivery is a later activation
   and no production OTP provider is enabled by this foundation branch;
-- this identity branch replaces email-linked `app_users` resolution with an
+- merged PR #50 replaces email-linked `app_users` resolution with an
   active, revocable Auth-link record that resolves to a preserved
   `ops_employees.id`, effective active memberships, and a monotonic Hub
   `membership_version`. Each Auth UUID is immutable in its history record, but
@@ -29,7 +28,7 @@ was built for a small office allowlist:
   is still unavailable;
 - owner/admin runtime access now requires the server-only Naldo/Jason Auth UUID
   ceiling and audited team access on the protected call/live resources, but
-  production IDs and the final additive employee/auth link still need review;
+  staging Auth identities and the hosted employee/Auth links are not configured;
 - route policies now inventory resource scope, but remaining service-role
   handlers and the hosted database rollout still need the authorization gates
   below;
@@ -105,12 +104,12 @@ only the honestly named local pin check.
       parser, service-role-only atomic provisioning routine, and legacy helper
       ensure arbitrary input never implies privilege or provisions a field,
       Manager, or Owner/Admin account.
-- [ ] This branch implements the additive Hub identity resolver: immutable
+- [x] PR #50 implements the additive Hub identity resolver: immutable
       per-link Auth UUID history with explicit revocation/replacement, preserved
       Office employee UUIDs, effective active state, multi-department
       memberships, monotonic `membership_version`, and explicit Hub-local
-      capabilities. It remains branch evidence until its database, persona, CI,
-      hosted, and human-review gates pass.
+      capabilities. Database, CI, independent review, and human-merge gates
+      passed. Hosted persona and production-configuration proof remain below.
 - [ ] The Quote-owned current-context projection is a separate canonical
       contract/API dependency and remains unavailable. The Hub actor therefore
       keeps `activeDepartmentContext = null` and cannot invent a paid-context
@@ -134,9 +133,12 @@ only the honestly named local pin check.
       call, live-session, segment, and follow-up mutations.
 - [ ] Complete the separate historical derived-data repair. Adding
       `metric_scope` and positively filtering new reads prevents future
-      training/practice contamination, but previously materialized weekly
-      digests, brain reviews, proposals, feedback, and other derived records
-      must be audited and then rebuilt or invalidated before their release use.
+      training/practice contamination, but the actual legacy blocker classes,
+      including weekly digests, brain reviews, proposals, edited playbooks, and
+      unsafe personal-touch rows, must be audited and then rebuilt, recreated,
+      or invalidated before release use. Current feedback reads already require
+      positively proven performance scores and are not an additional deletion
+      class.
       Migration `0020` now fails closed while any legacy weekly digest, brain
       review, playbook proposal, or potentially proposal-applied `edited`
       playbook version remains. Before retrying, an operator must export those
@@ -160,6 +162,13 @@ only the honestly named local pin check.
       reassignment, deactivation, session expiry/revocation, abuse controls, and
       provider smokes are implemented and audited. Until then email/password
       bootstrap remains Office-only and no field account is provisioned.
+- [ ] Before staging phone auth is enabled, the separate staging Supabase
+      project has public signup disabled, CAPTCHA enforced, SMS rate limits
+      reviewed, and a short access-token lifetime configured and verified.
+      The current proxy proves a signed OTP session and its age but does not
+      query `auth.sessions` on every request, so revocation may lag until the
+      access JWT expires. Production still requires audited password/session
+      revocation and owner recovery.
 - [ ] Before any Auth-link replacement or recovery path is enabled, every
       `0020` employee mutation routine atomically locks and verifies the current
       active Auth link against its supplied Auth UUID. The foundation has no
@@ -183,8 +192,12 @@ only the honestly named local pin check.
 - [ ] The 12-hour credential/grace behavior, deactivation receipt, quarantine,
       replay, and safe owner-resolution path are implemented and audited. The
       Quote-owned offline packet and current-context dependencies remain blocked.
-- [ ] Decision 20 placement/photo visibility receives its owner ruling before
-      the affected Advertising authorization and RLS behavior is implemented.
+- [x] Decision 20 placement/photo visibility is ruled: employees see their own
+      exact placement evidence plus non-sensitive team totals, approved
+      campaign coverage, hotspots, and avoid zones; only Naldo/Jason see every
+      employee's exact placement evidence and route history.
+- [ ] Track B enforces Decision 20 in API authorization, RLS/read models, maps,
+      photos, notes, history, and impersonated-role tests before field launch.
 - [ ] Before field actors are enabled, replace the Office-only required
       compatibility-email projection with an actor/attribution shape that lets
       phone-only Advertising and Installer identities resolve without inventing
@@ -192,7 +205,7 @@ only the honestly named local pin check.
 - [x] Management is an owner/admin view and digest type, not a department
       membership or paid-work context. V1 employee departments remain Office,
       Advertising, and Installer; Manager claims remain denied.
-- [x] Five cron routes require Vercel's `Authorization: Bearer $CRON_SECRET`
+- [x] Six cron routes require Vercel's `Authorization: Bearer $CRON_SECRET`
       credential before evaluating the separate `CRON_ENABLED` kill switch.
 - [x] The preparatory outbound Twilio path uses an actor-bound, expiring,
       one-time database
@@ -244,6 +257,7 @@ proves RLS independently of ACLs.
 | `ingest_jobs` | [x] | [x] | [x] | [x] |
 | `leads` | [x] | [x] | [x] | [x] |
 | `calls` | [x] | [x] | [x] | [x] |
+| `call_commitments` | [x] | [x] | [x] | [x] |
 | `followups` | [x] | [x] | [x] | [x] |
 | `events_log` | [x] | [x] | [x] | [x] |
 | `live_sessions` | [x] | [x] | [x] | [x] |
@@ -279,16 +293,15 @@ checks were green.
 Migration `0023` extends the reviewed manifest to 38 tables, 27 routines, and
 12 triggers. The local PostgreSQL/parser harness applied all 23 migrations,
 passed the seeded legacy upgrade, exact provisioning retry and deactivation
-denial, and matched all four protective preflight failures. The new pgTAP
-suites contain an expected 51 identity-foundation assertions and 17 seeded
-upgrade assertions; the expanded default-deny suite expects 304 assertions.
-Those pgTAP counts remain CI-pending because this Mac has neither the Supabase
-CLI nor Docker, so they are not yet merge evidence.
+denial, and matched all four protective preflight failures. PR #50 CI passed
+51 identity-foundation pgTAP assertions, the 304-assertion expanded
+default-deny suite, the 117-assertion lead-work suite, and all seeded migration
+upgrade/preflight jobs before merge.
 
 Claims shaped like inactive, self, wrong-department, stale-membership,
 unlinked, Office, Advertising, Installer, Owner/Admin, and Manager identities
 are also verified unable to override database default deny. That is not the
-semantic persona gate. This branch adds database tests for preserved employee
+semantic persona gate. PR #50 added database tests for preserved employee
 UUIDs, active/inactive and linked/unlinked identity, projection drift,
 deactivation/reactivation, exact provisioning retry/conflict/audit behavior,
 the three-department vocabulary, and Manager's exclusion from departments.
@@ -308,7 +321,7 @@ See `PHASE-0-RLS-RUNBOOK.md` for the exact proof boundary and rollout steps.
 
 ## 5. Additive Hub-owned schema, after authorization design
 
-The identity-foundation branch is authorized to add Hub-owned versions of:
+PR #50 added Hub-owned versions of:
 
 - `ops_employees`
 - `ops_departments`
@@ -316,9 +329,9 @@ The identity-foundation branch is authorized to add Hub-owned versions of:
 - `ops_employee_department_memberships`
 - `ops_identity_audit_events`
 
-The canonical shared JSON Schema is still unpublished. This branch therefore
-does not invent cross-boundary outbox/inbox/DLQ envelopes, capability grants,
-or current-context projections. Those remain Phase 0 dependencies owned at the
+The canonical shared JSON Schema is still unpublished. PR #50 therefore did
+not invent cross-boundary outbox/inbox/DLQ envelopes, capability grants, or
+current-context projections. Those remain Phase 0 dependencies owned at the
 Quote boundary.
 
 These tables must never contain a second day clock, break, job segment, travel
@@ -335,10 +348,13 @@ ledger, compensation result, pay-period close, or payroll export.
    harness (merged in PR #43; hosted and semantic-persona gates remain).
 5. Lead-work resource authorization, mutation idempotency, current customer
    permission checks, and metric provenance (merged in PR #46).
-6. Additive Hub identity/audit/integration scaffolding (current branch; no OTP
-   activation or field provisioning).
+6. Additive Hub identity/audit/integration scaffolding (merged in PR #50; no
+   OTP activation or field provisioning).
 7. Vendor Quote-owned schemas; add version health and deploy-skew smoke tests.
-8. Only after all above gates: phone OTP and controlled field-user provisioning.
+8. Fail-closed phone-OTP code and tests may proceed only in a separate staging
+   Vercel preview and staging Supabase project. Field provisioning, paid
+   workflows, and production phone-auth activation still wait for all above
+   gates plus provider, recovery, revocation, and hosted-persona proof.
 
 Payroll remains Quote Tool-owned and separately gated by the contract's
 overtime, blended-rate, professional-review, and owner-activation requirements.

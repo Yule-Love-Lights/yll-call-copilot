@@ -3,7 +3,7 @@
 // fetch + the required env vars; no live HighLevel calls.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { HighLevelError, getContact, isHighLevelConfigured, searchContacts } from './client';
+import { HighLevelError, getContact, ghlFetch, isHighLevelConfigured, sendConversationMessage, searchContacts } from './client';
 import type { HighLevelContact } from './types';
 
 function mockFetchOnce(json: unknown, status = 200) {
@@ -107,6 +107,36 @@ describe('GHL client', () => {
         name: 'HighLevelError',
         status: 404,
       });
+    });
+
+    it('retries an idempotent GET after a 429 and honors Retry-After', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+          headers: { get: (name: string) => name.toLowerCase() === 'retry-after' ? '0' : null },
+          text: async () => 'rate limited',
+        })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true }) });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(ghlFetch<{ ok: boolean }>('/test')).resolves.toEqual({ ok: true });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('never retries a customer-facing POST after an uncertain provider response', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        headers: { get: () => null },
+        text: async () => 'unavailable',
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(sendConversationMessage({ type: 'SMS', contactId: 'c1', message: 'hello' }))
+        .rejects.toMatchObject({ status: 503 });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -4,11 +4,14 @@
 // instead of a broken form, same pattern as /login.
 
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { resolvePhoneAuthConfiguration } from '@/lib/auth/phoneAuth';
+import { redirect } from 'next/navigation';
 import ForgotPasswordForm from './ForgotPasswordForm';
 
 export const dynamic = 'force-dynamic';
 
 export default function ForgotPasswordPage() {
+  if (resolvePhoneAuthConfiguration().mode !== 'disabled') redirect('/login');
   const configured = isSupabaseConfigured();
 
   return (

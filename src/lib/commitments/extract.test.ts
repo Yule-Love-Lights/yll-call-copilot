@@ -134,6 +134,28 @@ describe('extractRawCommitments', () => {
   });
 
   describe('malformed response', () => {
+    it.each([-1, 31])('rejects promised_day_offset %s outside the supported 0..30 day window', async promisedDayOffset => {
+      createMock.mockResolvedValue({
+        content: [{
+          type: 'tool_use',
+          id: 'toolu_invalid_offset',
+          name: 'emit_commitments',
+          input: {
+            commitments: [{
+              kind: 'callback',
+              detail: 'call back later',
+              promised_time_local: '15:00',
+              promised_day_offset: promisedDayOffset,
+            }],
+          },
+        }],
+        stop_reason: 'tool_use',
+      });
+
+      await expect(extractRawCommitments('x', 'Holiday Lighting')).rejects.toThrow(/promised_day_offset/i);
+      expect(createMock).toHaveBeenCalledTimes(2);
+    });
+
     it('throws when Claude responds without a tool_use block', async () => {
       createMock.mockResolvedValue({ content: [{ type: 'text', text: 'oops' }], stop_reason: 'end_turn' });
 

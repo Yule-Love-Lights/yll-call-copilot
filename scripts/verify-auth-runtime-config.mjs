@@ -17,6 +17,17 @@ required('NEXT_PUBLIC_SUPABASE_ANON_KEY');
 required('SUPABASE_SERVICE_ROLE_KEY');
 strongSecret('CRON_SECRET');
 
+const phoneAuthFlag = process.env.HUB_PHONE_AUTH_STAGING_ENABLED ?? 'false';
+if (!['true', 'false'].includes(phoneAuthFlag)) {
+  errors.push('HUB_PHONE_AUTH_STAGING_ENABLED must be exactly true or false');
+}
+if (phoneAuthFlag === 'true') {
+  required('NEXT_PUBLIC_TURNSTILE_SITE_KEY');
+  if (process.env.VERCEL_ENV !== 'preview') {
+    errors.push('HUB_PHONE_AUTH_STAGING_ENABLED may be true only when VERCEL_ENV is preview');
+  }
+}
+
 const ownerIds = (process.env.HUB_OWNER_ADMIN_AUTH_USER_IDS ?? '')
   .split(',')
   .map(value => value.trim())

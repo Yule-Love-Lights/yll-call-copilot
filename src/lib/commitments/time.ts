@@ -11,6 +11,7 @@
 // extended here to also WRITE a zoned wall-clock time back to a UTC instant.
 
 import { COMPANY_TIMEZONE } from '../leads/callingHours';
+import { MAX_PROMISED_DAY_OFFSET } from './types';
 
 function localDateParts(timeZone: string, at: Date): { year: number; month: number; day: number } {
   const formatter = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric' });
@@ -55,6 +56,10 @@ export function resolvePromisedAt(
   promisedDayOffset: number | null,
 ): string | null {
   if (!promisedTimeLocal || !calledAt) return null;
+  if (
+    promisedDayOffset !== null
+    && (!Number.isInteger(promisedDayOffset) || promisedDayOffset < 0 || promisedDayOffset > MAX_PROMISED_DAY_OFFSET)
+  ) return null;
 
   const match = promisedTimeLocal.match(/^(\d{1,2}):(\d{2})$/);
   if (!match) return null;

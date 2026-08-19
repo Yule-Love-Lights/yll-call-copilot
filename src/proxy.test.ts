@@ -53,6 +53,19 @@ function signedIn(email: string | null = 'jason@example.com') {
   });
 }
 
+function phoneJwtClaims(overrides: Record<string, unknown> = {}) {
+  return {
+    aud: 'authenticated',
+    is_anonymous: false,
+    role: 'authenticated',
+    session_id: '11111111-1111-4111-8111-111111111111',
+    sub: 'auth-user-1',
+    phone: '+16315550123',
+    amr: [{ method: 'otp', timestamp: Math.floor(Date.now() / 1000) }],
+    ...overrides,
+  };
+}
+
 function actorWith(capabilities: string[], role = 'office') {
   return {
     status: 'resolved',
@@ -85,6 +98,9 @@ const OFFICE_CAPABILITIES = [
 describe('root authentication proxy', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'false');
+    vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', '');
+    vi.stubEnv('VERCEL_ENV', 'production');
     mocks.resolveHubActor.mockResolvedValue(actorWith(OFFICE_CAPABILITIES));
     mocks.auditSensitiveRouteAccess.mockResolvedValue(true);
   });
@@ -329,6 +345,158 @@ describe('root authentication proxy', () => {
 
     expect(mocks.resolveHubActor).toHaveBeenCalledWith({ id: 'auth-user-1' });
     expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('fails closed when staging phone auth is enabled without Turnstile configuration', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    completeConfiguration();
+    vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+
+    const response = await proxy(request('/scoreboard'));
+
+    expect(response.status).toBe(503);
+    expect(mocks.createServerClient).not.toHaveBeenCalled();
+    expect(mocks.resolveHubActor).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the staging phone-auth flag is enabled in production', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    completeConfiguration();
+    vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'true');
+    vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', 'public-site-key');
+    vi.stubEnv('VERCEL_ENV', 'production');
+
+    const response = await proxy(request('/scoreboard'));
+
+    expect(response.status).toBe(503);
+    expect(mocks.createServerClient).not.toHaveBeenCalled();
+    expect(mocks.resolveHubActor).not.toHaveBeenCalled();
+  });
+
+  it('allows a verified staging phone session inside the 30-day maximum', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    completeConfiguration();
+    vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'true');
+    vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', 'public-site-key');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    const authenticatedAt = Math.floor((Date.now() - 29 * 24 * 60 * 60 * 1000) / 1000);
+    const signOut = vi.fn();
+    mocks.createServerClient.mockReturnValue({
+      auth: {
+        getUser: vi.fn(async () => ({
+          data: {
+            user: {
+              id: 'auth-user-1',
+              phone: '+16315550123',
+              last_sign_in_at: new Date().toISOString(),
+            },
+          },
+          error: null,
+        })),
+        getClaims: vi.fn(async () => ({
+          data: {
+            claims: {
+              ...phoneJwtClaims({
+                amr: [{ method: 'otp', timestamp: authenticatedAt }],
+              }),
+            },
+          },
+          error: null,
+        })),
+        signOut,
+      },
+    });
+
+    const response = await proxy(request('/scoreboard'));
+
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+    expect(signOut).not.toHaveBeenCalled();
+    expect(mocks.resolveHubActor).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'auth-user-1', phone: '+16315550123' }),
+    );
+  });
+
+  it('ends a staging phone session after the 30-day maximum before actor resolution', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    completeConfiguration();
+    vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'true');
+    vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', 'public-site-key');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    const authenticatedAt = Math.floor((Date.now() - 31 * 24 * 60 * 60 * 1000) / 1000);
+    const signOut = vi.fn(async () => ({ error: null }));
+    mocks.createServerClient.mockReturnValue({
+      auth: {
+        getUser: vi.fn(async () => ({
+          data: {
+            user: {
+              id: 'auth-user-1',
+              phone: '+16315550123',
+              last_sign_in_at: new Date().toISOString(),
+            },
+          },
+          error: null,
+        })),
+        getClaims: vi.fn(async () => ({
+          data: {
+            claims: {
+              ...phoneJwtClaims({
+                amr: [{ method: 'otp', timestamp: authenticatedAt }],
+              }),
+            },
+          },
+          error: null,
+        })),
+        signOut,
+      },
+    });
+
+    const response = await proxy(request('/scoreboard'));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('https://ops.yulelovelights.com/login');
+    expect(signOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(mocks.resolveHubActor).not.toHaveBeenCalled();
+  });
+
+  it('rejects a password-authenticated session when staging phone mode is enabled', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    completeConfiguration();
+    vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'true');
+    vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', 'public-site-key');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    const signOut = vi.fn(async () => ({ error: null }));
+    mocks.createServerClient.mockReturnValue({
+      auth: {
+        getUser: vi.fn(async () => ({
+          data: {
+            user: {
+              id: 'auth-user-1',
+              phone: '+16315550123',
+              last_sign_in_at: new Date().toISOString(),
+            },
+          },
+          error: null,
+        })),
+        getClaims: vi.fn(async () => ({
+          data: {
+            claims: {
+              ...phoneJwtClaims({
+                amr: [{ method: 'password', timestamp: Math.floor(Date.now() / 1000) }],
+              }),
+            },
+          },
+          error: null,
+        })),
+        signOut,
+      },
+    });
+
+    const response = await proxy(request('/scoreboard'));
+
+    expect(response.status).toBe(307);
+    expect(signOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(mocks.resolveHubActor).not.toHaveBeenCalled();
   });
 
   it('fails closed when auth or actor dependencies throw', async () => {

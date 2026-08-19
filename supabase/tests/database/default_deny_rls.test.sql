@@ -93,11 +93,13 @@ create temporary table expected_hub_routines (
 
 insert into expected_hub_routines (routine_signature) values
   ('abandon_owned_live_attempt(uuid,text,uuid)'),
+  ('advance_recording_sync_cursor(timestamp with time zone,jsonb)'),
   ('append_authorized_live_segment(uuid,uuid,text,text,integer,integer)'),
   ('assert_legacy_metric_artifacts_reconciled()'),
   ('assert_personal_touch_metric_provenance()'),
   ('begin_owned_followup_send(uuid,text,uuid,uuid)'),
   ('call_commitments_upsert_batch(uuid,jsonb)'),
+  ('call_commitments_finalize_extraction(uuid,jsonb,text)'),
   ('complete_owned_lead_call(uuid,text,text,uuid,uuid,uuid,text,text,text,text,boolean)'),
   ('consume_authorized_live_dial(text,text,text,text,text,text)'),
   ('consume_authorized_live_stream(uuid,text)'),
@@ -114,6 +116,7 @@ insert into expected_hub_routines (routine_signature) values
   ('guard_app_users_projection()'),
   ('is_contact_calling_time_allowed(timestamp with time zone,text)'),
   ('provision_legacy_office_employee(uuid,text,text)'),
+  ('record_commitment_extraction_failure(uuid,text)'),
   ('reject_live_segment_mutation()'),
   ('reject_ops_identity_audit_event_mutation()'),
   ('start_claimed_live_attempt(uuid,text,text,uuid,text,uuid)'),
