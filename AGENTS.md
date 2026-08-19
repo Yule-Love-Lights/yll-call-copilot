@@ -21,8 +21,14 @@ These rules apply to the entire repository.
 ## Release safety
 
 - Codex uses `codex/` branches, Claude uses `claude/` branches, and humans use
-  the agreed contributor prefix. Never merge a pull request on an assistant's
-  behalf.
+  the agreed contributor prefix.
+- Naldo does not perform pull-request state or merge clicks. After Naldo
+  explicitly approves a named pull request, the assistant must fetch and
+  verify the current branch, run the required checks, mark the pull request
+  ready if needed, and complete the merge using the repository's approved
+  merge method. Never merge a pull request that Naldo has not specifically
+  approved, and never bypass a failed or pending required check, a stale
+  branch, branch protection, or an unresolved blocking review.
 - PR #37 is the only reconciled planning source; PRs #35 and #36 are historical
   and closed as superseded.
 - Phase 0 safety/foundation work may proceed on separately reviewed branches.
