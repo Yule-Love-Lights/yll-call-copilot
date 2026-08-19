@@ -7,6 +7,11 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { resolveHubActor, type AuthenticatedUserIdentity } from '@/lib/auth/actor';
 import { resolveServerAuthConfiguration } from '@/lib/auth/config';
+import {
+  isHubSessionWithinMaximumAge,
+  isVerifiedPhoneOtpSession,
+  resolvePhoneAuthConfiguration,
+} from '@/lib/auth/phoneAuth';
 import { auditSensitiveRouteAccess } from '@/lib/auth/resource';
 import {
   actorMeetsRouteRequirement,
@@ -26,6 +31,8 @@ export async function proxy(request: NextRequest) {
   const isApi = pathname.startsWith('/api/');
   const authConfiguration = resolveServerAuthConfiguration();
   if (!authConfiguration.ok) return authenticationUnavailable(isApi);
+  const phoneAuthConfiguration = resolvePhoneAuthConfiguration();
+  if (phoneAuthConfiguration.mode === 'unavailable') return authenticationUnavailable(isApi);
 
   // Undeclared paths and methods never inherit access from a neighboring route.
   if (!routePolicy) return authorizationDenied(isApi);
@@ -69,7 +76,25 @@ export async function proxy(request: NextRequest) {
     if (error && !isSignedOutAuthError(error)) {
       return authenticationUnavailable(isApi, response);
     }
-    authenticatedUser = user;
+    let phoneSessionAccepted = true;
+    if (user && phoneAuthConfiguration.mode === 'enabled') {
+      const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+      if (claimsError || !claimsData) return authenticationUnavailable(isApi, response);
+      phoneSessionAccepted =
+        isVerifiedPhoneOtpSession(claimsData.claims, user) &&
+        isHubSessionWithinMaximumAge(claimsData.claims);
+    }
+    if (user && !phoneSessionAccepted) {
+      try {
+        await supabase.auth.signOut({ scope: 'local' });
+      } catch {
+        // The verified session is denied below even if Supabase cannot clear
+        // it. No actor or protected route is reached after the 30-day limit.
+      }
+      authenticatedUser = null;
+    } else {
+      authenticatedUser = user;
+    }
   } catch (error) {
     if (isSignedOutAuthError(error)) {
       authenticatedUser = null;

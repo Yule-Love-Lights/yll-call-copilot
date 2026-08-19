@@ -12,6 +12,11 @@ export const COMMITMENT_KINDS: CommitmentKind[] = [
   'other',
 ];
 
+// Commitments are short-term post-call promises. A model-generated date more
+// than 30 days from the call is almost certainly a parsing error, and negative
+// offsets would place an open promise before it was made.
+export const MAX_PROMISED_DAY_OFFSET = 30;
+
 // What extractRawCommitments (extract.ts) returns per commitment, straight
 // off the model's tool call -- promised_time_local/promised_day_offset are
 // resolved into an absolute promised_at instant separately (time.ts), kept

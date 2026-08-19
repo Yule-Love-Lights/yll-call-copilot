@@ -1,9 +1,9 @@
 # Operations Hub final-review pack
 
-Status: **owner-approved; Phase 0 immutable identity foundation in progress**
+Status: **owner-approved; immutable identity foundation merged; staging activation in progress**
 Updated: 2026-08-18
-Merged Hub source: PRs #37 and #40 through #49 at
-`master@699af86011625a61212727a1510c57d71fafb3a8`. The current contract mirror
+Merged Hub source: PRs #37 and #40 through #51 at
+`master@f2c9bd0761365a275f4793cd4f70dcf9c75cee26`. The current contract mirror
 remains the byte-identical PR #44 pin recorded in `SOURCE-PINS.md`.
 
 This pack is the reconciled and approved source for the Operations Hub.
@@ -59,6 +59,9 @@ Completed:
 - The Hub contract mirror is byte-identical to the canonical file.
 - Fail-closed production auth, centralized capabilities, API-only database RLS,
   and Office lead/call resource authorization merged through PR #46.
+- Hub PR #50 merged the immutable employee, versioned Auth-link, department
+  membership, identity-audit, and guarded compatibility-projection foundation.
+  Its application, migration-order, pgTAP, build, and Vercel checks passed.
 
 Phase 0 must now deliver:
 
@@ -67,10 +70,11 @@ Phase 0 must now deliver:
 - CI validation of contract/schema bytes and runtime version compatibility.
 - RLS/authorization checklists and impersonated-role tests are defined for
   every field-facing Hub table and endpoint.
-- Identity-link, auth, audit, idempotency, DLQ, kill-switch, and fail-closed
-  scaffolding.
+- Staging phone OTP, session-age enforcement, owner-only recovery, password and
+  session revocation, idempotency, DLQ, kill-switch, and fail-closed activation
+  gates. The identity link and Hub-local identity audit are merged.
 
-The current identity-foundation branch adds only Hub-owned immutable employee,
+Merged PR #50 adds only Hub-owned immutable employee,
 auth-link, active-state, membership-version, and local identity-audit
 scaffolding. It does not invent the unpublished cross-boundary event envelope,
 enable phone OTP, or create field accounts. The approved later target is
@@ -82,10 +86,16 @@ quarantine expired or revoked-device work for Naldo/Jason review without
 automatic pay or inventory credit. Management is an owner/admin view and
 digest, not a paid-work department.
 
-OTP activation remains blocked on the later provider/configuration PR, the
-Quote-owned capability and current-context surfaces, the canonical shared
-schema/OpenAPI artifacts, hosted identity-persona proof, and the unresolved
-Advertising placement/photo visibility ruling.
+Fail-closed OTP code and tests may proceed in a separate Vercel preview and
+staging Supabase project. Real staging activation still requires hosted
+provider configuration, disabled public signup, enforced CAPTCHA, reviewed SMS
+rate limits, a short access-token lifetime, and test identities. Field
+provisioning, paid workflow, and production phone auth remain blocked on the
+Quote-owned capability and current-context surfaces, canonical shared
+schema/OpenAPI artifacts, hosted identity-persona proof, recovery, and
+password/session revocation. Naldo ruled the Advertising placement/photo
+visibility boundary on 2026-08-18; implementation and hosted authorization
+proof remain Track B work.
 
 PRs #35 and #36 are closed as superseded. Merged PR #37 is the only Hub
 planning source. Every implementation PR still requires current gates and a

@@ -1,19 +1,20 @@
 # Operations Hub Phase 0 authorization inventory
 
-Status: **lead-work resource authorization merged; immutable identity foundation in progress; field provisioning blocked**
+Status: **immutable identity foundation merged; staging activation in progress; field provisioning blocked**
 Date: 2026-08-18
-Merged base: PRs #41 through #49 at
-`master@699af86011625a61212727a1510c57d71fafb3a8`. The additive identity
-foundation is on `codex/operations-hub-identity-foundation`. It does not enable
-phone OTP or authorize Advertising or Installer provisioning.
+Merged base: PRs #41 through #51 at
+`master@f2c9bd0761365a275f4793cd4f70dcf9c75cee26`. PR #50 merged the additive
+identity foundation. It does not enable phone OTP or authorize Advertising or
+Installer provisioning.
 
-This document records what the Phase 0 capability branch actually enforces.
+This document records what the merged Phase 0 authorization baseline enforces
+and names the activation gates for staging-only work on the current branch.
 It does not amend the byte-mirrored integration contract and does not authorize
 Advertising or Installer identities.
 
 ## 1. Central actor
 
-On this branch, `src/lib/auth/actor.ts` resolves the Supabase Auth UUID through
+On the merged baseline, `src/lib/auth/actor.ts` resolves the Supabase Auth UUID through
 one active `ops_employee_auth_identities` record to one active
 `ops_employees` row. Each link record has an immutable Auth UUID and explicit
 revocation history, so a later owner-approved phone-login replacement can keep
@@ -192,10 +193,13 @@ This slice does **not** clear the field-user release stop:
    UUID ceiling. This branch may add the immutable employee/auth link while
    preserving existing `app_users.id` values; a role string never grants
    privilege alone. Hosted provisioning evidence still remains.
-4. The additive Hub employee, membership, active-state, audit, and integration
-   schema is current branch work, not merged release evidence. Phone OTP,
-   Turnstile, provider delivery, owner recovery, and session revocation remain
-   deferred to a separately reviewed activation PR.
+4. PR #50 merged the additive Hub employee, membership, active-state, audit,
+   and integration schema with green application and database CI. This branch
+   may add fail-closed phone OTP and Turnstile code for a separate staging
+   Vercel preview and staging Supabase project. Provider delivery, test
+   identities, disabled public signup, enforced CAPTCHA, reviewed SMS limits,
+   short access-token expiry, owner recovery, and password/session revocation
+   remain hosted activation gates.
 5. PR #43 enables and forces RLS on all 31 existing tables, removes client
    schema/table/column/sequence access, and runs real `anon`, `authenticated`,
    and `service_role` impersonation in CI. Hosted preflight and semantic
@@ -208,14 +212,15 @@ This slice does **not** clear the field-user release stop:
    with up to 12 hours of authorized offline capture. Expired, deactivated, or
    revoked-device writes quarantine for Naldo/Jason review and never
    automatically count toward pay or inventory. Those behaviors are not
-   implemented by this foundation. Placement/photo visibility remains an open
-   protective-default-deny decision.
+   implemented by this foundation. Placement/photo visibility is ruled under
+   Decision 20, but Track B enforcement and hosted persona proof remain open.
 8. The lead-work branch introduces positive metric provenance for future
    reads, but historical derived records that may already combine performance
    and practice data still require a separately reviewed audit and data repair.
-   Weekly digests, brain reviews, proposals, feedback, and other materialized
-   outputs must be rebuilt or invalidated before they can be trusted for
-   release reporting.
+   Weekly digests, brain reviews, proposals, edited playbooks, and unsafe
+   personal-touch rows must be audited and rebuilt, recreated, or invalidated
+   before release reporting. Current feedback reads already require positively
+   proven performance scores and are not an additional deletion class.
 9. Customer live calling remains disabled until every provider lifecycle,
    media finalization, speaker attribution, ordered delivery, coaching
    deduplication, recovery, and real-provider smoke gate in
@@ -263,15 +268,15 @@ The local PostgreSQL/parser harness applied all 23 migrations and passed the
 seeded legacy upgrade, service-role provisioning and exact retry, deactivation
 denial, all four preflight-failure seeds, and exact manifests of 38 tables, 27
 routines, and 12 triggers. The authored pgTAP suites expect 51 identity and 17
-seeded-upgrade assertions, while default-deny expands to 304 assertions. Those
-counts remain CI-pending because the local Mac has neither the Supabase CLI nor
-Docker.
+seeded-upgrade assertions, while default-deny expands to 304 assertions. PR #50
+CI executed the database, upgrade-order, and protective preflight suites
+successfully before the human-authorized merge.
 
-1. Complete independent review and CI execution for the immutable Hub
-   employee/Auth link, active state, membership versioning, local identity
-   audit, and semantic persona tests without enabling field provisioning.
-   Cross-boundary outbox/inbox/DLQ envelopes wait for the canonical shared
-   schema.
+1. Complete hosted semantic persona and real-token PostgREST proof for the
+   merged immutable Hub employee/Auth link, active state, membership versioning,
+   and local identity audit without enabling field provisioning. Independent
+   code review and CI are complete. Cross-boundary outbox/inbox/DLQ envelopes
+   wait for the canonical shared schema.
 2. Audit and repair or invalidate historical derived performance outputs.
 3. Land the Quote-owned capability/policy-version transport, current-context
    projection, and canonical shared schema/OpenAPI artifacts before consuming

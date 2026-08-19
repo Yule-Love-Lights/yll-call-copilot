@@ -161,6 +161,104 @@ jobs:
           supabase test db --local \
             supabase/tests/migration/0023_identity_upgrade.test.sql
 
+      - name: Exercise the 0024 commitment extraction tracking upgrade
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          supabase db reset --local --no-seed --version 0023
+          docker exec -i supabase_db_yll-call-copilot-local-security \
+            psql --username postgres --dbname postgres --set ON_ERROR_STOP=on \
+            < supabase/tests/migration/0024_commitment_extraction_tracking.seed.sql
+          supabase migration up --local
+          supabase test db --local \
+            supabase/tests/migration/0024_commitment_extraction_tracking.test.sql
+
+      - name: Prove concurrent commitment extraction finalizes exactly once
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          database_container="supabase_db_yll-call-copilot-local-security"
+          psql_command=(
+            docker exec -i "${database_container}"
+            psql --username postgres --dbname postgres --set ON_ERROR_STOP=on
+          )
+
+          "${psql_command[@]}" \
+            < supabase/tests/concurrency/0024_commitment_finalizer.seed.sql
+
+          session_one_output="$(mktemp)"
+          session_two_output="$(mktemp)"
+          "${psql_command[@]}" \
+            < supabase/tests/concurrency/0024_commitment_finalizer.session1.sql \
+            > "${session_one_output}" 2>&1 &
+          session_one_pid=$!
+
+          for attempt in {1..40}; do
+            if "${psql_command[@]}" --tuples-only --no-align \
+              --command="select count(*) from pg_locks where locktype = 'advisory' and objid = 240024 and granted" \
+              | grep -Fxq '1'; then
+              break
+            fi
+            if [[ "${attempt}" -eq 40 ]]; then
+              echo "Session 1 did not acquire its deterministic test lock"
+              wait "${session_one_pid}" || true
+              exit 1
+            fi
+            sleep 0.1
+          done
+
+          "${psql_command[@]}" \
+            < supabase/tests/concurrency/0024_commitment_finalizer.session2.sql \
+            > "${session_two_output}" 2>&1
+          wait "${session_one_pid}"
+
+          if ! grep -Fq 'already_finalized' "${session_two_output}"; then
+            echo "The racing failure did not observe the committed finalization"
+            exit 1
+          fi
+
+          "${psql_command[@]}" \
+            < supabase/tests/concurrency/0024_commitment_finalizer.verify.sql
+
+          "${psql_command[@]}" \
+            < supabase/tests/concurrency/0024_commitment_failure_race.seed.sql
+
+          failure_session_one_output="$(mktemp)"
+          failure_session_two_output="$(mktemp)"
+          "${psql_command[@]}" \
+            < supabase/tests/concurrency/0024_commitment_failure_race.session1.sql \
+            > "${failure_session_one_output}" 2>&1 &
+          failure_session_one_pid=$!
+
+          for attempt in {1..40}; do
+            if "${psql_command[@]}" --tuples-only --no-align \
+              --command="select count(*) from pg_locks where locktype = 'advisory' and objid = 240025 and granted" \
+              | grep -Fxq '1'; then
+              break
+            fi
+            if [[ "${attempt}" -eq 40 ]]; then
+              echo "Failure session 1 did not acquire its deterministic test lock"
+              wait "${failure_session_one_pid}" || true
+              exit 1
+            fi
+            sleep 0.1
+          done
+
+          "${psql_command[@]}" \
+            < supabase/tests/concurrency/0024_commitment_failure_race.session2.sql \
+            > "${failure_session_two_output}" 2>&1
+          wait "${failure_session_one_pid}"
+
+          if ! grep -Fq 'retry_scheduled' "${failure_session_two_output}"; then
+            echo "The second concurrent failure did not complete after the row lock"
+            exit 1
+          fi
+
+          "${psql_command[@]}" \
+            < supabase/tests/concurrency/0024_commitment_failure_race.verify.sql
+
       - name: Stop and remove the local database
         if: always()
         continue-on-error: true

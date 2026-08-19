@@ -7,11 +7,14 @@
 // server) — see ResetPasswordForm.
 
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { resolvePhoneAuthConfiguration } from '@/lib/auth/phoneAuth';
+import { redirect } from 'next/navigation';
 import ResetPasswordForm from './ResetPasswordForm';
 
 export const dynamic = 'force-dynamic';
 
 export default function ResetPasswordPage() {
+  if (resolvePhoneAuthConfiguration().mode !== 'disabled') redirect('/login');
   const configured = isSupabaseConfigured();
 
   return (

@@ -1,15 +1,14 @@
-// Writes extracted commitments for one transcript. Upsert, not insert --
-// same idempotency rationale as processTranscriptBatch's `learnings` write
-// (src/lib/transcripts/process.ts): a retried backfill batch must not
-// create duplicate rows for a transcript it already processed. The dedupe
-// key is (transcript_id, kind, extraction_index) -- see
-// supabase/migrations/0021_call_commitments.sql for why extraction_index,
-// not detail text, is the third column. #217
+// Finalizes extracted commitments and the transcript completion marker in one
+// database transaction. Migration 0024 locks the transcript before replacing
+// its still-open set, so zero-result and concurrent extractions are durable and
+// idempotent. #217
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CommitmentRow } from './types';
 
-export type PersistResult = { ok: true } | { ok: false; reason: 'has_resolved_commitments' };
+export type PersistResult =
+  | { ok: true; alreadyFinalized: boolean }
+  | { ok: false; reason: 'has_resolved_commitments' };
 
 // #217 review finding (HIGH), then a follow-up review MEDIUM on the first
 // fix: the position-based dedupe key and the status-omission below are
@@ -35,8 +34,9 @@ export type PersistResult = { ok: true } | { ok: false; reason: 'has_resolved_co
 // (nothing mutates status concurrently in this slice), but slice 3 adds
 // exactly that verify job.
 //
-// Fix: call_commitments_upsert_batch (supabase/migrations/
-// 0022_call_commitments_upsert_fn.sql) does the check AND the write inside
+// Fix: call_commitments_finalize_extraction (supabase/migrations/
+// 0024_commitment_extraction_tracking.sql) does the check, exact-set replace,
+// and completion marker inside
 // ONE plpgsql function, invoked via a single RPC round trip. It locks
 // every existing row for the transcript with `for update` before deciding,
 // so the whole check-then-act sequence is one statement's worth of
@@ -68,15 +68,12 @@ export async function persistCommitments(
   repEmail: string | null,
   ghlContactId: string | null,
   commitments: CommitmentRow[],
+  extractorVersion: string,
 ): Promise<PersistResult> {
-  if (commitments.length === 0) return { ok: true };
-
   // status/dismissed_reason/verified_by_event/cleared_at are deliberately
-  // NOT in this payload -- the RPC's UPSERT only SETs the columns it's
-  // given (see the function body), so a row a human or the verify job
-  // already moved off 'open' keeps its status untouched even in the branch
-  // where the function does write (all rows still 'open').
-  const { data, error } = await supabase.rpc('call_commitments_upsert_batch', {
+  // absent. The finalizer refuses any transcript with a resolved row and
+  // replaces only a wholly open pre-marker set.
+  const { data, error } = await supabase.rpc('call_commitments_finalize_extraction', {
     p_transcript_id: transcriptId,
     p_rows: commitments.map(c => ({
       ghl_contact_id: ghlContactId,
@@ -86,6 +83,7 @@ export async function persistCommitments(
       promised_at: c.promised_at,
       extraction_index: c.extraction_index,
     })),
+    p_extractor_version: extractorVersion,
   });
   if (error) throw error;
 
@@ -95,5 +93,8 @@ export async function persistCommitments(
     );
     return { ok: false, reason: 'has_resolved_commitments' };
   }
-  return { ok: true };
+  if (data !== 'ok' && data !== 'already_finalized') {
+    throw new Error(`Unexpected commitment finalizer result: ${String(data)}`);
+  }
+  return { ok: true, alreadyFinalized: data === 'already_finalized' };
 }

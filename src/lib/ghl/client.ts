@@ -23,6 +23,25 @@ export class HighLevelError extends Error {
   }
 }
 
+const MAX_IDEMPOTENT_GET_ATTEMPTS = 3;
+const GHL_REQUEST_TIMEOUT_MS = 20_000;
+const RETRYABLE_GET_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+function retryDelayMs(response: Response | null, attempt: number): number {
+  const retryAfter = response?.headers?.get('retry-after');
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds)) return Math.min(10_000, Math.max(0, seconds * 1000));
+    const dateMs = new Date(retryAfter).getTime();
+    if (Number.isFinite(dateMs)) return Math.min(10_000, Math.max(0, dateMs - Date.now()));
+  }
+  return Math.min(2000, 250 * 2 ** (attempt - 1));
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export function isHighLevelConfigured(): boolean {
   return !!(process.env.HIGHLEVEL_API_KEY && process.env.HIGHLEVEL_LOCATION_ID);
 }
@@ -50,25 +69,46 @@ function requireConfig(): { apiKey: string; locationId: string } {
 
 export async function ghlFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const { apiKey } = requireConfig();
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Version': API_VERSION_HEADER,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      ...(init.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
+  const method = (init.method ?? 'GET').toUpperCase();
+  const maxAttempts = method === 'GET' ? MAX_IDEMPOTENT_GET_ATTEMPTS : 1;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}${path}`, {
+        ...init,
+        signal: init.signal ?? AbortSignal.timeout(GHL_REQUEST_TIMEOUT_MS),
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Version': API_VERSION_HEADER,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          ...(init.headers ?? {}),
+        },
+      });
+    } catch (error) {
+      if (attempt < maxAttempts) {
+        await wait(retryDelayMs(null, attempt));
+        continue;
+      }
+      throw error;
+    }
+
+    if (res.ok) return res.json() as Promise<T>;
+    if (attempt < maxAttempts && RETRYABLE_GET_STATUSES.has(res.status)) {
+      await wait(retryDelayMs(res, attempt));
+      continue;
+    }
+
     const body = await res.text().catch(() => '');
     throw new HighLevelError(
-      `HighLevel ${init.method ?? 'GET'} ${path} → ${res.status}: ${body.slice(0, 400)}`,
+      `HighLevel ${method} ${path} → ${res.status}: ${body.slice(0, 400)}`,
       res.status,
       body.slice(0, 2000),
     );
   }
-  return res.json() as Promise<T>;
+
+  throw new HighLevelError(`HighLevel ${method} ${path} exhausted retries.`);
 }
 
 // ─── Contact search ───────────────────────────────────────────────────────

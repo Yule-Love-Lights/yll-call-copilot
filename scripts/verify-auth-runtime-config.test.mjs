@@ -12,6 +12,9 @@ const baseline = {
   CRON_SECRET: '0123456789abcdef',
   GHL_WEBHOOK_SECRET: '',
   GHL_FOLLOWUP_SEND_ENABLED: 'false',
+  HUB_PHONE_AUTH_STAGING_ENABLED: 'false',
+  NEXT_PUBLIC_TURNSTILE_SITE_KEY: '',
+  VERCEL_ENV: 'production',
   LIVE_BRIDGE_SECRET: '',
   LIVE_BRIDGE_URL: '',
   LIVE_APP_BASE_URL: '',
@@ -56,5 +59,30 @@ describe('authorization runtime preflight', () => {
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('exactly two unique Supabase Auth UUIDs');
+  });
+
+  it('requires an exact activation flag and Turnstile site key for staging phone auth', () => {
+    const malformed = run({ HUB_PHONE_AUTH_STAGING_ENABLED: 'yes' });
+    expect(malformed.status).toBe(1);
+    expect(malformed.stderr).toContain('must be exactly true or false');
+
+    const missingTurnstile = run({ HUB_PHONE_AUTH_STAGING_ENABLED: 'true' });
+    expect(missingTurnstile.status).toBe(1);
+    expect(missingTurnstile.stderr).toContain('NEXT_PUBLIC_TURNSTILE_SITE_KEY is required');
+
+    const configured = run({
+      HUB_PHONE_AUTH_STAGING_ENABLED: 'true',
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: 'public-site-key',
+      VERCEL_ENV: 'preview',
+    });
+    expect(configured.status).toBe(0);
+
+    const production = run({
+      HUB_PHONE_AUTH_STAGING_ENABLED: 'true',
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: 'public-site-key',
+      VERCEL_ENV: 'production',
+    });
+    expect(production.status).toBe(1);
+    expect(production.stderr).toContain('only when VERCEL_ENV is preview');
   });
 });

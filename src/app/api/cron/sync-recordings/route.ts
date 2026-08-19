@@ -19,6 +19,10 @@ import { RECORDING_BATCH_SIZE, resolveSyncWindowStart } from '@/lib/recordings/s
 import { verifyCronRequest } from '@/lib/auth/machine';
 
 const BACKLOG_FETCH_LIMIT = 500;
+// HighLevel can make a completed call visible after its dateAdded timestamp.
+// Re-scan one day on every completed window; ghl_message_id makes the overlap
+// idempotent, while delayed provider visibility no longer creates a hole.
+const PROVIDER_VISIBILITY_OVERLAP_MS = 24 * 60 * 60 * 1000;
 
 export const maxDuration = 300;
 
@@ -73,18 +77,18 @@ export async function GET(request: Request) {
     // small overlap between runs, so re-seeing a few of the same messages
     // next time is free.
     const runStartedAt = new Date().toISOString();
-    // BACKLOG_FETCH_LIMIT vs the 100 default: the scan is newest-first with a
-    // cap, so a cap SMALLER than the backlog can never drain it. Holding the
-    // cursor (the guard below) stops us LOSING the remainder, but the next run
-    // then re-fetches the same newest N and the cursor never moves -- safe,
-    // and stuck. Raising the cap so a real backlog fits in ONE window is what
-    // actually makes progress. 500 covers the measured 2026-08 gap (129 calls)
-    // with headroom; the conversation scan still stops the moment a
-    // conversation falls outside the window, so a high cap costs nothing on a
-    // normal night with a handful of calls.
-    const { messages, truncated } = await listRecentCallRecordings(since, BACKLOG_FETCH_LIMIT);
+    // The fetcher scans the reachable time window, sorts matching calls oldest
+    // first, and returns at most this many timestamp groups. Five hundred
+    // covers the measured 2026-08 gap (129 calls) in one database batch while
+    // still allowing a larger backlog to drain over successive safe cursors.
+    const { messages, truncated, stopReason, nextSince } = await listRecentCallRecordings(
+      since,
+      BACKLOG_FETCH_LIMIT,
+      runStartedAt,
+    );
 
     let inserted = 0;
+    let upsertFailed = 0;
     for (const m of messages) {
       // ignoreDuplicates + the unique(ghl_message_id) constraint is the
       // idempotency key: a message already seen on a previous run silently
@@ -106,45 +110,63 @@ export async function GET(request: Request) {
         .select('id');
       if (error) {
         console.error('Upsert call_recordings failed:', error);
+        upsertFailed++;
         continue;
       }
       if (data && data.length > 0) inserted++;
     }
 
-    // TRUNCATION GUARD. listRecentCallRecordings stops at its limit cap (100)
-    // or the conversation-scan cap and reports truncated=true, meaning MORE
-    // calls exist in the window than it returned. Stamping runStartedAt in
-    // that case moves the cursor past everything it did not fetch, and the
-    // next run's `dateAdded < since` filter then excludes those calls
-    // FOREVER while the response still reads {ran:true, inserted:N}.
-    //
-    // Measured, not hypothetical: replaying this against the real 2026-08-08
-    // cursor found 129 calls in the window, a fetch capped at 100, and 29
-    // real sales calls that would have been silently dropped on the very run
-    // intended to recover the backlog.
-    //
-    // So when truncated, resume from the OLDEST message actually returned
-    // rather than from now. The ghl_message_id unique constraint makes the
-    // resulting overlap free, and successive runs walk the backlog down
-    // instead of skipping it.
-    const oldestReturned = messages.reduce<string | null>(
-      (oldest, m) => (m.dateAdded && (!oldest || m.dateAdded < oldest) ? m.dateAdded : oldest),
-      null,
-    );
-    const nextCursor = truncated && oldestReturned ? oldestReturned : runStartedAt;
+    // The export fetcher supplies an exclusive continuation only after it has
+    // crossed the entire boundary timestamp. A completed window deliberately
+    // keeps a one-day overlap for provider visibility lag.
+    const overlapCursor = new Date(Math.max(
+      new Date(since).getTime(),
+      new Date(runStartedAt).getTime() - PROVIDER_VISIBILITY_OVERLAP_MS,
+    )).toISOString();
+    const requestedNextCursor = upsertFailed > 0
+      ? since
+      : !truncated
+      ? overlapCursor
+      : nextSince
+        ? nextSince
+        : since;
 
-    await supabase.from('recording_sync_state').upsert({
-      id: 1,
-      last_synced_at: nextCursor,
-      detail: { messages_seen: messages.length, inserted, truncated, cursor_held: nextCursor !== runStartedAt },
-    });
+    // The database routine takes a row lock and applies GREATEST, so a stale
+    // overlapping cron invocation can never move a newer cursor backward.
+    const { data: storedCursor, error: syncStateError } = await supabase.rpc(
+      'advance_recording_sync_cursor',
+      {
+        p_next_cursor: requestedNextCursor,
+        p_detail: {
+          messages_seen: messages.length,
+          inserted,
+          upsert_failed: upsertFailed,
+          truncated,
+          stop_reason: stopReason,
+          visibility_overlap_hours: PROVIDER_VISIBILITY_OVERLAP_MS / (60 * 60 * 1000),
+        },
+      },
+    );
+    if (syncStateError) throw syncStateError;
+    const actualCursor = typeof storedCursor === 'string' ? storedCursor : requestedNextCursor;
+    const cursorHeld = actualCursor === since;
 
     const result = await processPendingRecordings(supabase, RECORDING_BATCH_SIZE);
 
-    return NextResponse.json({ ran: true, since, messagesSeen: messages.length, inserted, truncated, cursorHeld: nextCursor !== runStartedAt, ...result });
+    return NextResponse.json({
+      ran: true,
+      since,
+      messagesSeen: messages.length,
+      inserted,
+      upsertFailed,
+      truncated,
+      stopReason,
+      cursorHeld,
+      ...result,
+    });
   } catch (err) {
     if (isMissingTableError(err)) {
-      return NextResponse.json({ ran: false, migrated: false, reason: 'Run migration 0007 first.' });
+      return NextResponse.json({ ran: false, migrated: false, reason: 'Run migrations through 0024 first.' });
     }
     console.error('Cron sync-recordings failed:', err);
     return NextResponse.json({ ran: false, error: 'Sync failed.' }, { status: 500 });
