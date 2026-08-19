@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   quality:
-    name: Typecheck, lint, test, build, and local contract pin
+    name: Typecheck, lint, test, build, and local contract/schema pin
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -34,7 +34,7 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Verify checked-in contract pin
+      - name: Verify checked-in contract and schema pins
         run: npm run verify:ops-contract
 
       - name: Typecheck

@@ -1,10 +1,34 @@
 {
-  "manifest_version": 1,
+  "manifest_version": 2,
   "contract_version": "1.4.0-draft",
+  "schema_version": "1.0.0-draft",
   "canonical_repository": "Yule-Love-Lights/yll-quote-tool",
   "canonical_path": "docs/context/OPERATIONS_HUB_CONTRACT.md",
-  "canonical_commit": "0a69fc0efc4998b59136057671e5705d8e5583f6",
+  "canonical_commit": "c60bce4927a7fc47a8d6ee1d14a6eb88257755aa",
   "mirror_path": "docs/operations-hub/INTEGRATION-CONTRACT.md",
-  "sha256": "70ec41d325d7fb6ad907f0979b2389fa2cb6effb35e10bfd228c822cd42bfee4",
-  "byte_length": 47692
+  "sha256": "d3551f65561863af42721d020b357888acc6c90eb0c8c586f7bc151305395e7f",
+  "byte_length": 56963,
+  "artifacts": [
+    {
+      "name": "manifest",
+      "canonical_path": "docs/context/ops-contract-schema/manifest.json",
+      "mirror_path": "docs/operations-hub/ops-contract-schema/manifest.json",
+      "sha256": "f55582fbbc7a99a5f1f1d06f9aa6897af96886ddcd94833a820e4cbd315956dd",
+      "byte_length": 217
+    },
+    {
+      "name": "openapi",
+      "canonical_path": "docs/context/ops-contract-schema/common.openapi.json",
+      "mirror_path": "docs/operations-hub/ops-contract-schema/common.openapi.json",
+      "sha256": "2b57dec5de60cfdae774897905988e0ce855c3b38211abebce48d39a6b8d9ae1",
+      "byte_length": 39640
+    },
+    {
+      "name": "json_schema",
+      "canonical_path": "docs/context/ops-contract-schema/common.schema.json",
+      "mirror_path": "docs/operations-hub/ops-contract-schema/common.schema.json",
+      "sha256": "dd78f02291718bdcbc68c68487885ff2ea69888801c641f4ca8a93436db2047a",
+      "byte_length": 22091
+    }
+  ]
 }

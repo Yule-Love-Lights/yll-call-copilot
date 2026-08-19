@@ -1,9 +1,9 @@
 # Yule Love Lights Operations Hub — master plan
 
-Status: **owner-approved; canonical contract mirrored; Phase 0 identity foundation merged**
+Status: **owner-approved; canonical contract/schema mirrored; Phase 0 identity foundation merged**
 Version: `1.3-review-1`
 Approved: 2026-08-07
-Last reconciled: 2026-08-18
+Last reconciled: 2026-08-19
 
 ## 1. Mission
 
@@ -323,8 +323,11 @@ to restricted owners for the required retention period.
    `CONTRACT-V1.3-PROPOSAL.md`; Naldo and Codex review; human merge to Quote
    Tool `master` first.
 2. Generate/publish one shared JSON Schema artifact; both CIs validate it.
-3. Add byte-identical canonical-contract mirror to the Hub after canonical
-   merge; cross-repository byte-diff and deploy-version smoke must pass.
+   Quote Tool PR #803 published schema `1.0.0-draft`.
+3. Add byte-identical canonical-contract and schema mirrors to the Hub after
+   canonical merge; cross-repository byte-diff and deploy-version smoke must
+   pass. The raw-byte mirror and local/cross-repository verifier are complete;
+   authenticated CI fetch and deploy smoke remain.
 4. Lock identity-link, command/event envelope, auth, audit, idempotency, RLS,
    DLQ, kill switches, and ownership rows in both repositories.
 

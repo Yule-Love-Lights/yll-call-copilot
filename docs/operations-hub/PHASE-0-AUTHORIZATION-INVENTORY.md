@@ -1,9 +1,9 @@
 # Operations Hub Phase 0 authorization inventory
 
 Status: **immutable identity foundation merged; staging activation in progress; field provisioning blocked**
-Date: 2026-08-18
-Merged base: PRs #41 through #51 at
-`master@f2c9bd0761365a275f4793cd4f70dcf9c75cee26`. PR #50 merged the additive
+Date: 2026-08-19
+Merged base: PRs #41 through #52 at
+`master@0b33c23b456cacc70a85ea717bb5df9eb311beda`. PR #50 merged the additive
 identity foundation. It does not enable phone OTP or authorize Advertising or
 Installer provisioning.
 
@@ -176,8 +176,9 @@ Every existing Office route is labeled `legacy_pending_projection`, not
 exist, so the F4 clock gate remains a release block for exact customer/job
 access rather than being silently represented as disabled policy.
 
-No canonical time, pay, job, payroll, or shared-labor data was added. The
-integration-contract mirror was not edited.
+No canonical time, pay, job, payroll, or shared-labor data was added. This
+paired artifact branch changes only the approved byte mirrors, their pin,
+verification, tests, and status documentation.
 
 ## 5. Remaining release blocks
 
@@ -275,12 +276,13 @@ successfully before the human-authorized merge.
 1. Complete hosted semantic persona and real-token PostgREST proof for the
    merged immutable Hub employee/Auth link, active state, membership versioning,
    and local identity audit without enabling field provisioning. Independent
-   code review and CI are complete. Cross-boundary outbox/inbox/DLQ envelopes
-   wait for the canonical shared schema.
+   code review and CI are complete. Cross-boundary outbox/inbox/DLQ
+   implementations may now be built against the vendored canonical schema
+   under the remaining activation gates.
 2. Audit and repair or invalidate historical derived performance outputs.
-3. Land the Quote-owned capability/policy-version transport, current-context
-   projection, and canonical shared schema/OpenAPI artifacts before consuming
-   them in the Hub.
+3. Land the Quote-owned capability/policy-version transport and current-context
+   projection before consuming those protected facts in the Hub. The canonical
+   shared schema/OpenAPI artifacts are now vendored and pinned.
 4. Implement invite-only Supabase Phone Auth, Turnstile, Twilio Verify delivery,
    owner-only recovery, 30-day session enforcement, password-identity revocation
    with Supabase-console owner break-glass, and the ruled Placement Run offline
