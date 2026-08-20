@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - master
+      - staging
 
 permissions:
   contents: read
@@ -33,6 +34,25 @@ jobs:
 
       - name: Install locked dependencies
         run: npm ci
+
+      - name: Build stable staging deployment contract
+        env:
+          HUB_PHONE_AUTH_STAGING_ENABLED: "true"
+          VERCEL_ENV: preview
+          VERCEL_GIT_COMMIT_REF: staging
+          HUB_STAGING_SUPABASE_PROJECT_REF: abcdefghijklmnopqrst
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: ci-turnstile-site-key
+          NEXT_PUBLIC_SUPABASE_URL: https://abcdefghijklmnopqrst.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ format('sb_{0}_{1}', 'publishable', 'ci_fixture_abcdefghijklmnopqrstuvwxyz') }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ format('sb_{0}_{1}', 'secret', 'ci_fixture_abcdefghijklmnopqrstuvwxyz') }}
+          HUB_OWNER_ADMIN_AUTH_USER_IDS: 123e4567-e89b-42d3-a456-426614174000,223e4567-e89b-42d3-a456-426614174000
+          LIVE_CUSTOMER_CALLS_ENABLED: "false"
+          GHL_SEND_ENABLED: "false"
+          GHL_FOLLOWUP_SEND_ENABLED: "false"
+          CRON_ENABLED: "false"
+          QUOTE_TOOL_SUPABASE_URL: ""
+          QUOTE_TOOL_SUPABASE_SERVICE_ROLE_KEY: ""
+        run: npm run build:vercel
 
       - name: Verify checked-in contract and schema pins
         run: npm run verify:ops-contract

@@ -1,6 +1,11 @@
 // Deployment preflight for the Phase 0 authorization boundary. This reads
 // names/presence only and never prints secret values.
 
+import {
+  STAGING_PHONE_AUTH_BRANCH,
+  resolveStagingPhoneAuthActivation,
+} from '../src/lib/auth/stagingPhoneAuth.mjs';
+
 const errors = [];
 const required = name => {
   if (!process.env[name]?.trim()) errors.push(`${name} is required`);
@@ -25,6 +30,12 @@ if (phoneAuthFlag === 'true') {
   required('NEXT_PUBLIC_TURNSTILE_SITE_KEY');
   if (process.env.VERCEL_ENV !== 'preview') {
     errors.push('HUB_PHONE_AUTH_STAGING_ENABLED may be true only when VERCEL_ENV is preview');
+  }
+  if (process.env.VERCEL_GIT_COMMIT_REF !== STAGING_PHONE_AUTH_BRANCH) {
+    errors.push(`HUB_PHONE_AUTH_STAGING_ENABLED may be true only on the ${STAGING_PHONE_AUTH_BRANCH} branch`);
+  }
+  if (resolveStagingPhoneAuthActivation(process.env) !== 'enabled' && errors.length === 0) {
+    errors.push('HUB_PHONE_AUTH_STAGING_ENABLED activation context is unavailable');
   }
 }
 

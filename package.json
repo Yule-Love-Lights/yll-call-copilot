@@ -8,10 +8,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:vercel": "node scripts/verify-staging-deployment.mjs && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
     "verify:auth-config": "node scripts/verify-auth-runtime-config.mjs",
+    "verify:staging-deploy": "node scripts/verify-staging-deployment.mjs",
     "verify:ops-contract": "node scripts/verify-operations-contract.mjs",
     "verify:ops-contract:cross-repo": "node scripts/verify-operations-contract.mjs --require-canonical"
   },

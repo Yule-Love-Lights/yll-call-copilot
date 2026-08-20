@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { resolveStagingPhoneAuthActivation } from './stagingPhoneAuth.mjs';
 
 export const HUB_SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 export const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
@@ -11,6 +12,7 @@ export type PhoneAuthEnvironment = {
   HUB_PHONE_AUTH_STAGING_ENABLED?: string;
   NEXT_PUBLIC_TURNSTILE_SITE_KEY?: string;
   VERCEL_ENV?: string;
+  VERCEL_GIT_COMMIT_REF?: string;
 };
 
 export type PhoneAuthConfiguration =
@@ -23,16 +25,16 @@ function readPhoneAuthEnvironment(): PhoneAuthEnvironment {
     HUB_PHONE_AUTH_STAGING_ENABLED: process.env.HUB_PHONE_AUTH_STAGING_ENABLED,
     NEXT_PUBLIC_TURNSTILE_SITE_KEY: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
     VERCEL_ENV: process.env.VERCEL_ENV,
+    VERCEL_GIT_COMMIT_REF: process.env.VERCEL_GIT_COMMIT_REF,
   };
 }
 
 export function resolvePhoneAuthConfiguration(
   environment: PhoneAuthEnvironment = readPhoneAuthEnvironment(),
 ): PhoneAuthConfiguration {
-  const enabled = environment.HUB_PHONE_AUTH_STAGING_ENABLED;
-  if (!enabled || enabled === 'false') return { mode: 'disabled' };
-  if (enabled !== 'true') return { mode: 'unavailable' };
-  if (environment.VERCEL_ENV !== 'preview') return { mode: 'unavailable' };
+  const activation = resolveStagingPhoneAuthActivation(environment);
+  if (activation === 'disabled') return { mode: 'disabled' };
+  if (activation !== 'enabled') return { mode: 'unavailable' };
 
   const turnstileSiteKey = environment.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
   if (!turnstileSiteKey) return { mode: 'unavailable' };
