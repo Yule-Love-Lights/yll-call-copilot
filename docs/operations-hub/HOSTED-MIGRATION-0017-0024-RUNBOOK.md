@@ -1,154 +1,298 @@
-# Hosted migration runbook: 0017 → 0024
+# Hosted migration runbook: 0017 to 0024
 
-Status: **0017 and 0018 applied to the hosted project; 0019 → 0024 pending**
+Status: **production blocked pending staging rehearsal**
 Date: 2026-08-20
 Project: `mjmociuxxxwxvasnpxav` (Supabase, `us-east-2`, PostgreSQL 17.6.1.141)
+Hosted state: **0017 and 0018 ledger-applied; 0019 schema-applied out of band;
+0020 to 0024 absent**
+Staging: **not configured** (no Supabase branch or separate staging project exists)
 
-This runbook covers a specific, measured situation: eight migrations were
-checked in and their calling code deployed, but none had been applied to the
-hosted database. It does not supersede `PHASE-0-RLS-RUNBOOK.md` — section 4 of
-that document still governs 0019, and its remaining steps are reproduced here.
+This runbook covers the measured hosted state. It does not supersede
+`PHASE-0-RLS-RUNBOOK.md`. That runbook's staging, backup, smoke, and production
+gates remain mandatory. Do not apply this procedure to production until the
+entire procedure passes against a sanitized staging copy of the current state.
 
-## 1. Why the pipeline was failing
+## 1. Measured hosted state
 
-`supabase_migrations.schema_migrations` was empty and the `public` schema had
-**zero** functions, so deployed code was calling routines that did not exist.
+`supabase_migrations.schema_migrations` contains only these rows:
 
-Two distinct failure modes were measured in `call_recordings` (440 rows):
+- `20260819235532 / 0017_live_dial_grants`
+- `20260820001714 / 0018_webhook_idempotency`
+
+Migration 0019 is visible in the schema but absent from that ledger. All 31
+public tables have RLS enabled and forced, `anon` lacks public-schema usage,
+and `anon` has no public-table grants. Migrations 0020 through 0024 are absent:
+`transcripts.metric_scope`, `call_commitments`, the five `ops_*` tables, and
+`advance_recording_sync_cursor` do not exist. Do not use `supabase db push`
+against this mixed history.
+
+The same-project `backup_s60_20260819` schema contains 31 snapshot tables whose
+row counts matched public on 2026-08-20. It is a recovery aid, not an off-box
+backup.
+
+The legacy metric preflight currently finds:
+
+- 5 `weekly_digests`
+- 9 `brain_reviews`
+- 14 `playbook_proposals`
+- 0 edited `playbook_versions`
+- 0 unsafe personal touches
+- 0 orphan call scores
+
+These are not allowed exceptions. The 28 derived artifacts must be exported
+and quarantined through `docs/HISTORICAL-METRIC-RECONCILIATION.md` so canonical
+0020 and its reusable pgTAP assertions pass without modification.
+
+## 2. Recording impact
+
+The recording pipeline has 440 rows. The measured failures are:
 
 | Cause | Rows | Deepgram billed |
-| --- | --- | --- |
-| `PGRST204: Could not find the 'metric_scope' column of 'transcripts'` | 24 | **Yes** — transcription completed, the insert failed |
-| `GHL 422: Message does not have recording` | 42 | No — download failed first |
-| `Deepgram transcription request failed: "timeout"` | 2 | Probably not |
+| --- | ---: | --- |
+| Missing `transcripts.metric_scope` after transcription | 24 | Yes |
+| GHL 422, no recording on message | 42 | No |
+| Deepgram timeout | 2 | Unknown |
 
-Only the first class is migration-caused, and it stopped on its own at
-**18:07:51 UTC on 2026-08-19**. The reason matters: once the deploy carrying
-`advance_recording_sync_cursor` (migration 0024) went out, the cron began
-throwing at that missing RPC in `src/app/api/cron/sync-recordings/route.ts`
-*before* reaching `processPendingRecordings`. Deepgram is no longer being
-called at all. The 19 rows inserted at 22:05 sit at `status = 'pending'` with
-`processing_at IS NULL`, which is the signature of that early throw.
+Nineteen migration-affected rows are parked at `status = 'skipped'` with
+`skip_reason = 'held_migration_0020'`. Keep them parked until migrations 0020
+through 0024, both assertions, and the recording cursor RPC are verified.
 
-**The pipeline resumes for real when 0024 lands.** Because 0020 adds
-`metric_scope` earlier in the order, there is no window where the RPC exists
-without the column — so resumption is correct behavior, not a fresh burn. Pause
-the cron first only if you want to choose that moment deliberately.
+The cursor is pinned at `2026-08-08 18:48:27.5+00` with 500 messages seen and a
+held cursor. The GHL paging repair is outside this migration. Do not confuse
+the cursor defect or the 42 GHL 422 rows with the schema incident.
 
-The cursor is also stuck: `recording_sync_state.last_synced_at` reads
-`2026-08-08 18:48:27.5+00` with `{"messages_seen": 500, "inserted": 0,
-"truncated": true}`. That is the GHL `offset` paging bug and is **out of scope
-here** — it needs `startAfterDate` paging verified against live GHL.
+## 3. Staging gate
 
-## 2. Already applied
+Create a separate staging project and restore a sanitized current-state copy.
+A Supabase preview branch alone is insufficient because preview branches do
+not copy production data. The staging fixture must reproduce:
 
-Both were additive and are verified in place:
+- the exact two-row migration ledger;
+- the schema after out-of-band 0019;
+- the legacy artifact counts and reviewed ID sets;
+- representative `app_users`, `auth.users`, live session, and recording rows;
+- exactly 19 synthetic parked recordings for the release rehearsal.
 
-- **0017** `live_dial_grants` — 7 columns on `live_sessions`, the
-  `live_dial_grant_shape` constraint, 2 partial indexes. All 3 existing rows are
-  `mode='twilio', status='ended'` and satisfy the constraint's third arm.
-- **0018** `webhook_idempotency` — `events_log.source_event_key` plus its
-  partial unique index. `events_log` is empty.
+Complete these steps in staging in order:
 
-## 3. The 0020 decision
+1. Pause every writer named in `HISTORICAL-METRIC-RECONCILIATION.md`.
+2. Export and human-review all required artifacts.
+3. Build the reviewed six-class manifest. Generate and run its reconciliation
+   and canonical 0020 to 0024 in the single transaction in section 5.
+4. Run the official migration-history reconciliation in section 7.
+5. Run the pgTAP suite and the sign-in, Office read/write, cron, HighLevel,
+   Twilio, and live-bridge smokes required by `PHASE-0-RLS-RUNBOOK.md`.
+6. Rehearse the canary and remainder recording release in section 8.
 
-0020's first statement is a preflight that aborts when legacy metric artifacts
-exist, and its message instructs the operator to delete them. Live counts:
+Production remains blocked if any step is skipped, weakened, or produces a
+state not explicitly handled by this runbook.
 
-| Table | Rows |
-| --- | --- |
-| `weekly_digests` | 5 |
-| `brain_reviews` | 9 |
-| `playbook_proposals` | 14 |
-| `playbook_versions` where `source='edited'` | 0 |
+## 4. Protected backup and exports
 
-**Chosen path: export and skip the gate, keep the 28 rows.** This is safe
-because those four tables are referenced *only* inside 0019's default-deny name
-list and 0020's own preflight and assertion bodies. No statement in 0017–0024
-alters, drops, or backfills them, so the resulting schema is identical either
-way. The export is at `0020-preflight-artifacts-backup.json` (28 rows plus the
-4 `verticals` rows needed to reset `active_version`).
-
-Two consequences to accept knowingly:
-
-1. `public.assert_legacy_metric_artifacts_reconciled()` is still created and
-   still raises while those rows exist. `supabase/tests/database/lead_work_authorization.test.sql`
-   asserts that behavior, so **the DB test suite stays red** until the artifacts
-   are quarantined or given provenance. That is a deferred question, not a
-   solved one.
-2. Reporting that mixes these 28 pre-provenance artifacts with post-0020
-   `metric_scope = 'performance'` data remains suspect.
-
-**Do not hand-add `metric_scope`.** Lines 218, 222, and 225 of 0020 use bare
-`add column metric_scope text` with no `if not exists`; a pre-added column makes
-the migration fail.
-
-0020's **second** preflight (`$legacy_personal_touch_provenance_preflight$`) is
-left fully armed. Measured against live data after 0017 it returns
-`unsafe_personal_touches = 0`, so it passes on its own merits and removing it
-would disarm a real check for nothing.
-
-## 4. Apply order
-
-Run from a checkout where the files are read byte-for-byte — the Supabase CLI
-or `psql`, not a copy-paste path. Order is strict: 0020 must precede 0024 so
-`metric_scope` exists before the cron's cursor RPC does.
+Create a new protected directory outside the repository for every staging and
+production attempt. `mktemp` makes the run path unique; `set -C` and the
+explicit existence check make accidental overwrite fail closed. Do not reuse a
+directory after any failed or uncertain attempt.
 
 ```sh
-# 0. Snapshot first. PHASE-0-RLS-RUNBOOK.md section 4 step 4 is not optional
-#    and there is no existing backup of this database.
-pg_dump "$SUPABASE_DB_URL" -Fc -f yll-call-copilot-$(date +%Y%m%d-%H%M).dump
+umask 077
+set -C
+YLL_MIGRATION_ENVIRONMENT="staging" # exactly staging or production
+case "$YLL_MIGRATION_ENVIRONMENT" in
+  staging|production) ;;
+  *) echo "YLL_MIGRATION_ENVIRONMENT must be staging or production" >&2; exit 2 ;;
+esac
+YLL_MIGRATION_BASE_DIR="/Users/naldovenseizeme/Documents/YLL-Protected-Backups/yll-call-copilot"
+install -d -m 700 "$YLL_MIGRATION_BASE_DIR"
+YLL_MIGRATION_SECURE_DIR="$(mktemp -d "$YLL_MIGRATION_BASE_DIR/$YLL_MIGRATION_ENVIRONMENT-2026-08-20TXXXXXX")"
+YLL_MIGRATION_DUMP="$YLL_MIGRATION_SECURE_DIR/yll-call-copilot-pre-0020.dump"
+test ! -e "$YLL_MIGRATION_DUMP"
 
-# 1. Generate the 0020 variant (derived from the reviewed file, never retyped).
-node scripts/prepare-0020-hosted-apply.mjs /tmp/0020_hosted_apply.sql
-
-# 2. Apply in order.
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -1 -f supabase/migrations/0019_existing_tables_default_deny.sql
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -1 -f /tmp/0020_hosted_apply.sql
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -1 -f supabase/migrations/0021_call_commitments.sql
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -1 -f supabase/migrations/0022_call_commitments_upsert_fn.sql
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -1 -f supabase/migrations/0023_operations_hub_identity_foundation.sql
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -1 -f supabase/migrations/0024_commitment_extraction_tracking.sql
+pg_dump "$SUPABASE_DB_URL" \
+  --format=custom \
+  --file="$YLL_MIGRATION_DUMP"
+pg_restore --list "$YLL_MIGRATION_DUMP" \
+  > "$YLL_MIGRATION_SECURE_DIR/yll-call-copilot-pre-0020.contents.txt"
+shasum -a 256 "$YLL_MIGRATION_DUMP" \
+  > "$YLL_MIGRATION_SECURE_DIR/yll-call-copilot-pre-0020.dump.sha256"
 ```
 
-`0019` is the RLS default-deny boundary and `PHASE-0-RLS-RUNBOOK.md` still
-carries `Status: hosted rollout not yet authorized`. Its own guards were
-verified to pass (`current_user = postgres`, `service_role` has `BYPASSRLS`,
-`anon` and `authenticated` both exist, 31 tables with RLS on and 0 policies),
-but it needs the human authorization that document requires before it runs.
+Record the dump identifier, checksum, and row counts in the deployment ticket.
+Run the inventory and encrypted export steps in
+`docs/HISTORICAL-METRIC-RECONCILIATION.md`. A second person must compare the
+reviewed manifest with the export before the generated transaction runs.
 
-Its section 4 also asks for a staging clone with current-state data and the
-pgTAP suite plus sign-in, Office read/write, cron, HighLevel, Twilio, and
-live-bridge smokes between steps 5 and 7. None of that has been done.
+## 5. Apply canonical 0020 through 0024 atomically
 
-## 5. After applying
+Keep all listed writers paused. Generate the driver from the checked-in
+canonical migrations, then inspect it before applying. The generator refuses
+missing or reordered files, internal transaction control, or a weakened 0020.
+It does not update migration history.
+
+```sh
+node scripts/prepare-0020-hosted-apply.mjs \
+  --manifest "$YLL_MIGRATION_SECURE_DIR/reviewed-metric-artifacts.csv" \
+  --output "$YLL_MIGRATION_SECURE_DIR/0020-0024-hosted.sql"
+
+psql "$SUPABASE_DB_URL" \
+  -X \
+  --set ON_ERROR_STOP=on \
+  --file "$YLL_MIGRATION_SECURE_DIR/0020-0024-hosted.sql"
+```
+
+The generated driver uses one `begin`/`commit`. It first requires exact
+two-way equality between the reviewed six-class manifest and the locked live
+sets, performs only keyed and row-counted reconciliation, then preserves every
+canonical 0020 through 0024 byte exactly and in order. It runs these
+postconditions before commit:
+
+- `transcripts.metric_scope` exists;
+- `call_commitments` and `call_commitments_upsert_batch` exist;
+- all five expected Operations Hub identity tables exist;
+- `advance_recording_sync_cursor` exists;
+- both legacy metric assertions pass.
+
+Do not hand-add `metric_scope`, do not remove a preflight, and do not apply the
+five migrations in separate transactions.
+
+## 6. Exact schema-apply resume procedure
+
+If `psql` reports an error before commit, the transaction rolls back. Confirm
+that all four feature groups below are absent, fix the cause, then rerun the
+unchanged driver.
+
+If the connection drops and commit status is unknown, reconnect read-only and
+check all four groups:
 
 ```sql
--- Expect metric_scope on leads/calls/transcripts/call_scores/live_sessions/followups
-select table_name from information_schema.columns
-where table_schema='public' and column_name='metric_scope' order by 1;
-
--- Expect advance_recording_sync_cursor to exist
-select proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-where n.nspname='public' and proname='advance_recording_sync_cursor';
-
--- The 28 artifacts must still be here
-select (select count(*) from weekly_digests) as digests,
-       (select count(*) from brain_reviews) as reviews,
-       (select count(*) from playbook_proposals) as proposals;
+select
+  exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'transcripts'
+      and column_name = 'metric_scope'
+  ) as has_metric_scope,
+  to_regclass('public.call_commitments') is not null as has_commitments,
+  (
+    select count(*) = 5
+    from information_schema.tables
+    where table_schema = 'public'
+      and table_name in (
+        'ops_departments',
+        'ops_employees',
+        'ops_employee_auth_identities',
+        'ops_employee_department_memberships',
+        'ops_identity_audit_events'
+      )
+  ) as has_identity_tables,
+  to_regprocedure(
+    'public.advance_recording_sync_cursor(timestamp with time zone,jsonb)'
+  ) is not null as has_cursor_rpc;
 ```
 
-Then watch the first cron run at `:05`. The 19 pending rows will process; each
-is a real Deepgram call, so confirm they land as `transcribed` rather than
-`failed` before letting the backlog drain further.
+- All four false means the transaction rolled back. Rerun the same driver.
+- All four true plus both assertion calls succeeding means schema apply
+  committed. Do not rerun it. Continue to section 7.
+- Any mixed result, failed assertion, or unexpected object means production is
+  blocked. Keep writers paused, take a fresh dump, and investigate or restore
+  into a new database. Do not improvise a partial replay.
 
-## 6. Follow-ups this runbook does not close
+## 7. Reconcile migration history with the official CLI
 
-- The 28 legacy artifacts need quarantine or provenance; until then
-  `assert_legacy_metric_artifacts_reconciled()` and the DB test suite stay red.
-- The GHL `offset` paging bug — cursor pinned at 2026-08-08, 500 seen / 21
-  unique. Needs `startAfterDate` paging verified against live GHL.
-- 24 recordings failed after a paid transcription and nothing retries a failed
-  row; they need a deliberate re-drive once `metric_scope` exists.
-- 42 rows failed with GHL 422 "Message does not have recording" and will fail
-  again on any retry. They are not migration-related.
+Only after section 5 succeeds, bind the operation to the expected project and
+run the checked-in repair script:
+
+```sh
+YLL_EXPECTED_SUPABASE_PROJECT_REF="mjmociuxxxwxvasnpxav" \
+  node scripts/reconcile-0020-0024-hosted-history.mjs
+```
+
+The script performs read-only assertion and exact-history checks, requires an
+empty full `public` schema diff against canonical migrations, and uses pinned
+`npx --yes supabase@2.112.0 migration repair`. It reverts only the two reviewed
+generated versions, marks only canonical 0001 through 0024 applied, rechecks
+the exact history and full schema, and requires an empty `db push --dry-run`.
+It never writes the internal migration table directly.
+
+If its connection result is unknown, query ordered `version` and `name` values:
+
+- any remaining subset of the two exact timestamp rows resumes their revert;
+- an empty ledger or an exact-name subset of canonical 0001 through 0024
+  resumes only the missing applied repair;
+- exact canonical 0001 through 0024 proceeds to schema diff and dry-run proof;
+- any mixed, extra, or wrong-name row blocks production.
+
+## 8. Release parked recordings in two transactions
+
+Create two reviewed, one-UUID-per-line files in the protected directory: an
+exact three-ID canary file and an exact sixteen-ID remainder file. Their
+disjoint union must equal the locked 19-row held set. Keep every recording
+writer paused. Generate two protected, directly executable SQL files. The
+generator requires sorted lowercase canonical UUIDs, exact 3/16 counts,
+disjoint files, no existing outputs, and embeds the reviewed IDs through `COPY
+FROM STDIN`:
+
+```sh
+node scripts/prepare-0020-recording-release.mjs \
+  --canary-ids "$YLL_MIGRATION_SECURE_DIR/recording-canary-ids.csv" \
+  --remainder-ids "$YLL_MIGRATION_SECURE_DIR/recording-remainder-ids.csv" \
+  --canary-output "$YLL_MIGRATION_SECURE_DIR/0020-recording-canary-release.sql" \
+  --remainder-output "$YLL_MIGRATION_SECURE_DIR/0020-recording-remainder-release.sql"
+
+psql "$SUPABASE_DB_URL" -X --set ON_ERROR_STOP=on \
+  --file "$YLL_MIGRATION_SECURE_DIR/0020-recording-canary-release.sql"
+```
+
+The generated canary transaction proves the two files exactly equal the locked
+19-row held set, releases only the reviewed canary IDs, and proves those three
+are the only rows eligible for the existing generic worker. Keep the scheduled
+`sync-recordings` cron and any `CRON_ENABLED` deployment switch paused. Through
+an authenticated Office session with the existing pipeline-run capability,
+issue exactly `POST /api/recordings/continue` once. Require the JSON response to
+report `configured: true`, `migrated: true`, `done: 3`, `skipped: 0`, and
+`failed: 0`. Then query the three reviewed IDs and require each to be
+`transcribed` with a non-null `transcript_id`. Verify exactly three rows with
+`skip_reason = 'released_0020_canary'` reached `status = 'transcribed'`. The
+durable skip-reason marker survives the current pipeline's failure-detail
+rewrite. If any canary fails or skips, stop and investigate. Do not release the
+remainder. When all three succeed, run:
+
+```sh
+psql "$SUPABASE_DB_URL" -X --set ON_ERROR_STOP=on \
+  --file "$YLL_MIGRATION_SECURE_DIR/0020-recording-remainder-release.sql"
+```
+
+The second transaction reimports the same files, requires exact two-way
+equality for the three transcribed canaries and sixteen still-held rows, and
+releases only the reviewed remainder IDs. Both scripts refuse replay or any
+unreviewed eligible worker row.
+
+With cron still paused, process the remainder through the same authenticated
+`POST /api/recordings/continue` route exactly three times. Verify each response
+before continuing: the first two must each report `configured: true`,
+`migrated: true`, `done: 6`, `skipped: 0`, and `failed: 0`; the third must report
+the same fields with `done: 4`. Query the exact sixteen reviewed remainder IDs
+afterward and require two-way set equality with rows at `status =
+'transcribed'`, non-null `transcript_id`, and `skip_reason =
+'released_0020_remainder'`. Any wrong count, skipped/failed result, extra
+eligible row, or wrong ID blocks writer restart.
+
+The 24 paid-transcription failures are a separate deliberate re-drive. The 42
+GHL 422 rows must not be retried without a recording source.
+
+## 9. Completion evidence
+
+Attach all of the following to the deployment ticket before resuming writers:
+
+- protected dump path, checksum, and restore-list evidence;
+- reviewed export counts and two-person approval;
+- empty post-quarantine inventory and both passing assertions;
+- successful one-transaction schema driver output;
+- canonical `0001` through `0024` migration list;
+- pgTAP and signed smoke results;
+- three successful recording canaries and 16-row remainder release evidence;
+- current RLS posture and advisor output.
+
+The GHL cursor paging defect, 24 paid-transcription re-drives, and 42 GHL 422
+rows remain separately tracked follow-ups. They do not authorize weakening any
+migration or release assertion.
