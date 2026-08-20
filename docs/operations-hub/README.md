@@ -1,9 +1,9 @@
 # Operations Hub final-review pack
 
-Status: **owner-approved; contract/schema mirror current; staging activation in progress**
-Updated: 2026-08-19
-Merged Hub source: PRs #37 and #40 through #52 at
-`master@0b33c23b456cacc70a85ea717bb5df9eb311beda`. The current contract and
+Status: **owner-approved; contract/schema mirror current; paid staging project not configured; field provisioning blocked**
+Updated: 2026-08-20
+Merged Hub source: PRs #37 and #40 through #54 at
+`master@bad885dc85b5d2c255bad8567b21a83f6ab2d4ec`. The current contract and
 schema artifact pins are recorded in `SOURCE-PINS.md`.
 
 This pack is the reconciled and approved source for the Operations Hub.
@@ -66,6 +66,17 @@ Completed:
 - Hub PR #50 merged the immutable employee, versioned Auth-link, department
   membership, identity-audit, and guarded compatibility-projection foundation.
   Its application, migration-order, pgTAP, build, and Vercel checks passed.
+- Hub PR #52 merged the disabled preview-only Phone Auth request/verify path,
+  Turnstile token submission, fail-closed session-age enforcement, recording
+  sync safeguards, and commitment extraction. Provider activation, recovery,
+  reassignment, and password/session revocation remain open.
+- Quote Tool PR #803 published the canonical contract/schema pack, and Hub PR
+  #53 vendored it byte-identically. Hub PR #54 is the current merged rule
+  baseline.
+- Production migration `0019` was applied out of band and verified across the
+  31 existing hosted public tables. Migrations `0020` through `0024`, staging
+  rehearsal, and the current clean target of 38 tables, 30 routines, and 12
+  triggers remain unapplied in hosted environments.
 
 Phase 0 must now deliver:
 
@@ -73,14 +84,18 @@ Phase 0 must now deliver:
   version compatibility.
 - RLS/authorization checklists and impersonated-role tests are defined for
   every field-facing Hub table and endpoint.
-- Staging phone OTP, session-age enforcement, owner-only recovery, password and
-  session revocation, idempotency, DLQ, kill-switch, and fail-closed activation
-  gates. The identity link and Hub-local identity audit are merged.
+- A separate paid staging Supabase project and its provider configuration,
+  test identities, hosted persona proof, owner-only recovery, phone
+  reassignment, password/session revocation, idempotency, DLQ, kill-switch,
+  and fail-closed activation gates. The staging project does not exist yet.
 
-Merged PR #50 adds only Hub-owned immutable employee,
-auth-link, active-state, membership-version, and local identity-audit
-scaffolding. It does not invent the unpublished cross-boundary event envelope,
-enable phone OTP, or create field accounts. The approved later target is
+Merged PR #50 adds Hub-owned immutable employee, auth-link, active-state,
+membership-version, and local identity-audit scaffolding. PR #52 adds a
+disabled preview-only Phone Auth and Turnstile application path plus the
+30-day session-age check; it does not configure a provider or create field
+accounts. PRs #803 and #53 publish and vendor the cross-boundary contract and
+schema, but the runtime outbox, inbox, DLQ, supported-version envelope, and
+Quote-owned current-context projection are not implemented. The approved target is
 Supabase Phone Auth with Turnstile, Twilio Verify delivery, owner-only recovery,
 password-identity revocation at activation with Supabase-console owner
 break-glass, and a 30-day maximum Hub session. Placement Runs will require an
@@ -89,10 +104,11 @@ quarantine expired or revoked-device work for Naldo/Jason review without
 automatic pay or inventory credit. Management is an owner/admin view and
 digest, not a paid-work department.
 
-Fail-closed OTP code and tests may proceed in a separate Vercel preview and
-staging Supabase project. Real staging activation still requires hosted
-provider configuration, disabled public signup, enforced CAPTCHA, reviewed SMS
-rate limits, a short access-token lifetime, and test identities. Field
+The fail-closed OTP application path is merged but disabled. Real staging
+activation requires creating the separate paid Supabase project, linking a
+dedicated Vercel preview, and configuring provider delivery, disabled public
+signup, enforced CAPTCHA, reviewed SMS rate limits, a short access-token
+lifetime, and test identities. Field
 provisioning, paid workflow, and production phone auth remain blocked on the
 Quote-owned capability and current-context surfaces, hosted identity-persona
 proof, recovery, and

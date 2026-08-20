@@ -1,10 +1,10 @@
 # Source revisions reconciled by this review
 
-Prepared: 2026-08-07; last reconciled: 2026-08-19
+Prepared: 2026-08-07; last reconciled: 2026-08-20
 
-Current contract/schema pin verified: 2026-08-19
+Current contract/schema pin verified: 2026-08-20
 
-Current Hub implementation baseline verified: 2026-08-19
+Current Hub implementation baseline verified: 2026-08-20
 
 | Source | Branch / PR | Pinned head | Use |
 |---|---|---|---|
@@ -14,10 +14,12 @@ Current Hub implementation baseline verified: 2026-08-19
 | Quote Tool self-contained canonical contract | `naldo/ops-contract-v130-clarifications`, PR #716 | head `d2cf098658a595da1bd7b5b35ae553605fcbd1a0`; merge `5d56ebb62e23b2fe592cdc1912359b1ddf137270` | Canonical v1.3.0-draft consumed by the Operations Hub |
 | Quote Tool Flow H canonical update | Quote Tool canonical history | `0a69fc0efc4998b59136057671e5705d8e5583f6` | Historical pre-schema v1.4.0-draft, including Flow H commitment-verification events |
 | Quote Tool contract/schema publication | `codex/ops-contract-schema-v1-4`, PR #803 | head `0cf17a4ab4accd4187bd631ebae0eac3abbbd7e3`; merge `c60bce4927a7fc47a8d6ee1d14a6eb88257755aa` | Current canonical v1.4.0-draft contract plus schema v1.0.0-draft manifest, OpenAPI, and JSON Schema |
-| Hub Flow H mirror | `naldo/217-flow-h-mirror`, PR #44 | head `277db428c880adf5350ed01b0d7918241587f576`; merge `0756b611c1e3bd7d6d3eeb4318b8677412ae0ad7` | Current byte-identical Hub mirror and contract pin |
+| Historical Hub Flow H mirror | `naldo/217-flow-h-mirror`, PR #44 | head `277db428c880adf5350ed01b0d7918241587f576`; merge `0756b611c1e3bd7d6d3eeb4318b8677412ae0ad7` | Historical byte-identical Hub mirror and contract pin, superseded by PR #53 |
 | Hub immutable identity foundation | `codex/operations-hub-identity-foundation`, PR #50 | head `72487ae216c2d24b0870ed44852a668dc31596e6`; merge `44989e1ac1c7830ffdcd4d1e1f623db692547e9e` | Stable employee IDs, versioned Auth links, memberships, identity audit, and guarded compatibility projection |
 | Hub recording sync backlog cap | `naldo/recording-sync-backlog-cap`, PR #51 | head `0724b31242d39caac1e5d53847af14e36b4d0fed`; merge `f2c9bd0761365a275f4793cd4f70dcf9c75cee26` | Merged Hub implementation baseline before the Phase 0 completion branch |
 | Hub Phase 0 completion | `codex/operations-hub-phase-0-completion`, PR #52 | head `c4d5b52a835196a354077adf74d3aa5d1e86e083`; merge `0b33c23b456cacc70a85ea717bb5df9eb311beda` | Staging safeguards, commitment extraction, recording sync, and Phase 0 ledger corrections |
+| Hub contract/schema publication mirror | `codex/operations-hub-contract-v1-4-schema-mirror`, PR #53 | head `131579aaf997ba4fccd05b58f27205fd13a775fb`; merge `9be8cde51f673db07123e6895a12d4d08a03562f` | Byte-identical current contract, manifest, OpenAPI, and JSON Schema mirror |
+| Hub assistant merge rule | `naldo/assistant-managed-pr-merges`, PR #54 | head `1e1516d82f90048a9128a16b2dd01554c8105391`; merge `bad885dc85b5d2c255bad8567b21a83f6ab2d4ec` | Current Hub `master` implementation and repository-rule baseline |
 
 ## Known source condition
 

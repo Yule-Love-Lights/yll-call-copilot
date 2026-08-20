@@ -1,11 +1,17 @@
 # Phase 0 database default-deny runbook
 
-Status: **PR #43 implementation; hosted rollout not yet authorized**
-Date: 2026-08-07
+Status: **production `0019` applied out of band and verified; staging rehearsal and `0020`-`0024` pending**
+Date: 2026-08-20
 
 This runbook covers the Hub-owned Supabase database only. It does not create
 Quote-owned time, pay, job, payroll, or shared-labor tables, and it does not
 authorize Advertising or Installer accounts.
+
+Production currently has the 31 pre-`0020` public application tables. Migration
+`0019` was applied out of band and the RLS/grant state was verified live across
+those tables. This does not substitute for the required staging rehearsal, and
+it does not authorize applying migrations `0020` through `0024` to production.
+The separate paid staging Supabase project has not been created.
 
 ## 1. Enforced architecture
 
@@ -31,11 +37,11 @@ impersonation.
 
 It proves:
 
-- the exact manifest contains 31 non-extension application tables and two
+- the exact current manifest contains 38 non-extension application tables and two
   identity sequences;
 - no unreviewed application view, materialized view, foreign table, routine,
   non-internal trigger, policy, or publication path exists in the clean schema;
-- all 31 tables enable and force RLS with zero client policies;
+- all 38 tables enable and force RLS with zero client policies;
 - `anon` and `authenticated` lack schema, table, column, and sequence access;
 - a transaction-local grant cannot overcome RLS default deny;
 - arbitrary caller-supplied JWT persona claims cannot overcome database
@@ -44,10 +50,11 @@ It proves:
   reset privileges;
 - future public objects receive no automatic API-role access.
 
-The claims-shaped tests are not employee-policy tests. Inactive state, immutable
-self linkage, multi-membership departments, membership versions, Owner/Admin,
-and Manager behavior require the additive Hub identity schema and its own
-server-plus-database integration suite.
+The current clean target also contains 30 public routines and 12 non-internal
+triggers. Claims-shaped tests are not employee-policy tests. Inactive state,
+immutable self linkage, multi-membership departments, membership versions,
+Owner/Admin, and Manager behavior require server-plus-database semantic persona
+tests against the merged additive Hub identity schema.
 
 ## 3. What clean CI does not prove
 
@@ -185,9 +192,14 @@ Do not roll back by disabling RLS or restoring `anon`/`authenticated` access.
 ## 5. Remaining release gates
 
 - Close every service-role handler ownership/resource gap.
-- Land immutable Hub employee/auth links, active state, department
-  memberships, membership versioning, audit, inbox/outbox, and DLQ scaffolding.
+- Preserve the merged immutable Hub employee/auth links, active state,
+  department memberships, membership versioning, and local identity audit;
+  implement the runtime inbox/outbox/DLQ and supported-version envelope against
+  the published and vendored canonical schema.
 - Add real persona and cross-employee impersonation tests against that schema.
+- Create the separate paid staging Supabase project and rehearse migrations
+  `0020` through `0024` there before any production application.
+- Land the Quote-owned current-context projection; do not invent it in the Hub.
 - Confirm the hosted PostgreSQL major version and run a full-stack Data API
   denial smoke.
 - Keep Advertising and Installer provisioning blocked until those gates and
