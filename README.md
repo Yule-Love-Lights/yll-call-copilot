@@ -40,6 +40,11 @@ containing the production variable names. It validates Supabase, the two
 approved Owner/Admin Auth UUIDs, cron authentication, and any enabled
 Twilio/live-bridge/legacy-HighLevel credential set without printing values.
 
+Vercel runs the separate branch-aware `npm run build:vercel` command for every
+deployment. Phone OTP can activate only on the exact `staging` preview branch;
+see `docs/operations-hub/STAGING-PHONE-AUTH-DEPLOYMENT.md` for the required
+credential scoping and fail-closed deployment contract.
+
 ## Notes
 
 - Auth is live and capability-gated in `src/proxy.ts`; every current page/API method is declared in `src/lib/auth/routePolicy.ts`. Default-deny row-level security is merged. Hosted preflight, remaining resource-scoped service-role checks, immutable identity integration, and semantic persona tests remain field-release gates.

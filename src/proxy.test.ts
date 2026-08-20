@@ -101,6 +101,7 @@ describe('root authentication proxy', () => {
     vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'false');
     vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', '');
     vi.stubEnv('VERCEL_ENV', 'production');
+    vi.stubEnv('VERCEL_GIT_COMMIT_REF', 'master');
     mocks.resolveHubActor.mockResolvedValue(actorWith(OFFICE_CAPABILITIES));
     mocks.auditSensitiveRouteAccess.mockResolvedValue(true);
   });
@@ -352,6 +353,7 @@ describe('root authentication proxy', () => {
     completeConfiguration();
     vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'true');
     vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('VERCEL_GIT_COMMIT_REF', 'staging');
 
     const response = await proxy(request('/scoreboard'));
 
@@ -366,6 +368,22 @@ describe('root authentication proxy', () => {
     vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'true');
     vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', 'public-site-key');
     vi.stubEnv('VERCEL_ENV', 'production');
+    vi.stubEnv('VERCEL_GIT_COMMIT_REF', 'staging');
+
+    const response = await proxy(request('/scoreboard'));
+
+    expect(response.status).toBe(503);
+    expect(mocks.createServerClient).not.toHaveBeenCalled();
+    expect(mocks.resolveHubActor).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when a different preview branch inherits the phone-auth flag', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    completeConfiguration();
+    vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'true');
+    vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', 'public-site-key');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('VERCEL_GIT_COMMIT_REF', 'feature-branch');
 
     const response = await proxy(request('/scoreboard'));
 
@@ -380,6 +398,7 @@ describe('root authentication proxy', () => {
     vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'true');
     vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', 'public-site-key');
     vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('VERCEL_GIT_COMMIT_REF', 'staging');
     const authenticatedAt = Math.floor((Date.now() - 29 * 24 * 60 * 60 * 1000) / 1000);
     const signOut = vi.fn();
     mocks.createServerClient.mockReturnValue({
@@ -423,6 +442,7 @@ describe('root authentication proxy', () => {
     vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'true');
     vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', 'public-site-key');
     vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('VERCEL_GIT_COMMIT_REF', 'staging');
     const authenticatedAt = Math.floor((Date.now() - 31 * 24 * 60 * 60 * 1000) / 1000);
     const signOut = vi.fn(async () => ({ error: null }));
     mocks.createServerClient.mockReturnValue({
@@ -465,6 +485,7 @@ describe('root authentication proxy', () => {
     vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'true');
     vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', 'public-site-key');
     vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('VERCEL_GIT_COMMIT_REF', 'staging');
     const signOut = vi.fn(async () => ({ error: null }));
     mocks.createServerClient.mockReturnValue({
       auth: {

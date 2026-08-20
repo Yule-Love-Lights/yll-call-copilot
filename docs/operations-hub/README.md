@@ -37,6 +37,8 @@ version is `1.0.0-draft`.
     hosted preflight, safe rollout order, and remaining identity tests.
 14. `LIVE-CALLING-ACTIVATION-BLOCKERS.md` — the positive customer-call kill
     switch and the evidence required before live calling may be enabled.
+15. `STAGING-PHONE-AUTH-DEPLOYMENT.md` — the exact `staging` branch deployment,
+    credential-scope, provider, kill-switch, smoke, and rollback gate.
 
 ## Scoped authority
 

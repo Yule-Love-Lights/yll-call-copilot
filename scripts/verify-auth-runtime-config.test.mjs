@@ -15,6 +15,7 @@ const baseline = {
   HUB_PHONE_AUTH_STAGING_ENABLED: 'false',
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: '',
   VERCEL_ENV: 'production',
+  VERCEL_GIT_COMMIT_REF: 'master',
   LIVE_BRIDGE_SECRET: '',
   LIVE_BRIDGE_URL: '',
   LIVE_APP_BASE_URL: '',
@@ -74,6 +75,7 @@ describe('authorization runtime preflight', () => {
       HUB_PHONE_AUTH_STAGING_ENABLED: 'true',
       NEXT_PUBLIC_TURNSTILE_SITE_KEY: 'public-site-key',
       VERCEL_ENV: 'preview',
+      VERCEL_GIT_COMMIT_REF: 'staging',
     });
     expect(configured.status).toBe(0);
 
@@ -81,8 +83,18 @@ describe('authorization runtime preflight', () => {
       HUB_PHONE_AUTH_STAGING_ENABLED: 'true',
       NEXT_PUBLIC_TURNSTILE_SITE_KEY: 'public-site-key',
       VERCEL_ENV: 'production',
+      VERCEL_GIT_COMMIT_REF: 'staging',
     });
     expect(production.status).toBe(1);
     expect(production.stderr).toContain('only when VERCEL_ENV is preview');
+
+    const wrongBranch = run({
+      HUB_PHONE_AUTH_STAGING_ENABLED: 'true',
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: 'public-site-key',
+      VERCEL_ENV: 'preview',
+      VERCEL_GIT_COMMIT_REF: 'feature-branch',
+    });
+    expect(wrongBranch.status).toBe(1);
+    expect(wrongBranch.stderr).toContain('only on the staging branch');
   });
 });

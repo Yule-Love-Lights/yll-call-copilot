@@ -69,16 +69,18 @@ describe('staging phone-auth configuration', () => {
         HUB_PHONE_AUTH_STAGING_ENABLED: 'true',
         NEXT_PUBLIC_TURNSTILE_SITE_KEY: 'turnstile-site-key',
         VERCEL_ENV: 'preview',
+        VERCEL_GIT_COMMIT_REF: 'staging',
       }),
     ).toEqual({ mode: 'enabled', turnstileSiteKey: 'turnstile-site-key' });
 
     for (const environment of [
       { HUB_PHONE_AUTH_STAGING_ENABLED: 'true' },
-      { HUB_PHONE_AUTH_STAGING_ENABLED: 'TRUE', NEXT_PUBLIC_TURNSTILE_SITE_KEY: 'key', VERCEL_ENV: 'preview' },
-      { HUB_PHONE_AUTH_STAGING_ENABLED: 'yes', NEXT_PUBLIC_TURNSTILE_SITE_KEY: 'key', VERCEL_ENV: 'preview' },
-      { HUB_PHONE_AUTH_STAGING_ENABLED: ' true ', NEXT_PUBLIC_TURNSTILE_SITE_KEY: 'key', VERCEL_ENV: 'preview' },
-      { HUB_PHONE_AUTH_STAGING_ENABLED: 'true', NEXT_PUBLIC_TURNSTILE_SITE_KEY: 'key', VERCEL_ENV: ' preview ' },
-      { HUB_PHONE_AUTH_STAGING_ENABLED: 'true', NEXT_PUBLIC_TURNSTILE_SITE_KEY: 'key', VERCEL_ENV: 'production' },
+      { HUB_PHONE_AUTH_STAGING_ENABLED: 'TRUE', NEXT_PUBLIC_TURNSTILE_SITE_KEY: 'key', VERCEL_ENV: 'preview', VERCEL_GIT_COMMIT_REF: 'staging' },
+      { HUB_PHONE_AUTH_STAGING_ENABLED: 'yes', NEXT_PUBLIC_TURNSTILE_SITE_KEY: 'key', VERCEL_ENV: 'preview', VERCEL_GIT_COMMIT_REF: 'staging' },
+      { HUB_PHONE_AUTH_STAGING_ENABLED: ' true ', NEXT_PUBLIC_TURNSTILE_SITE_KEY: 'key', VERCEL_ENV: 'preview', VERCEL_GIT_COMMIT_REF: 'staging' },
+      { HUB_PHONE_AUTH_STAGING_ENABLED: 'true', NEXT_PUBLIC_TURNSTILE_SITE_KEY: 'key', VERCEL_ENV: ' preview ', VERCEL_GIT_COMMIT_REF: 'staging' },
+      { HUB_PHONE_AUTH_STAGING_ENABLED: 'true', NEXT_PUBLIC_TURNSTILE_SITE_KEY: 'key', VERCEL_ENV: 'production', VERCEL_GIT_COMMIT_REF: 'staging' },
+      { HUB_PHONE_AUTH_STAGING_ENABLED: 'true', NEXT_PUBLIC_TURNSTILE_SITE_KEY: 'key', VERCEL_ENV: 'preview', VERCEL_GIT_COMMIT_REF: 'feature-branch' },
     ]) {
       expect(resolvePhoneAuthConfiguration(environment)).toEqual({ mode: 'unavailable' });
     }
