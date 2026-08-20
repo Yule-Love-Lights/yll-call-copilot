@@ -7,7 +7,7 @@ import {
   decideOwnedResourceAccess,
 } from './resource';
 
-function actor(role: 'rep' | 'owner') {
+function actor(role: 'rep' | 'owner' | 'admin') {
   const value = buildHubActor({
     authUserId: `auth-${role}`,
     employeeId: `employee-${role}`,
@@ -60,6 +60,42 @@ describe('resource authorization', () => {
 
     expect(await authorizeCallResource(client, {
       actor: actor('owner'), callId: 'call-1', action: 'call.read',
+      resourceType: 'call', resourceId: 'call-1', teamCapability: 'operations.admin',
+    })).toMatchObject({ status: 'authorized', access: 'team' });
+    expect(insert).toHaveBeenCalledOnce();
+  });
+
+  it('denies a matching compatibility email when the immutable employee owner differs', async () => {
+    const maybeSingle = vi.fn(async () => ({
+      data: { rep_email: 'rep@example.com', rep_employee_id: 'employee-other' },
+      error: null,
+    }));
+    const eq = vi.fn(() => ({ maybeSingle }));
+    const select = vi.fn(() => ({ eq }));
+    const insert = vi.fn(async () => ({ error: null }));
+    const from = vi.fn((table: string) => table === 'calls' ? { select } : { insert });
+    const client = { from } as unknown as SupabaseClient;
+
+    expect(await authorizeCallResource(client, {
+      actor: actor('rep'), callId: 'call-1', action: 'call.read',
+      resourceType: 'call', resourceId: 'call-1', teamCapability: 'operations.admin',
+    })).toEqual({ status: 'denied' });
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('gives Admin the same audited team-read semantics as Owner', async () => {
+    const maybeSingle = vi.fn(async () => ({
+      data: { rep_email: 'rep@example.com', rep_employee_id: 'employee-rep' },
+      error: null,
+    }));
+    const eq = vi.fn(() => ({ maybeSingle }));
+    const select = vi.fn(() => ({ eq }));
+    const insert = vi.fn(async () => ({ error: null }));
+    const from = vi.fn((table: string) => table === 'calls' ? { select } : { insert });
+    const client = { from } as unknown as SupabaseClient;
+
+    expect(await authorizeCallResource(client, {
+      actor: actor('admin'), callId: 'call-1', action: 'call.read',
       resourceType: 'call', resourceId: 'call-1', teamCapability: 'operations.admin',
     })).toMatchObject({ status: 'authorized', access: 'team' });
     expect(insert).toHaveBeenCalledOnce();

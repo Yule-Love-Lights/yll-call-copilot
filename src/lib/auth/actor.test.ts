@@ -143,6 +143,36 @@ describe('resolveHubActor', () => {
     expect(result.actor.capabilities).not.toContain('office.job_operations');
   });
 
+  it('ignores revoked and future secondary memberships in a later membership snapshot', async () => {
+    const { client } = fakeClient({
+      data: authIdentity({
+        membership_version: 3,
+        memberships: [
+          activeMembership('office'),
+          activeMembership('installer', {
+            state: 'revoked',
+            revoked_at: '2026-02-01T00:00:00.000Z',
+            membership_version: 2,
+          }),
+          activeMembership('advertising', {
+            effective_at: '2999-01-01T00:00:00.000Z',
+            membership_version: 3,
+          }),
+        ],
+      }),
+      error: null,
+    });
+
+    const result = await resolveHubActor({ id: AUTH_USER_ID }, client);
+
+    expect(result.status).toBe('resolved');
+    if (result.status !== 'resolved') throw new Error('expected a resolved actor');
+    expect(result.actor.membershipVersion).toBe(3);
+    expect(result.actor.memberships).toEqual(['office']);
+    expect(result.actor.capabilities).not.toContain('advertising.navigation');
+    expect(result.actor.capabilities).not.toContain('installer.navigation');
+  });
+
   it.each(['owner', 'admin'] as const)(
     'grants the closed Owner/Admin capability set to an approved %s identity',
     async role => {
