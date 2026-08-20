@@ -22,13 +22,29 @@ These rules apply to the entire repository.
 
 - Codex uses `codex/` branches, Claude uses `claude/` branches, and humans use
   the agreed contributor prefix.
-- Naldo does not perform pull-request state or merge clicks. After Naldo
-  explicitly approves a named pull request, the assistant must fetch and
-  verify the current branch, run the required checks, mark the pull request
-  ready if needed, and complete the merge using the repository's approved
-  merge method. Never merge a pull request that Naldo has not specifically
-  approved, and never bypass a failed or pending required check, a stale
-  branch, branch protection, or an unresolved blocking review.
+- Naldo does not perform pull-request state or merge clicks. Merge
+  authorization must be a new message that explicitly says `merge` and names
+  `yll-call-copilot` plus the pull-request number after the assistant shows the
+  current head SHA and actual-diff summary. Bare `go`, plan approval, review
+  approval, standing approval, or bulk approval is not merge authorization.
+- Authorization applies only to the summarized head SHA. Any new commit,
+  rebase, conflict resolution, or changed diff invalidates it. Repeat the
+  applicable reviews and checks, show the new SHA and diff summary, and obtain
+  new merge authorization.
+- For that exact SHA, both Hub CI jobs, `Typecheck, lint, test, build, and local
+  contract/schema pin` and `Supabase RLS and role impersonation`, must exist
+  and conclude `SUCCESS`. Pending, failed, cancelled, skipped, neutral, or
+  missing is a hard stop unless Naldo gives a new PR-specific exception after
+  the assistant discloses the missing hosted evidence.
+- After authorization, the assistant marks a draft ready and uses a merge
+  commit. Never use squash, rebase, auto-merge, or an admin bypass unless the
+  same SHA-bound authorization explicitly names that method. If GitHub blocks
+  Ready or Merge, report the exact blocker and stop rather than asking Naldo
+  to click it or bypassing a safeguard.
+- After merge, wait for the production deployment and verify the affected
+  production flow in a browser. For a documentation-only change, verify that
+  the production deployment itself completes successfully. Do not report an
+  unverified or failed deployment as complete.
 - PR #37 is the only reconciled planning source; PRs #35 and #36 are historical
   and closed as superseded.
 - Phase 0 safety/foundation work may proceed on separately reviewed branches.
