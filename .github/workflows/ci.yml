@@ -405,26 +405,17 @@ jobs:
           insert into supabase_migrations.schema_migrations (
             version,
             statements,
-            name,
-            created_by,
-            idempotency_key,
-            rollback
+            name
           ) values
             (
               '20260819235532',
               array['-- hosted starting-state fixture']::text[],
-              '0017_live_dial_grants',
-              'ci',
-              null,
-              null
+              '0017_live_dial_grants'
             ),
             (
               '20260820001714',
               array['-- hosted starting-state fixture']::text[],
-              '0018_webhook_idempotency',
-              'ci',
-              null,
-              null
+              '0018_webhook_idempotency'
             );
           SQL
 
