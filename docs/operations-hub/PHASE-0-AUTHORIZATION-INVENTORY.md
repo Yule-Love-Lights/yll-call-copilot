@@ -1,6 +1,6 @@
 # Operations Hub Phase 0 authorization inventory
 
-Status: **phone-auth code merged but disabled; paid staging project absent; field provisioning blocked**
+Status: **email/password remains active; staging database verified; phone-auth activation deferred; field provisioning blocked**
 Date: 2026-08-20
 Merged base: PRs #41 through #54 at
 `master@bad885dc85b5d2c255bad8567b21a83f6ab2d4ec`. PR #50 merged the additive
@@ -197,12 +197,13 @@ This slice does **not** clear the field-user release stop:
    privilege alone. Hosted provisioning evidence still remains.
 4. PR #50 merged the additive Hub employee, membership, active-state, audit,
    and integration schema. PR #52 merged fail-closed preview-only Phone Auth,
-   Turnstile token submission, and session-age code, but the separate paid
-   staging Supabase project does not exist and the path remains disabled.
-   Dedicated preview linkage, provider delivery, test identities, disabled
-   public signup, enforced CAPTCHA, reviewed SMS limits, short access-token
-   expiry, owner recovery, reassignment, and password/session revocation remain
-   hosted activation gates.
+   Turnstile token submission, and session-age code. The separate staging
+   Supabase project now exists, public signup is off, its 30-day timebox and
+   15-minute access tokens are configured, and its clean schema is verified.
+   Decision 25 keeps invite-only email/password active and the phone path
+   disabled. Dedicated preview linkage, provider delivery, phone test
+   identities, CAPTCHA, reviewed SMS limits, owner recovery, reassignment, and
+   password/session revocation are deferred activation gates.
 5. PR #43 enables and forces RLS on all 31 existing tables, removes client
    schema/table/column/sequence access, and runs real `anon`, `authenticated`,
    and `service_role` impersonation in CI. Hosted preflight and semantic
@@ -210,9 +211,10 @@ This slice does **not** clear the field-user release stop:
    resource-level enforcement for every route whose policy declares `self`,
    `assigned`, or `resource` scope.
    Production migration `0019` was later applied out of band and verified on
-   the current 31-table hosted state. Migrations `0020` through `0024` and the
-   clean 38-table, 30-routine, 12-trigger target remain unrehearsed in staging
-   and unapplied in production.
+   the current 31-table hosted state. Migrations `0020` through `0024` remain
+   unapplied in production. Staging has verified a clean `0001` through `0024`
+   application and the 38-table, 30-routine, 12-trigger target; the
+   production-shaped `0019` to `0024` reconciliation rehearsal remains open.
 6. HighLevel's legacy query-secret compatibility path must be removed after the
    workflow is reconfigured for signed delivery or a secret header.
 7. Owner ruled a 30-day maximum Hub session and an online Placement Run start
@@ -289,13 +291,13 @@ successfully before the human-authorized merge.
 3. Land the Quote-owned capability/policy-version transport and current-context
    projection before consuming those protected facts in the Hub. The canonical
    shared schema/OpenAPI artifacts are now vendored and pinned.
-4. Create the separate paid staging Supabase project and dedicated Vercel
-   preview, then configure and smoke the merged invite-only Phone Auth and
-   Turnstile path. Configure Twilio Verify delivery; implement owner-only
-   recovery, phone reassignment, password/session revocation with
-   Supabase-console owner break-glass, and the ruled Placement Run offline
-   quarantine behavior before activation. The 30-day signed-session-age check
-   is already merged.
+4. Use the existing staging Supabase project for the production-shaped
+   migration, historical-reconciliation, RLS, and hosted-persona proof. Keep
+   invite-only email/password active and phone auth false under Decision 25.
+   Twilio Verify, Turnstile, dedicated phone-login deployment, owner-only
+   recovery, phone reassignment, and password/session revocation remain parked
+   until a later activation decision. The 30-day signed-session-age check is
+   already merged for that future path.
 5. Before that activation exposes Auth-link replacement, make every `0020`
    employee mutation atomically lock and verify the current active Auth link
    against its supplied Auth UUID. The foundation exposes no replacement path,

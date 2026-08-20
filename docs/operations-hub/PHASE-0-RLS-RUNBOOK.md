@@ -1,6 +1,6 @@
 # Phase 0 database default-deny runbook
 
-Status: **production `0019` applied out of band and verified; staging rehearsal and `0020`-`0024` pending**
+Status: **clean staging target verified; production-shaped reconciliation rehearsal and production `0020`-`0024` pending**
 Date: 2026-08-20
 
 This runbook covers the Hub-owned Supabase database only. It does not create
@@ -9,9 +9,12 @@ authorize Advertising or Installer accounts.
 
 Production currently has the 31 pre-`0020` public application tables. Migration
 `0019` was applied out of band and the RLS/grant state was verified live across
-those tables. This does not substitute for the required staging rehearsal, and
-it does not authorize applying migrations `0020` through `0024` to production.
-The separate paid staging Supabase project has not been created.
+those tables. The separate `yll-ops-hub-staging` project now has a clean `0001`
+through `0024` application and the expected 38 tables, 30 routines, 12
+triggers, forced RLS, zero client policies, and denied client-table access.
+That proves the clean target, not the production-shaped reconciliation path,
+and it does not authorize applying migrations `0020` through `0024` to
+production.
 
 ## 1. Enforced architecture
 
@@ -197,10 +200,11 @@ Do not roll back by disabling RLS or restoring `anon`/`authenticated` access.
   implement the runtime inbox/outbox/DLQ and supported-version envelope against
   the published and vendored canonical schema.
 - Add real persona and cross-employee impersonation tests against that schema.
-- Create the separate paid staging Supabase project and rehearse migrations
-  `0020` through `0024` there before any production application.
+- Restore a sanitized production-shaped staging fixture and rehearse the exact
+  historical reconciliation plus `0020` through `0024` before any production
+  application. The clean staging apply is complete but is not a substitute.
 - Land the Quote-owned current-context projection; do not invent it in the Hub.
-- Confirm the hosted PostgreSQL major version and run a full-stack Data API
-  denial smoke.
+- Archive the verified PostgreSQL 17.6 evidence and run a full-stack Data API
+  denial smoke with real staging keys.
 - Keep Advertising and Installer provisioning blocked until those gates and
   the applicable owner decisions pass.
