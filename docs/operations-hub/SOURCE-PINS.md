@@ -1,11 +1,11 @@
 # Source revisions reconciled by this review
 
-Prepared: 2026-08-07; last reconciled: 2026-08-20
+Prepared: 2026-08-07; last reconciled: 2026-08-21
 
 Current contract/schema pin verified: 2026-08-20
 
-Hub implementation base audited through PR #58: 2026-08-20 at
-`master@2574935f2710ca2ed08b2742e77463bea7ca758d`
+Hub implementation base audited through PR #61: 2026-08-21 at
+`master@ba3ecc7fa0d6248353aa75fb79a75d549a2288ba`
 
 | Source | Branch / PR | Pinned head | Use |
 |---|---|---|---|
@@ -24,6 +24,7 @@ Hub implementation base audited through PR #58: 2026-08-20 at
 | Hub release-ledger reconciliation | `codex/ops-ledger-reconciliation`, PR #57 | head `9337fd36ba6950267b70cc841945404b3f37d1bd`; merge `fc7d8d2c1c3a5b643f3b885697a3b0649d98e570` | Interim login, staging, hosted-migration, and release-state truth reconciliation |
 | Hub hosted-migration reconciliation | `codex/staging-migration-reconciliation`, PR #60 | head `4478357d08f7af2f2112b2bced723d66ccef88ec`; merge `51c9467f172fb03129c97d1fd06511ce14b309ca` | Fail-closed hosted migration, history-repair, and exact recording-release tooling; no hosted write performed |
 | Hub Phase 0 persona coverage | `codex/phase0-persona-coverage`, PR #58 | head `08d3e199c75a2b4eab950422a3416f816ef08ebc`; merge `2574935f2710ca2ed08b2742e77463bea7ca758d` | Audited pre-H0 Hub base; test-only immutable ownership, membership, Owner/Admin, revoked-link, and default-deny coverage |
+| Hub contract-skew gate | `codex/phase0-contract-skew-gate`, PR #61 | head `4cde5826a15ad8a9e2c64eec36d2dc6ff59966c4`; merge `ba3ecc7fa0d6248353aa75fb79a75d549a2288ba` | Trusted authenticated cross-repository byte gate, static compatibility helper, and approved four-mode planning reconciliation |
 
 ## Known source condition
 

@@ -2,8 +2,8 @@
 
 Status: **owner-approved; contract/schema mirror current; staging database verified; phone-auth activation deferred; field provisioning blocked**
 Updated: 2026-08-20
-Merged Hub source audited through PR #58:
-`master@2574935f2710ca2ed08b2742e77463bea7ca758d`. This includes the approved
+Merged Hub source audited through PR #61:
+`master@ba3ecc7fa0d6248353aa75fb79a75d549a2288ba`. This includes the approved
 baseline through PR #54, release-ledger PR #57, migration-reconciliation PR
 #60, and persona-coverage PR #58. The current contract and schema artifact
 pins are recorded in `SOURCE-PINS.md`.
@@ -85,13 +85,11 @@ Completed:
   merged test-only local persona coverage, bringing the identity suite to 53
   assertions and default-deny to 307. The hosted rehearsal and real-token
   persona proof remain open.
-- Trusted cross-repository workflow code is present for the fine-grained
-  `OPS_HUB_QUOTE_TOOL_READ_TOKEN`, which must be restricted to Contents: read
-  on the Quote Tool repository. It compares against current Quote Tool
-  `master`. The credential is not configured yet, so authenticated byte CI
-  remains open. The Hub's pure compatibility checker fails closed on
-  missing, malformed, or unsupported versions; it is not live remote
-  version-health proof.
+- Trusted cross-repository byte CI is active with a fine-grained
+  `OPS_HUB_QUOTE_TOOL_READ_TOKEN` restricted to Contents: read on the Quote
+  Tool repository. Its first `master` run succeeded after PR #61. The Hub's
+  pure compatibility checker fails closed on missing, malformed, or
+  unsupported versions; it is not live remote version-health proof.
 - Production migration `0019` was applied out of band and verified across the
   31 existing hosted public tables. Production migrations `0020` through
   `0024` remain unapplied. The separate `yll-ops-hub-staging` Supabase project

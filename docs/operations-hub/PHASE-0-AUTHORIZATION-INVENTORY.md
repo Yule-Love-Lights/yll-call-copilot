@@ -2,16 +2,16 @@
 
 Status: **email/password remains active; staging database verified; phone-auth activation deferred; field provisioning blocked**
 Date: 2026-08-20
-Merged base audited through PR #58:
-`master@2574935f2710ca2ed08b2742e77463bea7ca758d`.
+Merged base audited through PR #61:
+`master@ba3ecc7fa0d6248353aa75fb79a75d549a2288ba`.
 PR #50 merged the additive identity foundation, PR #52 merged the disabled
 preview-only Phone Auth path, PR #53 vendored the canonical contract/schema
 pack, and PR #54 established the original assistant-managed merge-rule
 baseline. This H0 update extends it with the authenticated-byte bootstrap and
 four-mode order rules. PR #57 reconciled the release ledger, PR #60 merged
-fail-closed hosted-migration tooling without a hosted write, and PR #58 merged
-test-only local persona coverage. None authorizes Advertising or Installer
-provisioning.
+fail-closed hosted-migration tooling without a hosted write, PR #58 merged
+test-only local persona coverage, and PR #61 activated the authenticated
+cross-repository byte gate. None authorizes Advertising or Installer provisioning.
 
 This document records what the merged Phase 0 authorization baseline enforces
 and names the activation gates for staging-only work on the current branch.
@@ -67,10 +67,10 @@ not split across identities.
 
 `src/lib/auth/routePolicy.ts` declares every current App Router surface:
 
-- 24 pages;
+- 25 pages;
 - 75 API route files;
 - 82 exported API handler methods;
-- 106 page/API method combinations in total.
+- 107 page/API method combinations in total.
 
 Each employee policy declares all required capabilities, department,
 paid-context requirement, resource-scope class, sensitivity, and whether an
