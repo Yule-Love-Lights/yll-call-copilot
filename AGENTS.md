@@ -31,11 +31,19 @@ These rules apply to the entire repository.
   rebase, conflict resolution, or changed diff invalidates it. Repeat the
   applicable reviews and checks, show the new SHA and diff summary, and obtain
   new merge authorization.
-- For that exact SHA, both Hub CI jobs, `Typecheck, lint, test, build, and local
-  contract/schema pin` and `Supabase RLS and role impersonation`, must exist
-  and conclude `SUCCESS`. Pending, failed, cancelled, skipped, neutral, or
-  missing is a hard stop unless Naldo gives a new PR-specific exception after
-  the assistant discloses the missing hosted evidence.
+- For that exact SHA, the Hub CI jobs `Typecheck, lint, test, build, and local
+  contract/schema pin`, `Supabase RLS and role impersonation`, and
+  `Authenticated contract/schema byte verification` must exist and conclude
+  `SUCCESS`. Pending, failed, cancelled, skipped, neutral, or missing is a hard
+  stop unless Naldo gives a new PR-specific exception after the assistant
+  discloses the missing hosted evidence.
+- The pull request that first adds the trusted authenticated-byte workflow is a
+  one-time bootstrap: GitHub cannot run a new `pull_request_target` workflow
+  until that workflow exists on `master`. Do not claim that pull request has
+  authenticated exact-head proof. Before seeking its merge authorization,
+  disclose the bootstrap limitation and the state of the required
+  `OPS_HUB_QUOTE_TOOL_READ_TOKEN`; after merge, require the first `master` run
+  to succeed before treating the authenticated gate as active.
 - After authorization, the assistant marks a draft ready and uses a merge
   commit. Never use squash, rebase, auto-merge, or an admin bypass unless the
   same SHA-bound authorization explicitly names that method. If GitHub blocks
@@ -45,12 +53,15 @@ These rules apply to the entire repository.
   production flow in a browser. For a documentation-only change, verify that
   the production deployment itself completes successfully. Do not report an
   unverified or failed deployment as complete.
-- PR #37 is the only reconciled planning source; PRs #35 and #36 are historical
-  and closed as superseded.
+- The reconciled pack under `docs/operations-hub/`, initially merged by PR #37
+  and updated by later approved truth corrections, is the only current Hub
+  planning source. PRs #35 and #36 are historical and closed as superseded.
 - Phase 0 safety/foundation work may proceed on separately reviewed branches.
-  Hub Tracks B/C must not merge until PR #37 is human-merged and the shared
-  schema/version/RLS gates are complete. Quote Tool Track A is governed in the
-  Quote Tool repository and does not depend on Hub OTP.
+  Hub implementation and release order is Management, then Office, then
+  Advertising, then Installer. Quote Tool contract and producer dependencies
+  may proceed in parallel, but a dependent Hub surface must not bypass its
+  shared schema/version, authorization, RLS, hosted-persona, offline, or device
+  gates. Quote Tool work does not depend on deferred Hub phone authentication.
 - Manager capabilities may be designed and tested, but only Naldo and Jason are
   provisioned as Owner/Admin in V1.
 - Never display performance pay as earned before the canonical seven-day

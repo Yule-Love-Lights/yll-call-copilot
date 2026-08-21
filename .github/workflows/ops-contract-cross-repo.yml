@@ -1,0 +1,100 @@
+name: Operations contract cross-repository verification
+
+on:
+  pull_request_target:
+    branches:
+      - master
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ops-contract-cross-repo-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Authenticated contract/schema byte verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out trusted Hub verifier
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: Yule-Love-Lights/yll-call-copilot
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          path: trusted
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+
+      - name: Load candidate contract files as untrusted data
+        shell: bash
+        env:
+          CANDIDATE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${CANDIDATE_REPOSITORY}" != "Yule-Love-Lights/yll-call-copilot" ]]; then
+            echo "::error::Contract verification accepts only same-repository pull requests"
+            exit 1
+          fi
+          if [[ ! "${CANDIDATE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Candidate commit is not a full Git SHA"
+            exit 1
+          fi
+
+          candidate_paths=(
+            "docs/operations-hub/contract-pin.json"
+            "docs/operations-hub/INTEGRATION-CONTRACT.md"
+            "docs/operations-hub/ops-contract-schema/manifest.json"
+            "docs/operations-hub/ops-contract-schema/common.openapi.json"
+            "docs/operations-hub/ops-contract-schema/common.schema.json"
+          )
+          for candidate_path in "${candidate_paths[@]}"; do
+            gh api \
+              "/repos/${CANDIDATE_REPOSITORY}/contents/${candidate_path}?ref=${CANDIDATE_SHA}" \
+              --jq .content \
+              | base64 --decode > "trusted/${candidate_path}"
+          done
+
+      - name: Validate the candidate local pin and schema bytes
+        run: node trusted/scripts/verify-operations-contract.mjs
+
+      - name: Require the private Quote Tool read credential
+        shell: bash
+        env:
+          QUOTE_TOOL_READ_TOKEN: ${{ secrets.OPS_HUB_QUOTE_TOOL_READ_TOKEN }}
+        run: |
+          if [[ -z "${QUOTE_TOOL_READ_TOKEN}" ]]; then
+            echo "::error::OPS_HUB_QUOTE_TOOL_READ_TOKEN is required"
+            exit 1
+          fi
+
+      - name: Check out current Quote Tool contract data
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: Yule-Love-Lights/yll-quote-tool
+          ref: master
+          token: ${{ secrets.OPS_HUB_QUOTE_TOOL_READ_TOKEN }}
+          path: quote-canonical
+          sparse-checkout: |
+            docs/context/OPERATIONS_HUB_CONTRACT.md
+            docs/context/ops-contract-schema
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Verify authenticated canonical contract/schema bytes
+        env:
+          OPS_HUB_CANONICAL_CONTRACT_PATH: ${{ github.workspace }}/quote-canonical/docs/context/OPERATIONS_HUB_CONTRACT.md
+        run: node trusted/scripts/verify-operations-contract.mjs --require-canonical
