@@ -1,11 +1,13 @@
 # Operations Hub Phase 0 safety checklist
 
-Status: **immutable identity foundation merged; staging activation in progress; field-user provisioning blocked**
-Date: 2026-08-19
-Merged base: Hub `master@0b33c23b456cacc70a85ea717bb5df9eb311beda`
-after the human-authorized merges through PR #52. PR #50 merged the additive
-identity foundation. Hosted database, provider, persona, and field-launch
-gates remain open.
+Status: **email/password remains active; staging database verified; phone-auth activation deferred; field-user provisioning blocked**
+Date: 2026-08-20
+Merged base: Hub `master@bad885dc85b5d2c255bad8567b21a83f6ab2d4ec`
+after the human-authorized merges through PR #54. PR #50 merged the additive
+identity foundation, PR #52 merged the disabled preview-only phone-auth path,
+PR #53 vendored the canonical schema pack, and PR #54 is the current rule
+baseline. Provider, persona, runtime integration, and field-launch gates remain
+open.
 
 This checklist records the actual repository baseline and the safety gates that
 must precede Advertising or Installer accounts. It does not authorize Hub-owned
@@ -16,9 +18,10 @@ copies of Quote Tool time, pay, payroll, job, or shared-labor data.
 Do **not** provision Advertising or Installer identities yet. The current app
 was built for a small office allowlist:
 
-- login is still email/password, while the approved Operations Hub target is
-  invite-only Supabase Phone Auth. Twilio Verify delivery is a later activation
-  and no production OTP provider is enabled by this foundation branch;
+- login remains invite-only email/password under Decision 25. PR #52 added a fail-closed,
+  preview-only Supabase Phone Auth request/verify path with Turnstile token
+  submission and a 30-day session-age check, but it is disabled and no staging
+  or production OTP provider is configured;
 - merged PR #50 replaces email-linked `app_users` resolution with an
   active, revocable Auth-link record that resolves to a preserved
   `ops_employees.id`, effective active memberships, and a monotonic Hub
@@ -37,6 +40,13 @@ was built for a small office allowlist:
   server still uses a service-role client that bypasses RLS, so the handler
   resource audit remains
   a field-launch gate.
+
+Production migration `0019` was applied out of band and verified on those 31
+hosted public tables. Production migrations `0020` through `0024` remain
+unapplied. The separate staging project has applied the clean `0001` through
+`0024` sequence and verified the 38-table, 30-routine, 12-trigger default-deny
+target. That clean-target proof does not replace the required
+production-shaped reconciliation rehearsal.
 
 Merged PR #46 addresses the known Office lead/call resource gaps. It adds
 immutable employee identifiers to claims and calls, self-claim and self-call
@@ -160,13 +170,26 @@ only the honestly named local pin check.
       for a later activation PR, not enabled or configured by this foundation.
       Existing password identities are revoked at phone-auth activation;
       Supabase-console owner break-glass is the emergency path.
-- [ ] Phone OTP, invite delivery, Turnstile verification, owner recovery, phone
-      reassignment, deactivation, session expiry/revocation, abuse controls, and
-      provider smokes are implemented and audited. Until then email/password
-      bootstrap remains Office-only and no field account is provisioned.
-- [ ] Before staging phone auth is enabled, the separate staging Supabase
-      project has public signup disabled, CAPTCHA enforced, SMS rate limits
-      reviewed, and a short access-token lifetime configured and verified.
+- [x] Decision 25 keeps invite-only email/password as the active interim login
+      and defers phone OTP, Twilio Verify, Turnstile, recovery/reassignment,
+      and password-identity revocation until a later owner activation decision.
+      `HUB_PHONE_AUTH_STAGING_ENABLED` stays false.
+- [x] PR #52 merged the fail-closed preview-only Phone Auth request/verify path,
+      Turnstile token submission, `shouldCreateUser: false`, and the maximum
+      30-day signed-session-age check. These application safeguards remain
+      disabled while Decision 25 is in force.
+- [ ] Invite provisioning, Twilio Verify delivery, hosted Turnstile
+      verification, owner recovery, phone reassignment, deactivation,
+      password/session revocation, abuse controls, and provider smokes are
+      implemented and audited. Until then email/password bootstrap remains
+      Office-only and no field account is provisioned.
+- [ ] Before staging phone auth is enabled, resume the parked provider track.
+      The separate staging Supabase project now exists, public signup is off,
+      the session timebox is 30 days, and the access token lifetime is 15
+      minutes. CAPTCHA, SMS delivery and rate limits, phone test identities,
+      and the dedicated staging deployment remain unconfigured by decision.
+      Generic Vercel Preview no longer carries the production Hub/Quote
+      database credentials and its outbound switches remain false.
       The current proxy proves a signed OTP session and its age but does not
       query `auth.sessions` on every request, so revocation may lag until the
       access JWT expires. Production still requires audited password/session
@@ -293,7 +316,7 @@ default-deny assertions, and 18 migration-backfill assertions; GitHub and hosted
 checks were green.
 
 Migration `0023` extends the reviewed manifest to 38 tables, 27 routines, and
-12 triggers. The local PostgreSQL/parser harness applied all 23 migrations,
+12 triggers. The local PostgreSQL/parser harness applied all 24 migrations,
 passed the seeded legacy upgrade, exact provisioning retry and deactivation
 denial, and matched all four protective preflight failures. PR #50 CI passed
 51 identity-foundation pgTAP assertions, the 304-assertion expanded
@@ -331,10 +354,11 @@ PR #50 added Hub-owned versions of:
 - `ops_employee_department_memberships`
 - `ops_identity_audit_events`
 
-The canonical shared JSON Schema is still unpublished. PR #50 therefore did
-not invent cross-boundary outbox/inbox/DLQ envelopes, capability grants, or
-current-context projections. Those remain Phase 0 dependencies owned at the
-Quote boundary.
+Quote Tool PR #803 published the canonical shared manifest, OpenAPI, and JSON
+Schema, and Hub PR #53 vendored them byte-identically. Publication does not
+implement the runtime outbox/inbox/DLQ, supported-version envelope, capability
+grant transport, or Quote-owned current-context projection. Those remain Phase
+0 dependencies at the repository boundary.
 
 These tables must never contain a second day clock, break, job segment, travel
 ledger, compensation result, pay-period close, or payroll export.
@@ -350,14 +374,19 @@ ledger, compensation result, pay-period close, or payroll export.
    harness (merged in PR #43; hosted and semantic-persona gates remain).
 5. Lead-work resource authorization, mutation idempotency, current customer
    permission checks, and metric provenance (merged in PR #46).
-6. Additive Hub identity/audit/integration scaffolding (merged in PR #50; no
-   OTP activation or field provisioning).
+6. Additive Hub identity/audit/integration scaffolding (merged in PR #50) and
+   disabled preview-only Phone Auth/Turnstile/session-age code (merged in PR
+   #52; no provider activation or field provisioning).
 7. Add authenticated cross-repository CI plus version-health and deploy-skew
    smoke tests for the vendored Quote-owned schemas.
-8. Fail-closed phone-OTP code and tests may proceed only in a separate staging
-   Vercel preview and staging Supabase project. Field provisioning, paid
-   workflows, and production phone-auth activation still wait for all above
-   gates plus provider, recovery, revocation, and hosted-persona proof.
+8. Use the separate staging database to rehearse the production-shaped
+   `0019` to `0024` migration, historical reconciliation, and hosted persona
+   gates. Complete the migration, ledger, and synthetic persona PRs before
+   resuming the phone-auth deployment-gate PR.
+9. Keep invite-only email/password active and phone auth false. A later owner
+   decision may resume the dedicated Vercel staging deployment, Twilio Verify,
+   Turnstile, recovery, revocation, and real-phone smoke work. Field
+   provisioning and paid workflows remain blocked by their independent gates.
 
 Payroll remains Quote Tool-owned and separately gated by the contract's
 overtime, blended-rate, professional-review, and owner-activation requirements.

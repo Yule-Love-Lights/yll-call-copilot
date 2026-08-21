@@ -1,11 +1,12 @@
 # Operations Hub Phase 0 authorization inventory
 
-Status: **immutable identity foundation merged; staging activation in progress; field provisioning blocked**
-Date: 2026-08-19
-Merged base: PRs #41 through #52 at
-`master@0b33c23b456cacc70a85ea717bb5df9eb311beda`. PR #50 merged the additive
-identity foundation. It does not enable phone OTP or authorize Advertising or
-Installer provisioning.
+Status: **email/password remains active; staging database verified; phone-auth activation deferred; field provisioning blocked**
+Date: 2026-08-20
+Merged base: PRs #41 through #54 at
+`master@bad885dc85b5d2c255bad8567b21a83f6ab2d4ec`. PR #50 merged the additive
+identity foundation, PR #52 merged the disabled preview-only Phone Auth path,
+PR #53 vendored the canonical contract/schema pack, and PR #54 is the current
+rule baseline. None authorizes Advertising or Installer provisioning.
 
 This document records what the merged Phase 0 authorization baseline enforces
 and names the activation gates for staging-only work on the current branch.
@@ -113,7 +114,7 @@ correctly refused to start; this is not field-release evidence.
 Machine routes are explicitly separate from employee routes and authenticate
 inside their handler:
 
-- all five Vercel Cron handlers require the exact
+- all six Vercel Cron handlers require the exact
   `Authorization: Bearer $CRON_SECRET` credential before evaluating the
   `CRON_ENABLED` kill switch;
 - Twilio Voice and Whisper fail closed when `TWILIO_AUTH_TOKEN` or the
@@ -195,18 +196,25 @@ This slice does **not** clear the field-user release stop:
    preserving existing `app_users.id` values; a role string never grants
    privilege alone. Hosted provisioning evidence still remains.
 4. PR #50 merged the additive Hub employee, membership, active-state, audit,
-   and integration schema with green application and database CI. This branch
-   may add fail-closed phone OTP and Turnstile code for a separate staging
-   Vercel preview and staging Supabase project. Provider delivery, test
-   identities, disabled public signup, enforced CAPTCHA, reviewed SMS limits,
-   short access-token expiry, owner recovery, and password/session revocation
-   remain hosted activation gates.
+   and integration schema. PR #52 merged fail-closed preview-only Phone Auth,
+   Turnstile token submission, and session-age code. The separate staging
+   Supabase project now exists, public signup is off, its 30-day timebox and
+   15-minute access tokens are configured, and its clean schema is verified.
+   Decision 25 keeps invite-only email/password active and the phone path
+   disabled. Dedicated preview linkage, provider delivery, phone test
+   identities, CAPTCHA, reviewed SMS limits, owner recovery, reassignment, and
+   password/session revocation are deferred activation gates.
 5. PR #43 enables and forces RLS on all 31 existing tables, removes client
    schema/table/column/sequence access, and runs real `anon`, `authenticated`,
    and `service_role` impersonation in CI. Hosted preflight and semantic
    identity/persona tests remain. Service-role handlers still need
    resource-level enforcement for every route whose policy declares `self`,
    `assigned`, or `resource` scope.
+   Production migration `0019` was later applied out of band and verified on
+   the current 31-table hosted state. Migrations `0020` through `0024` remain
+   unapplied in production. Staging has verified a clean `0001` through `0024`
+   application and the 38-table, 30-routine, 12-trigger target; the
+   production-shaped `0019` to `0024` reconciliation rehearsal remains open.
 6. HighLevel's legacy query-secret compatibility path must be removed after the
    workflow is reconfigured for signed delivery or a secret header.
 7. Owner ruled a 30-day maximum Hub session and an online Placement Run start
@@ -265,9 +273,9 @@ real-provider smokes remain.
 
 ## 7. Identity-foundation verification and remaining work
 
-The local PostgreSQL/parser harness applied all 23 migrations and passed the
+The local PostgreSQL/parser harness applied all 24 migrations and passed the
 seeded legacy upgrade, service-role provisioning and exact retry, deactivation
-denial, all four preflight-failure seeds, and exact manifests of 38 tables, 27
+denial, all four preflight-failure seeds, and exact manifests of 38 tables, 30
 routines, and 12 triggers. The authored pgTAP suites expect 51 identity and 17
 seeded-upgrade assertions, while default-deny expands to 304 assertions. PR #50
 CI executed the database, upgrade-order, and protective preflight suites
@@ -283,10 +291,13 @@ successfully before the human-authorized merge.
 3. Land the Quote-owned capability/policy-version transport and current-context
    projection before consuming those protected facts in the Hub. The canonical
    shared schema/OpenAPI artifacts are now vendored and pinned.
-4. Implement invite-only Supabase Phone Auth, Turnstile, Twilio Verify delivery,
-   owner-only recovery, 30-day session enforcement, password-identity revocation
-   with Supabase-console owner break-glass, and the ruled Placement Run offline
-   quarantine behavior in a later activation PR.
+4. Use the existing staging Supabase project for the production-shaped
+   migration, historical-reconciliation, RLS, and hosted-persona proof. Keep
+   invite-only email/password active and phone auth false under Decision 25.
+   Twilio Verify, Turnstile, dedicated phone-login deployment, owner-only
+   recovery, phone reassignment, and password/session revocation remain parked
+   until a later activation decision. The 30-day signed-session-age check is
+   already merged for that future path.
 5. Before that activation exposes Auth-link replacement, make every `0020`
    employee mutation atomically lock and verify the current active Auth link
    against its supplied Auth UUID. The foundation exposes no replacement path,

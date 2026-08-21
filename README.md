@@ -9,16 +9,22 @@ Internal tool for Yule Love Lights. It helps human reps handle inbound calls and
 3. Create a legacy Office staff login. There is no self-signup. `node scripts/create-user.mjs <email> <temp-password> [role]` accepts only the closed `rep`/`office` bootstrap inputs and calls the service-role-only provisioning routine that atomically ensures the immutable employee/Auth UUID link, Office membership, audit, and guarded `app_users` compatibility projection. It does not print an employee identifier and never creates Owner/Admin, Advertising, Installer, or Manager access. Production phone OTP and field provisioning remain disabled until their later reviewed activation.
 4. `npm run dev` and open http://localhost:3000, then sign in with the account from step 3.
 
+Decision 25 keeps this invite-only email/password login as the active interim
+path. Phone OTP, Twilio Verify, and Turnstile are deferred; the separate
+staging Supabase project remains in use for migration, RLS, and persona tests.
+
 Authentication and authorization fail closed: protected pages and non-health APIs return a generic 503 until the complete Supabase configuration is present. Once configured, every employee route requires a signed-in user, a resolved immutable employee actor, and the route's explicit capabilities. The identity-foundation branch preserves existing Office employee UUIDs while adding the new Hub-owned identity and membership model; it does not activate phone OTP.
 
 ## Checks
 
-Run all three before committing:
+Run all required repository gates before committing:
 
 ```bash
+npm run verify:ops-contract
 npx tsc --noEmit
 npm run lint
 npm test
+npm run build
 ```
 
 ## Live coaching safety status
@@ -42,5 +48,5 @@ Twilio/live-bridge/legacy-HighLevel credential set without printing values.
 
 ## Notes
 
-- Auth is live and capability-gated in `src/proxy.ts`; every current page/API method is declared in `src/lib/auth/routePolicy.ts`. Default-deny row-level security is merged. Hosted preflight, remaining resource-scoped service-role checks, immutable identity integration, and semantic persona tests remain field-release gates.
+- Auth is live and capability-gated in `src/proxy.ts`; every current page/API method is declared in `src/lib/auth/routePolicy.ts`. Default-deny row-level security is merged. The clean staging database target is verified; production-shaped migration rehearsal, remaining resource-scoped service-role checks, immutable identity integration, and hosted semantic persona tests remain field-release gates.
 - Never commit `.env.local` or paste real key values into code, logs, or chat.
