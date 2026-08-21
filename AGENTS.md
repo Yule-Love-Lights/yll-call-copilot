@@ -45,12 +45,12 @@ These rules apply to the entire repository.
   production flow in a browser. For a documentation-only change, verify that
   the production deployment itself completes successfully. Do not report an
   unverified or failed deployment as complete.
-- PR #37 is the only reconciled planning source; PRs #35 and #36 are historical
-  and closed as superseded.
-- Phase 0 safety/foundation work may proceed on separately reviewed branches.
-  Hub Tracks B/C must not merge until PR #37 is human-merged and the shared
-  schema/version/RLS gates are complete. Quote Tool Track A is governed in the
-  Quote Tool repository and does not depend on Hub OTP.
+- PR #37 (merged 2026-08-07) is the only reconciled planning source; PRs #35 and
+  #36 are historical and closed as superseded.
+- Hub Tracks B/C are unblocked on the PR #37 side (verified merged 2026-08-21)
+  but still require the shared schema/version/RLS gates to be complete before
+  merging. Quote Tool Track A is governed in the Quote Tool repository and does
+  not depend on Hub OTP.
 - Manager capabilities may be designed and tested, but only Naldo and Jason are
   provisioned as Owner/Admin in V1.
 - Never display performance pay as earned before the canonical seven-day
