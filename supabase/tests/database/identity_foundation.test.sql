@@ -868,6 +868,79 @@ select is(
   'a field identity is never added to the Office/call compatibility projection'
 );
 
+update public.ops_employees
+set
+  membership_version = 3,
+  entity_version = entity_version + 1,
+  updated_at = clock_timestamp()
+where id = '94000000-0000-4000-8000-000000000002';
+
+insert into public.ops_employee_department_memberships (
+  employee_id,
+  department_id,
+  state,
+  membership_version,
+  effective_at,
+  revoked_at
+) values
+  (
+    '94000000-0000-4000-8000-000000000002',
+    '00000000-0000-4000-8000-000000000002',
+    'active',
+    1,
+    now() - interval '3 hours',
+    null
+  ),
+  (
+    '94000000-0000-4000-8000-000000000002',
+    '00000000-0000-4000-8000-000000000001',
+    'active',
+    2,
+    now() - interval '2 hours',
+    null
+  ),
+  (
+    '94000000-0000-4000-8000-000000000002',
+    '00000000-0000-4000-8000-000000000003',
+    'revoked',
+    3,
+    now() - interval '2 hours',
+    now() - interval '1 hour'
+  );
+
+select set_eq(
+  $sql$
+    select department.slug
+    from public.ops_employee_department_memberships as membership
+    join public.ops_departments as department
+      on department.id = membership.department_id
+     and department.active
+    join public.ops_employees as employee
+      on employee.id = membership.employee_id
+    where membership.employee_id = '94000000-0000-4000-8000-000000000002'
+      and membership.state = 'active'
+      and membership.revoked_at is null
+      and membership.effective_at <= now()
+      and membership.membership_version <= employee.membership_version
+  $sql$,
+  $sql$
+    values ('office'::text), ('advertising'::text)
+  $sql$,
+  'the current multi-membership snapshot excludes a revoked stale department'
+);
+
+select is(
+  (
+    select state
+    from public.ops_employee_department_memberships
+    where employee_id = '94000000-0000-4000-8000-000000000002'
+      and department_id = '00000000-0000-4000-8000-000000000003'
+      and membership_version = 3
+  ),
+  'revoked',
+  'the stale Installer membership remains explicit historical state'
+);
+
 select lives_ok(
   $sql$
     insert into public.ops_employees (

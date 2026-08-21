@@ -510,10 +510,20 @@ set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000005';
 select is((select count(*) from public.app_users), 0::bigint,
   'a stale-membership-shaped JWT claim remains default-denied');
 
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000012","role":"authenticated","departments":["office","installer"],"membership_version":2}';
+set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000012';
+select is((select count(*) from public.app_users), 0::bigint,
+  'a current multi-membership-shaped JWT claim remains default-denied');
+
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000006","role":"authenticated","employee_id":null}';
 set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000006';
 select is((select count(*) from public.app_users), 0::bigint,
   'an unlinked-identity-shaped JWT claim remains default-denied');
+
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000013","role":"authenticated","auth_link_state":"revoked"}';
+set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000013';
+select is((select count(*) from public.app_users), 0::bigint,
+  'a revoked-Auth-link-shaped JWT claim remains default-denied');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000007","role":"authenticated","department":"office"}';
 set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000007';
@@ -530,10 +540,15 @@ set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000009';
 select is((select count(*) from public.app_users), 0::bigint,
   'an Installer-shaped JWT claim remains default-denied');
 
-set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000010","role":"authenticated","role_name":"owner_admin"}';
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000010","role":"authenticated","role_name":"owner"}';
 set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000010';
 select is((select count(*) from public.app_users), 0::bigint,
-  'an Owner/Admin-shaped JWT claim remains default-denied');
+  'an Owner-shaped JWT claim remains default-denied');
+
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000014","role":"authenticated","role_name":"admin"}';
+set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000014';
+select is((select count(*) from public.app_users), 0::bigint,
+  'an Admin-shaped JWT claim remains default-denied');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000011","role":"authenticated","role_name":"manager"}';
 set local request.jwt.claim.sub = '00000000-0000-0000-0000-000000000011';
