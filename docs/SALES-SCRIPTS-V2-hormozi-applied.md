@@ -133,6 +133,6 @@ The five from V1.1, plus three from the course:
 - "Be kind, not nice." Nice avoids the hard question. Kind asks it, because the hard question is what actually helps them decide.
 
 ## Still open for you
-- Confirm the permanent-consult greeting (Happy Holidays vs an off-season line).
+- Greeting is locked: every call opens with "Happy Holidays," all year.
 - Say the word if you want me to build the remaining menu scripts (rebook, referral, missed-call text-back, price-shopper), now upgraded with these frameworks.
 - If there was a specific part of the video you wanted leaned on harder (you pointed near the 66-minute "pain is the pitch" section), tell me and I'll deepen that.

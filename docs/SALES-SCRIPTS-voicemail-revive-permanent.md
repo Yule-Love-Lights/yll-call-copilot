@@ -120,15 +120,13 @@ install of low-profile, app-controlled lighting that covers every holiday and ev
 leans on "never do this again" and "one system, every occasion," and the money is best shown as a
 monthly number. It almost always ends in a booked on-site visit, not a same-call close.
 
-> Greeting note: your standing rule is every call opens with "Happy Holidays." Permanent calls often
-> happen off-season, where that can feel odd to the customer. Default below is your rule, with a
-> bracketed off-season option. Pick whichever you want as the standard.
+> Greeting: every call opens with "Happy Holidays," all year, no exceptions (Naldo's standing rule).
 
 ## The opener
-**You:** "Happy Holidays [first name], this is [your name] with Yule Love Lights. [Off-season option: 'Hi
-[first name], this is [your name] with Yule Love Lights.'] You were interested in our permanent lighting,
-so I wanted to walk you through how it works. Did I catch you at an okay time?" *(Outbound version. If
-inbound, drop the last line and ask "what got you interested in permanent lighting?")*
+**You:** "Happy Holidays [first name], this is [your name] with Yule Love Lights. You were interested
+in our permanent lighting, so I wanted to walk you through how it works. Did I catch you at an okay
+time?" *(Outbound version. If inbound, drop the last line and ask "what got you interested in permanent
+lighting?")*
 
 ## Discover (permanent has its own "why")
 Ask, then listen.

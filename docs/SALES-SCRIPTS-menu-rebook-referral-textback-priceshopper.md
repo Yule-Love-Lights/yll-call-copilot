@@ -5,9 +5,7 @@
 > price, Acknowledge-Associate-Ask on objections, and never discount. Scripts 1, 3, and 5 (voicemail,
 > revive, permanent) live in the other files.
 >
-> Greeting note: your rule is every call opens with "Happy Holidays." Two of these (rebook and referral)
-> often happen off-season, where that can read oddly. Default is your rule, with a bracketed warm
-> alternative beside it. Pick your standard and I'll lock it.
+> Greeting: every call opens with "Happy Holidays," all year, no exceptions (Naldo's standing rule).
 
 ---
 
@@ -16,9 +14,8 @@
 70% when asked early. The whole job is to make saying yes almost effortless.
 
 ### Opener
-**You:** "Happy Holidays [name], it's [rep] with Yule Love Lights. [Off-season option: 'Hi [name], it's
-[rep] with Yule Love Lights, hope your summer's been great.'] I'm reaching out early because I'd love to
-get you back on the calendar before the season fills up. Got a quick minute?"
+**You:** "Happy Holidays [name], it's [rep] with Yule Love Lights. I'm reaching out early because I'd
+love to get you back on the calendar before the season fills up. Got a quick minute?"
 
 ### Reconnect and find the gap (short pain cycle)
 - "First, how did last season go for you? Anything you loved, anything you'd tweak this year?"
@@ -52,9 +49,8 @@ come to mind?"
 make this call right after install, when they've just seen their house lit up.
 
 ### Opener
-**You:** "Happy Holidays [name], it's [rep] with Yule Love Lights. [Off-season/permanent option: 'Hi
-[name]...'] Our crew just sent me the photo of your house, it came out beautiful. Did you get to see it
-lit up last night?"
+**You:** "Happy Holidays [name], it's [rep] with Yule Love Lights. Our crew just sent me the photo of
+your house, it came out beautiful. Did you get to see it lit up last night?"
 - *(Let them gush. This call is about their feeling first.)*
 
 ### The genuine check-in (second mile, not a pitch yet)
