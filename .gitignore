@@ -52,6 +52,21 @@ TEMP-LOGIN*
 # Synthetic fixtures for tests live in fixtures/ringcentral/ instead.
 /Transcripts/
 
+# database backups and operator-reviewed migration artifacts must remain in an
+# explicitly protected directory outside the repository
+*.dump
+*.dump.*
+*.pgdump
+yll-call-copilot-pre-*.contents.txt
+/backups/
+/migration-artifacts/
+operator-reviewed-*.csv
+reviewed-metric-artifacts.csv
+recording-*-ids.csv
+0020-preflight-artifacts-backup*.json
+0020-0024-hosted.sql
+0020-recording-*-release.sql
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

@@ -52,13 +52,18 @@ jobs:
   database-security:
     name: Supabase RLS and role impersonation
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - name: Check out Hub repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
 
       - name: Set up pinned Supabase CLI
         uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520
@@ -258,6 +263,315 @@ jobs:
 
           "${psql_command[@]}" \
             < supabase/tests/concurrency/0024_commitment_failure_race.verify.sql
+
+      - name: Exercise hosted migration, history repair, and recording release procedures
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          database_container="supabase_db_yll-call-copilot-local-security"
+          psql_command=(
+            docker exec -i "${database_container}"
+            psql --username postgres --dbname postgres --set ON_ERROR_STOP=on
+          )
+
+          supabase db reset --local --no-seed --version 0019
+          node scripts/prepare-0020-hosted-apply.mjs \
+            --manifest supabase/tests/migration/0020_empty_reconciliation.csv \
+            --output /tmp/0020-0024-empty-hosted.sql
+          "${psql_command[@]}" < /tmp/0020-0024-empty-hosted.sql
+
+          supabase db reset --local --no-seed --version 0019
+          "${psql_command[@]}" \
+            < supabase/tests/migration/0020_edited_fallback.seed.sql
+          node scripts/prepare-0020-hosted-apply.mjs \
+            --manifest supabase/tests/migration/0020_edited_fallback.csv \
+            --output /tmp/0020-0024-edited-fallback.sql
+          "${psql_command[@]}" < /tmp/0020-0024-edited-fallback.sql
+          "${psql_command[@]}" --tuples-only --no-align --command="
+            select active_version = 1
+              and not exists (
+                select 1 from public.playbook_versions where source = 'edited'
+              )
+            from public.verticals
+            where id = '88000000-0000-0000-0000-000000000001'
+          " | grep -Fxq 't'
+
+          supabase db reset --local --no-seed --version 0019
+          "${psql_command[@]}" \
+            < supabase/tests/migration/0020_edited_fallback.seed.sql
+          "${psql_command[@]}" --command="
+            delete from public.playbook_versions
+            where id = '88100000-0000-0000-0000-000000000001'
+          "
+          node scripts/prepare-0020-hosted-apply.mjs \
+            --manifest supabase/tests/migration/0020_edited_fallback.csv \
+            --output /tmp/0020-0024-no-fallback.sql
+          if no_fallback_output="$(
+            "${psql_command[@]}" < /tmp/0020-0024-no-fallback.sql 2>&1
+          )"; then
+            echo "Historical reconciliation unexpectedly accepted a missing fallback"
+            exit 1
+          fi
+          if ! grep -Fq 'no retained generated fallback' <<< "${no_fallback_output}"; then
+            echo "Missing-fallback test failed for an unexpected reason"
+            exit 1
+          fi
+          "${psql_command[@]}" --tuples-only --no-align --command="
+            select active_version = 2
+              and exists (
+                select 1 from public.playbook_versions where source = 'edited'
+              )
+              and not exists (
+                select 1 from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'transcripts'
+                  and column_name = 'metric_scope'
+              )
+            from public.verticals
+            where id = '88000000-0000-0000-0000-000000000001'
+          " | grep -Fxq 't'
+
+          supabase db reset --local --no-seed --version 0019
+          "${psql_command[@]}" \
+            < supabase/tests/migration/0020_historical_reconciliation.seed.sql
+          node scripts/prepare-0020-hosted-apply.mjs \
+            --manifest supabase/tests/migration/0020_historical_reconciliation_wrong_id.csv \
+            --output /tmp/0020-0024-wrong-id.sql
+          if wrong_id_output="$(
+            "${psql_command[@]}" < /tmp/0020-0024-wrong-id.sql 2>&1
+          )"; then
+            echo "Historical reconciliation unexpectedly accepted a wrong ID"
+            exit 1
+          fi
+          if ! grep -Fq \
+            'Reviewed artifact manifest does not exactly match the locked six-class live set' \
+            <<< "${wrong_id_output}"; then
+            echo "Wrong-ID reconciliation failed for an unexpected reason"
+            exit 1
+          fi
+          "${psql_command[@]}" --tuples-only --no-align --command="
+            select (select count(*) from public.weekly_digests) = 5
+              and (select count(*) from public.brain_reviews) = 9
+              and (select count(*) from public.playbook_proposals) = 14
+              and (select count(*) from public.feedback_cards) = 1
+          " | grep -Fxq 't'
+
+          "${psql_command[@]}" --command="
+            insert into public.app_users (id, email, role)
+            values ('89000000-0000-0000-0000-000000000001', 'invalid-email', 'rep')
+          "
+          node scripts/prepare-0020-hosted-apply.mjs \
+            --manifest supabase/tests/migration/0020_historical_reconciliation.csv \
+            --output /tmp/0020-0024-reviewed-hosted.sql
+          if later_failure_output="$(
+            "${psql_command[@]}" < /tmp/0020-0024-reviewed-hosted.sql 2>&1
+          )"; then
+            echo "Migration 0023 unexpectedly accepted malformed identity data"
+            exit 1
+          fi
+          if ! grep -Fq \
+            'Malformed normalized identity emails require review before migration 0023' \
+            <<< "${later_failure_output}"; then
+            echo "Later migration rollback test failed for an unexpected reason"
+            exit 1
+          fi
+          "${psql_command[@]}" --tuples-only --no-align --command="
+            select (select count(*) from public.weekly_digests) = 5
+              and (select count(*) from public.brain_reviews) = 9
+              and (select count(*) from public.playbook_proposals) = 14
+              and (select count(*) from public.feedback_cards) = 1
+              and not exists (
+                select 1 from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'transcripts'
+                  and column_name = 'metric_scope'
+              )
+          " | grep -Fxq 't'
+          "${psql_command[@]}" --command="
+            delete from public.app_users
+            where id = '89000000-0000-0000-0000-000000000001'
+          "
+          "${psql_command[@]}" < /tmp/0020-0024-reviewed-hosted.sql
+          "${psql_command[@]}" --tuples-only --no-align --command="
+            select (select count(*) from public.weekly_digests) = 0
+              and (select count(*) from public.brain_reviews) = 0
+              and (select count(*) from public.playbook_proposals) = 0
+              and (select count(*) from public.feedback_cards) = 0
+          " | grep -Fxq 't'
+
+          "${psql_command[@]}" <<'SQL'
+          delete from supabase_migrations.schema_migrations;
+          insert into supabase_migrations.schema_migrations (
+            version,
+            statements,
+            name
+          ) values
+            (
+              '20260819235532',
+              array['-- hosted starting-state fixture']::text[],
+              '0017_live_dial_grants'
+            ),
+            (
+              '20260820001714',
+              array['-- hosted starting-state fixture']::text[],
+              '0018_webhook_idempotency'
+            );
+          SQL
+
+          node scripts/reconcile-0020-0024-hosted-history.mjs \
+            --local-container "${database_container}"
+          node scripts/reconcile-0020-0024-hosted-history.mjs \
+            --local-container "${database_container}"
+
+          "${psql_command[@]}" <<'SQL'
+          insert into public.call_recordings (
+            id,
+            ghl_message_id,
+            called_at,
+            status,
+            skip_reason,
+            detail
+          )
+          select
+            (
+              '71000000-0000-0000-0000-' || lpad(series.id::text, 12, '0')
+            )::uuid,
+            'held-migration-fixture-' || series.id::text,
+            timestamptz '2026-08-20 00:00:00+00' + series.id * interval '1 minute',
+            'skipped',
+            'held_migration_0020',
+            '{}'::jsonb
+          from generate_series(1, 19) as series(id);
+
+          insert into public.call_recordings (
+            id,
+            ghl_message_id,
+            called_at,
+            status,
+            detail
+          ) values (
+            '70000000-0000-0000-0000-000000000001',
+            'unreviewed-older-pending-fixture',
+            timestamptz '2026-08-19 00:00:00+00',
+            'pending',
+            '{}'::jsonb
+          );
+          SQL
+
+          node scripts/prepare-0020-recording-release.mjs \
+            --canary-ids supabase/tests/migration/0020_recording_canary_ids.csv \
+            --remainder-ids supabase/tests/migration/0020_recording_remainder_ids.csv \
+            --canary-output /tmp/0020-recording-canary-release.sql \
+            --remainder-output /tmp/0020-recording-remainder-release.sql
+          node scripts/prepare-0020-recording-release.mjs \
+            --canary-ids supabase/tests/migration/0020_recording_canary_ids_wrong.csv \
+            --remainder-ids supabase/tests/migration/0020_recording_remainder_ids.csv \
+            --canary-output /tmp/0020-recording-wrong-canary-release.sql \
+            --remainder-output /tmp/0020-recording-wrong-remainder-release.sql
+
+          if wrong_recording_id_output="$(
+            "${psql_command[@]}" < /tmp/0020-recording-wrong-canary-release.sql 2>&1
+          )"; then
+            echo "Canary release unexpectedly accepted a swapped unheld UUID"
+            exit 1
+          fi
+          if ! grep -Fq \
+            'Reviewed 3/16 recording IDs do not exactly match the locked 19-row held set' \
+            <<< "${wrong_recording_id_output}"; then
+            echo "Swapped-recording-ID test failed for an unexpected reason"
+            exit 1
+          fi
+          "${psql_command[@]}" --tuples-only --no-align --command="
+            select count(*) = 19
+              and bool_and(status = 'skipped')
+              and bool_and(skip_reason = 'held_migration_0020')
+              and bool_and(not (detail ? 'ops_migration_release_batch'))
+            from public.call_recordings
+            where id::text like '71000000-0000-0000-0000-%'
+          " | grep -Fxq 't'
+
+          if unrelated_pending_output="$(
+            "${psql_command[@]}" < /tmp/0020-recording-canary-release.sql 2>&1
+          )"; then
+            echo "Canary release unexpectedly accepted an unrelated pending row"
+            exit 1
+          fi
+          if ! grep -Fq \
+            'Unreviewed pending or stale-processing recordings are eligible' \
+            <<< "${unrelated_pending_output}"; then
+            echo "Unrelated-pending test failed for an unexpected reason"
+            exit 1
+          fi
+          "${psql_command[@]}" --command="
+            delete from public.call_recordings
+            where id = '70000000-0000-0000-0000-000000000001'
+          "
+
+          "${psql_command[@]}" < /tmp/0020-recording-canary-release.sql
+
+          if remainder_output="$(
+            "${psql_command[@]}" < /tmp/0020-recording-remainder-release.sql 2>&1
+          )"; then
+            echo "Remainder release unexpectedly passed before canary verification"
+            exit 1
+          fi
+          if ! grep -Fq \
+            'All 3 reviewed canaries must be transcribed before remainder release' \
+            <<< "${remainder_output}"; then
+            echo "Premature remainder release failed for an unexpected reason"
+            exit 1
+          fi
+
+          "${psql_command[@]}" --command="
+            update public.call_recordings
+            set status = 'transcribed'
+            where skip_reason = 'released_0020_canary'
+          "
+
+          "${psql_command[@]}" < /tmp/0020-recording-remainder-release.sql
+
+          "${psql_command[@]}" --tuples-only --no-align --command="
+            select
+              (select count(*) from public.call_recordings
+               where skip_reason = 'released_0020_canary'
+                 and status = 'transcribed') = 3
+              and
+              (select count(*) from public.call_recordings
+               where skip_reason = 'released_0020_remainder'
+                 and status = 'pending') = 16
+              and
+              not exists (
+                select 1 from public.call_recordings
+                where skip_reason = 'held_migration_0020'
+              )
+          " | grep -Fxq 't'
+
+          if canary_replay_output="$(
+            "${psql_command[@]}" < /tmp/0020-recording-canary-release.sql 2>&1
+          )"; then
+            echo "Canary release unexpectedly allowed replay"
+            exit 1
+          fi
+          if ! grep -Fq \
+            'Reviewed 3/16 recording IDs do not exactly match the locked 19-row held set' \
+            <<< "${canary_replay_output}"; then
+            echo "Canary replay failed for an unexpected reason"
+            exit 1
+          fi
+
+          if remainder_replay_output="$(
+            "${psql_command[@]}" < /tmp/0020-recording-remainder-release.sql 2>&1
+          )"; then
+            echo "Remainder release unexpectedly allowed replay"
+            exit 1
+          fi
+          if ! grep -Fq \
+            'Reviewed remainder IDs do not exactly match the locked held set' \
+            <<< "${remainder_replay_output}"; then
+            echo "Remainder replay failed for an unexpected reason"
+            exit 1
+          fi
 
       - name: Stop and remove the local database
         if: always()
