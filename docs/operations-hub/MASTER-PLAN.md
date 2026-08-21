@@ -3,7 +3,7 @@
 Status: **owner-approved; canonical contract/schema mirrored; Phase 0 identity foundation merged**
 Version: `1.3-review-1`
 Approved: 2026-08-07
-Last reconciled: 2026-08-19
+Last reconciled: 2026-08-20
 
 ## 1. Mission
 
@@ -59,7 +59,7 @@ accepted P1-P15 language now lives in the merged canonical
 - the sign-inventory ledger: stock, allocations, transfers, placements,
   returns, damage/loss observations, restock, and corrections;
 - PWA camera/offline queues, Hub audit records, and read-model presentation;
-- four department digest compositions, using canonical facts from each owner.
+- four digest-type compositions, using canonical facts from each owner.
 
 ### Shared boundary
 
@@ -70,26 +70,39 @@ whether it is local, submitted, accepted, under review, rejected, or adjusted.
 
 ## 4. Identity, roles, and department context
 
-- Sign-in is invite-only phone number plus one-time PIN. The approved target is
-  Supabase Phone Auth with Twilio Verify delivery added in a later activation
-  PR. Production phone OTP stays off until provider configuration, Turnstile,
-  delivery/recovery testing, and a human-approved rollout are complete.
-- OTP request, resend, and recovery surfaces require Turnstile. Recovery is an
-  audited Naldo/Jason-only action; there is no employee self-service phone
-  reassignment or recovery in V1. A Hub session has a maximum 30-day lifetime
-  and may end sooner on logout, deactivation, revocation, or security review.
-  Existing password identities are revoked when phone auth activates; the
-  Supabase console is the audited owner-only break-glass path.
+- Current sign-in is invite-only email/password under Decision 25. Supabase
+  Phone Auth with Twilio Verify delivery remains the approved long-term target,
+  but phone OTP, Turnstile, recovery/reassignment, and password-identity
+  revocation are disabled and deferred until a later owner activation decision.
+- A later phone-auth activation requires Turnstile on OTP request, resend, and
+  recovery. Recovery is an audited Naldo/Jason-only action; there is no
+  employee self-service phone reassignment or recovery in V1. A Hub session has
+  a maximum 30-day lifetime and may end sooner on logout, deactivation,
+  revocation, or security review. Existing password identities are revoked only
+  when phone auth activates; the Supabase console is the audited owner-only
+  break-glass path.
 - Naldo and Jason are the only provisioned owner/admin identities in V1 and can
   see all departments. Jason is primary time approver; Naldo is backup.
 - Employee roles are Office, Advertising, and Installer. A Manager capability
   tier is designed and tested but **not provisioned in V1**.
 - Management is an owner/admin view and digest type, not an employee department
   membership or paid-work context.
+- The Hub exposes exactly four UI modes: Management, Office, Advertising, and
+  Installer. Naldo/Jason always land in Management and use department
+  drilldowns that do not impersonate an employee or change paid context.
+- Every other employee has an explicit primary home mode. The Hub never makes
+  last-used mode the next login default, and shows a mode switcher only to an
+  employee with multiple active department memberships.
 - An employee may hold multiple department memberships. Exactly one active
   department-context interval is active at each instant of a canonical paid
   shift. Switching context is an explicit, audited Quote Tool operation and
   cannot silently move already recorded time.
+- Outside a paid day, mode selection changes view only. During paid work, Hub
+  uses the canonical Quote Tool context switch and rejects with review during
+  an active Placement Run or open Installer job segment. That final owner rule
+  requires a canonical P16.2 amendment before it becomes cross-repository
+  contract authority. Open-break final policy remains unresolved, so the
+  current canonical safe default continues to reject with review.
 - Membership union may expose non-sensitive module navigation only. Sensitive
   reads and actions require an explicit capability, the current paid-work
   context, and assignment/resource scope. A secondary membership never bypasses
@@ -100,8 +113,10 @@ whether it is local, submitted, accepted, under review, rejected, or adjusted.
 - "Public" means visible only to active YLL employees. Public screens never
   reveal pay amounts, customer contact information, exact private routes, or
   residential door-hanger locations.
-- Track A may begin with Naldo/Jason-created identity rows. Its Sept 21 target
-  does not depend on the Hub OTP UI.
+- Quote Tool identity, canonical-time, lifecycle-event, and command work may
+  proceed independently of the deferred Hub phone-auth target and in parallel
+  with compatible Hub-owned foundation work, subject to the canonical contract
+  and release gates.
 
 ## 5. One paid day, multiple work modes
 
@@ -293,8 +308,10 @@ to restricted owners for the required retention period.
 - Advertising Telegram V1 provides status and a deep link to Camera Mode; a
   Telegram photo is not a verified placement.
 - Four digests exist: Office, Advertising, Install, and Management. Each
-  combines attendance with that department's operations. Naldo and Jason
-  receive all four; employees receive only their authorized view.
+  of the first three combines attendance with that department's operations.
+  Management combines authorized cross-department owner/admin facts without
+  becoming a department or paid-work context. Naldo and Jason receive all four;
+  employees receive only their authorized view.
 - The Hub composes and tracks delivery; each owner supplies canonical facts.
   Digests obey the same privacy and Pending quality review rules as live UI.
 
@@ -327,23 +344,32 @@ to restricted owners for the required retention period.
 3. Add byte-identical canonical-contract and schema mirrors to the Hub after
    canonical merge; cross-repository byte-diff and deploy-version smoke must
    pass. The raw-byte mirror and local/cross-repository verifier are complete;
-   authenticated CI fetch and deploy smoke remain.
+   trusted workflow code is present to compare current Quote Tool `master`, but
+   the fine-grained Quote Tool read token, successful authenticated byte run,
+   and live deploy-version smoke remain.
 4. Lock identity-link, command/event envelope, auth, audit, idempotency, RLS,
    DLQ, kill switches, and ownership rows in both repositories.
 
-### Parallel implementation tracks after Phase 0
+### Approved implementation sequence after Phase 0
 
-- **Track A — Claude / Quote Tool:** admin-seeded identity, budgeted labor,
-  schedule, canonical time ledger and Telegram-first capture targeting Sept 21,
-  time review, completion, compensation shadow engines, earnings/payroll APIs,
-  and all shared-labor migrations.
-- **Track B — Codex / Hub advertising:** rename shell, campaigns, Placement
-  Runs, Camera Mode, durable offline queue, GPS/review, placement lifecycle,
-  numbering/stamping, maps/hotspots/avoid zones, sign inventory, advertising
-  read models, and digest UI.
-- **Track C — Codex / Hub office/install:** OTP identity UI, role routing,
-  office preservation, day/visit/break capture, schedule and gate UI,
-  completion drafts, personal stats, leaderboards, admin queues, and digests.
+Hub product work and release proceed in exactly this order:
+
+1. **Management:** Quote Tool-matched shell, primary-mode routing, truthful
+   Hub-local summaries, and an owner-only Naldo/Jason preview.
+2. **Office:** preserve and redesign the existing call/coaching workflows, add
+   Hub-owned tasks, and consume real Quote-owned lifecycle facts when ready.
+3. **Advertising:** campaigns, Placement Runs, Camera Mode, durable offline
+   capture, GPS/review, maps, inventory, reconciliation, hosted personas, and a
+   real-device field pilot.
+4. **Installer:** canonical schedule/job reads and commands, context-preserving
+   field UI, completion/retry/reconciliation, hosted personas, and a real-device
+   field pilot.
+
+Quote Tool contract, identity, lifecycle-event, current-context, schedule,
+completion, and command work may proceed in parallel with compatible Hub-owned
+foundations. A dependent Hub surface does not become ready until its canonical
+interface is merged, mirrored byte-identically, version-compatible, and proven
+through its applicable authorization and release gates.
 
 Actual installer performance pay and advertising payroll output remain behind
 separate flags and professional/owner gates. External Copilot CRM/Homeworks is
@@ -416,3 +442,7 @@ clean weeks.
 - [x] Hub PR #50 merged the immutable Hub identity foundation at
       `master@44989e1ac1c7830ffdcd4d1e1f623db692547e9e`; all required Hub CI,
       pgTAP, build, and Vercel checks passed before the human-authorized merge.
+- [x] Naldo approved the reconciled four-mode implementation plan on
+      2026-08-20. Hub delivery is Management, then Office, then Advertising,
+      then Installer; compatible Quote Tool dependency work may proceed in
+      parallel without bypassing any release gate.

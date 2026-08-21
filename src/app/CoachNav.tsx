@@ -36,7 +36,7 @@ type NavGroup = { label: string; items: NavItem[] };
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    label: 'Coaching',
+    label: 'Office',
     items: [
       { label: 'My cards', href: '/coach', isActive: p => p === '/coach', badge: 'feedback' },
       { label: 'Call review', href: '/coach/calls', isActive: p => p.startsWith('/coach/calls') },
@@ -47,7 +47,7 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: 'Queues',
+    label: 'Work queues',
     items: [
       { label: 'Call queue', href: '/queue', isActive: p => p.startsWith('/queue') || p.startsWith('/call/') },
       {
@@ -61,7 +61,7 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: 'Settings',
+    label: 'Configuration',
     items: [
       { label: 'Rubric', href: '/coach/rubric', isActive: p => p.startsWith('/coach/rubric') },
       { label: 'Offer', href: '/coach/offer', isActive: p => p.startsWith('/coach/offer') },
@@ -100,14 +100,19 @@ export default function CoachNav() {
     };
   }, []);
 
-  if (pathname === '/login' || pathname === '/forgot-password' || pathname === '/reset-password') return null;
+  if (
+    pathname === '/management' ||
+    pathname === '/login' ||
+    pathname === '/forgot-password' ||
+    pathname === '/reset-password'
+  ) return null;
 
   const countFor = (badge?: 'feedback') => (badge === 'feedback' ? feedbackCount : 0);
 
   return (
     <nav className="flex flex-wrap items-center gap-x-5 gap-y-2 overflow-x-auto border-b border-[var(--op-border)] bg-white/80 px-5 py-3 text-[13.5px] backdrop-blur-md [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <Link href="/" className="mr-1 whitespace-nowrap text-[15px] font-extrabold tracking-[-.01em] text-[var(--op-text)]">
-        YLL <span className="text-[var(--brand-gold-deep)]">Coach</span>
+        YLL <span className="text-[var(--brand-gold-deep)]">Office</span>
       </Link>
       {NAV_GROUPS.map(group => (
         <div key={group.label} className="flex items-center gap-1.5 whitespace-nowrap">

@@ -1,6 +1,10 @@
-# YLL Call Copilot
+# Yule Love Lights Operations Hub
 
-Internal tool for Yule Love Lights. It helps human reps handle inbound calls and warm outbound calls (past customers, quote follow-ups, referrals, rebooks): look up the customer in GoHighLevel before dialing, keep a living call playbook per line of business, and (in later phases) get on-call guidance. The AI coaches the rep and never speaks to the customer.
+Internal Operations Hub for Yule Love Lights. Its Office mode helps human reps
+handle inbound calls and warm outbound calls (past customers, quote follow-ups,
+referrals, rebooks): look up the customer in GoHighLevel before dialing, keep a
+living call playbook per line of business, and later receive on-call guidance.
+The AI coaches the rep and never speaks to the customer.
 
 ## Setup
 
@@ -12,6 +16,11 @@ Internal tool for Yule Love Lights. It helps human reps handle inbound calls and
 Decision 25 keeps this invite-only email/password login as the active interim
 path. Phone OTP, Twilio Verify, and Turnstile are deferred; the separate
 staging Supabase project remains in use for migration, RLS, and persona tests.
+
+The staging-only [shared Quote Tool credentials rollout](docs/operations-hub/SHARED-QUOTE-IDENTITY-ROLLOUT.md)
+keeps the two applications separate while allowing an explicitly mapped Hub
+employee to use an existing Quote Tool email/password. It is disabled by
+default and never treats an email match alone as Hub authorization.
 
 Authentication and authorization fail closed: protected pages and non-health APIs return a generic 503 until the complete Supabase configuration is present. Once configured, every employee route requires a signed-in user, a resolved immutable employee actor, and the route's explicit capabilities. The identity-foundation branch preserves existing Office employee UUIDs while adding the new Hub-owned identity and membership model; it does not activate phone OTP.
 

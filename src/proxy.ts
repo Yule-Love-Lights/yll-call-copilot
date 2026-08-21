@@ -6,7 +6,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { resolveHubActor, type AuthenticatedUserIdentity } from '@/lib/auth/actor';
-import { resolveServerAuthConfiguration } from '@/lib/auth/config';
+import { resolveIdentityAuthConfiguration } from '@/lib/auth/config';
 import {
   isHubSessionWithinMaximumAge,
   isVerifiedPhoneOtpSession,
@@ -29,7 +29,7 @@ export async function proxy(request: NextRequest) {
   }
 
   const isApi = pathname.startsWith('/api/');
-  const authConfiguration = resolveServerAuthConfiguration();
+  const authConfiguration = resolveIdentityAuthConfiguration();
   if (!authConfiguration.ok) return authenticationUnavailable(isApi);
   const phoneAuthConfiguration = resolvePhoneAuthConfiguration();
   if (phoneAuthConfiguration.mode === 'unavailable') return authenticationUnavailable(isApi);
@@ -118,7 +118,10 @@ export async function proxy(request: NextRequest) {
 
   let actorResolution: Awaited<ReturnType<typeof resolveHubActor>>;
   try {
-    actorResolution = await resolveHubActor(authenticatedUser);
+    actorResolution = await resolveHubActor({
+      ...authenticatedUser,
+      identitySource: authConfiguration.source,
+    });
   } catch {
     return authenticationUnavailable(isApi, response);
   }

@@ -24,7 +24,10 @@ export type RouteRequirement =
   | {
       readonly kind: 'employee';
       readonly capabilities: readonly Capability[];
-      readonly department: Department;
+      // Management is an Owner/Admin mode, never a department membership or
+      // paid-work context. A null department is therefore intentionally only
+      // used by owner-only Management routes.
+      readonly department: Department | null;
       readonly paidContextGate: 'legacy_pending_projection' | 'required';
       readonly resourceScope: ResourceScope;
       readonly sensitivity: 'internal' | 'sensitive';
@@ -84,6 +87,16 @@ const employeeRoute = (
   auditBeforeFieldLaunch: options.auditBeforeFieldLaunch ?? false,
 });
 
+const managementRoute = (): RouteRequirement => ({
+  kind: 'employee',
+  capabilities: ['operations.admin'],
+  department: null,
+  paidContextGate: 'legacy_pending_projection',
+  resourceScope: 'team',
+  sensitivity: 'sensitive',
+  auditBeforeFieldLaunch: false,
+});
+
 const getPage = (template: string, requirement: RouteRequirement): AppRoutePolicy => ({
   template,
   methods: { GET: requirement },
@@ -95,6 +108,7 @@ const api = (
 ): AppRoutePolicy => ({ template, methods });
 
 const OFFICE_TOOLS = employeeRoute('office.tools.use');
+const MANAGEMENT = managementRoute();
 const ANALYTICS = employeeRoute('office.analytics.read', {
   resourceScope: 'team',
   sensitivity: 'sensitive',
@@ -187,6 +201,7 @@ export const APP_ROUTE_POLICIES: readonly AppRoutePolicy[] = [
   api('/api/cron/weekly-digest', { GET: machineRoute('cron_weekly_digest') }),
 
   getPage('/', OFFICE_TOOLS),
+  getPage('/management', MANAGEMENT),
   getPage('/analytics', ANALYTICS),
   getPage('/brain', KNOWLEDGE_READ),
   getPage('/brain/interview', KNOWLEDGE_MANAGE),
@@ -308,7 +323,7 @@ export function actorMeetsRouteRequirement(
   requirement: RouteRequirement,
 ): boolean {
   if (requirement.kind !== 'employee' || !actor.active) return false;
-  if (!actor.memberships.includes(requirement.department)) {
+  if (requirement.department !== null && !actor.memberships.includes(requirement.department)) {
     return false;
   }
   if (

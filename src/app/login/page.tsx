@@ -4,7 +4,7 @@
 // The ?denied=1 flag comes from the proxy when a signed-in email is not in
 // app_users; searchParams is a Promise in Next 16, hence the await.
 
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { resolveIdentityAuthConfiguration } from '@/lib/auth/config';
 import { resolvePhoneAuthConfiguration } from '@/lib/auth/phoneAuth';
 import LoginForm from './LoginForm';
 import PhoneLoginForm from './PhoneLoginForm';
@@ -17,7 +17,8 @@ export default async function LoginPage({
   searchParams: Promise<{ denied?: string }>;
 }) {
   const { denied } = await searchParams;
-  const configured = isSupabaseConfigured();
+  const identityConfiguration = resolveIdentityAuthConfiguration();
+  const configured = identityConfiguration.ok;
   const phoneAuth = resolvePhoneAuthConfiguration();
 
   return (
@@ -32,7 +33,10 @@ export default async function LoginPage({
             turnstileSiteKey={phoneAuth.turnstileSiteKey}
           />
         ) : configured && phoneAuth.mode === 'disabled' ? (
-          <LoginForm denied={denied === '1'} />
+          <LoginForm
+            denied={denied === '1'}
+            passwordRecoveryAvailable={identityConfiguration.source === 'hub'}
+          />
         ) : (
           <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
             {process.env.NODE_ENV === 'development'

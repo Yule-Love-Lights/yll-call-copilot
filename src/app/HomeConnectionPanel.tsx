@@ -71,7 +71,7 @@ export default function HomeConnectionPanel() {
   return (
     <div>
       <div className="flex items-start justify-between">
-        <h2 className="text-2xl font-semibold text-[var(--op-text)]">YLL Call Copilot</h2>
+        <h2 className="text-2xl font-semibold text-[var(--op-text)]">Office tools</h2>
         <button
           type="button"
           onClick={handleSignOut}
@@ -81,7 +81,7 @@ export default function HomeConnectionPanel() {
         </button>
       </div>
       <p className="mt-1 text-sm text-[var(--op-dim)]">
-        Copilot for inbound and warm outbound calls at Yule Love Lights.
+        Call, coaching, and follow-up tools for the Yule Love Lights Office.
       </p>
 
       {summary?.configured && (

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CANONICAL,
   GENERATED,
+  assertDryRunAgainstFutureMigrations,
   assertEmptyDryRun,
   assertEmptySchemaDiff,
   classifyHistory,
@@ -50,6 +51,17 @@ describe('hosted migration history reconciliation', () => {
     expect(() => assertEmptyDryRun('Would push these migrations: 0024_example.sql')).toThrow(
       /not empty/,
     );
+  });
+
+  it('permits only the reviewed post-0024 migration files while reconciling older history', () => {
+    expect(() => assertDryRunAgainstFutureMigrations(
+      'Would push these migrations: 0025_quote_tool_identity_bridge.sql',
+      ['0025_quote_tool_identity_bridge.sql'],
+    )).not.toThrow();
+    expect(() => assertDryRunAgainstFutureMigrations(
+      'Would push these migrations: 0026_unreviewed.sql',
+      ['0025_quote_tool_identity_bridge.sql'],
+    )).toThrow(/unexpected pending/);
   });
 
   it('binds hosted operation to the expected project reference', () => {

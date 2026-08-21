@@ -109,6 +109,66 @@ select ok(
 );
 
 select ok(
+  (
+    select routine.prosecdef
+    from pg_proc as routine
+    where routine.oid =
+      'public.link_quote_tool_employee_identity(uuid,uuid,text)'::regprocedure
+  )
+  and (
+    select routine.prosecdef
+    from pg_proc as routine
+    where routine.oid =
+      'public.revoke_quote_tool_employee_identity(uuid,uuid,text)'::regprocedure
+  )
+  and (
+    select coalesce(routine.proconfig, array[]::text[])
+      @> array['search_path=""']::text[]
+    from pg_proc as routine
+    where routine.oid =
+      'public.link_quote_tool_employee_identity(uuid,uuid,text)'::regprocedure
+  )
+  and (
+    select coalesce(routine.proconfig, array[]::text[])
+      @> array['search_path=""']::text[]
+    from pg_proc as routine
+    where routine.oid =
+      'public.revoke_quote_tool_employee_identity(uuid,uuid,text)'::regprocedure
+  )
+  and has_function_privilege(
+    'service_role',
+    'public.link_quote_tool_employee_identity(uuid,uuid,text)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'anon',
+    'public.link_quote_tool_employee_identity(uuid,uuid,text)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'authenticated',
+    'public.link_quote_tool_employee_identity(uuid,uuid,text)',
+    'EXECUTE'
+  )
+  and has_function_privilege(
+    'service_role',
+    'public.revoke_quote_tool_employee_identity(uuid,uuid,text)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'anon',
+    'public.revoke_quote_tool_employee_identity(uuid,uuid,text)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'authenticated',
+    'public.revoke_quote_tool_employee_identity(uuid,uuid,text)',
+    'EXECUTE'
+  ),
+  'only service_role can invoke the Quote Tool identity bridge routines'
+);
+
+select ok(
   not has_function_privilege(
     'service_role',
     'public.sync_app_user_projection()',
@@ -127,6 +187,11 @@ select ok(
   and not has_function_privilege(
     'service_role',
     'public.enforce_ops_employee_auth_identity_transition()',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'service_role',
+    'public.enforce_ops_employee_external_identity_transition()',
     'EXECUTE'
   )
   and not has_function_privilege(
@@ -150,6 +215,16 @@ select ok(
   and not has_table_privilege(
     'service_role',
     'public.ops_employee_auth_identities',
+    'INSERT'
+  )
+  and has_table_privilege(
+    'service_role',
+    'public.ops_employee_external_identities',
+    'SELECT'
+  )
+  and not has_table_privilege(
+    'service_role',
+    'public.ops_employee_external_identities',
     'INSERT'
   )
   and has_table_privilege(
@@ -247,6 +322,144 @@ select is(
   ),
   1::bigint,
   'provisioning records one nonblank append-only audit event'
+);
+
+set local role service_role;
+select is(
+  (
+    select count(*)::bigint
+    from public.link_quote_tool_employee_identity(
+      (
+        select id
+        from identity_test_current_employees
+        where auth_user_id = '91000000-0000-4000-8000-000000000001'
+      ),
+      '92000000-0000-4000-8000-000000000001',
+      'Quote Tool shared-identity pgTAP'
+    )
+  ),
+  1::bigint,
+  'service_role links one active Quote Tool identity to an existing Hub employee'
+);
+reset role;
+
+select is(
+  (
+    select count(*)::bigint
+    from public.ops_employee_external_identities as identity_record
+    join identity_test_current_employees as current_identity
+      on current_identity.id = identity_record.employee_id
+    where current_identity.auth_user_id = '91000000-0000-4000-8000-000000000001'
+      and identity_record.issuer = 'quote_tool'
+      and identity_record.subject_user_id = '92000000-0000-4000-8000-000000000001'
+      and identity_record.state = 'active'
+      and identity_record.revoked_at is null
+  ),
+  1::bigint,
+  'the Quote Tool identity bridge stores only the external UUID and issuer'
+);
+
+select is(
+  (
+    select count(*)::bigint
+    from public.ops_identity_audit_events as audit_event
+    where audit_event.event_type = 'auth_identity_linked'
+      and audit_event.reason = 'Quote Tool shared-identity pgTAP'
+      and audit_event.detail ->> 'identity_source' = 'quote_tool'
+  ),
+  1::bigint,
+  'the Quote Tool identity link is auditable'
+);
+
+set local role service_role;
+select is(
+  (
+    select count(*)::bigint
+    from public.link_quote_tool_employee_identity(
+      (
+        select id
+        from identity_test_current_employees
+        where auth_user_id = '91000000-0000-4000-8000-000000000001'
+      ),
+      '92000000-0000-4000-8000-000000000001',
+      'Quote Tool shared-identity exact retry pgTAP'
+    )
+  ),
+  1::bigint,
+  'an exact Quote Tool identity-link retry is idempotent'
+);
+reset role;
+
+select is(
+  (
+    select count(*)::bigint
+    from public.ops_employee_external_identities
+    where issuer = 'quote_tool'
+      and subject_user_id = '92000000-0000-4000-8000-000000000001'
+  ),
+  1::bigint,
+  'the exact retry cannot create a second external identity row'
+);
+
+set local role service_role;
+select is(
+  (
+    select state
+    from public.revoke_quote_tool_employee_identity(
+      (
+        select id
+        from identity_test_current_employees
+        where auth_user_id = '91000000-0000-4000-8000-000000000001'
+      ),
+      '92000000-0000-4000-8000-000000000001',
+      'Quote Tool shared-identity revocation pgTAP'
+    )
+  ),
+  'revoked',
+  'service_role can revoke the external identity through the audited routine'
+);
+reset role;
+
+select is(
+  (
+    select count(*)::bigint
+    from public.ops_identity_audit_events as audit_event
+    where audit_event.event_type = 'auth_identity_revoked'
+      and audit_event.reason = 'Quote Tool shared-identity revocation pgTAP'
+      and audit_event.detail ->> 'identity_source' = 'quote_tool'
+  ),
+  1::bigint,
+  'the Quote Tool identity revocation is auditable'
+);
+
+set local role service_role;
+select is(
+  (
+    select count(*)::bigint
+    from public.link_quote_tool_employee_identity(
+      (
+        select id
+        from identity_test_current_employees
+        where auth_user_id = '91000000-0000-4000-8000-000000000001'
+      ),
+      '92000000-0000-4000-8000-000000000002',
+      'Quote Tool shared-identity replacement pgTAP'
+    )
+  ),
+  1::bigint,
+  'a revoked Quote Tool identity can be replaced through the audited routine'
+);
+reset role;
+
+select is(
+  (
+    select entity_version
+    from public.ops_employee_external_identities
+    where issuer = 'quote_tool'
+      and subject_user_id = '92000000-0000-4000-8000-000000000002'
+  ),
+  3::bigint,
+  'a replacement external identity advances the employee issuer history version'
 );
 
 select is(
@@ -1066,6 +1279,29 @@ select throws_ok(
   '42501',
   null,
   'service_role cannot bypass the provisioning routine with direct identity DML'
+);
+
+select throws_ok(
+  $sql$
+    insert into public.ops_employee_external_identities (
+      employee_id,
+      issuer,
+      subject_user_id,
+      state,
+      entity_version,
+      effective_at
+    ) values (
+      '94000000-0000-4000-8000-000000000001',
+      'quote_tool',
+      '92000000-0000-4000-8000-000000000002',
+      'active',
+      1,
+      clock_timestamp()
+    )
+  $sql$,
+  '42501',
+  null,
+  'service_role cannot bypass the Quote Tool identity-link routine with direct DML'
 );
 reset role;
 

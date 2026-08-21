@@ -217,6 +217,29 @@ describe('Operations Hub contract verifier', () => {
     });
   });
 
+  it('fails closed when a canonical schema artifact is missing', () => {
+    withTemporaryDirectory(resolve(tmpdir()), (temporaryDirectory) => {
+      const canonicalPath = resolve(temporaryDirectory, 'OPERATIONS_HUB_CONTRACT.md');
+      const canonicalArtifactDirectory = resolve(temporaryDirectory, 'ops-contract-schema');
+      mkdirSync(canonicalArtifactDirectory);
+      copyFileSync(mirrorPath, canonicalPath);
+      for (const artifactName of artifactNames.slice(0, -1)) {
+        copyFileSync(
+          resolve(artifactDirectory, artifactName),
+          resolve(canonicalArtifactDirectory, artifactName),
+        );
+      }
+
+      const result = spawnSync(
+        process.execPath,
+        [verifierPath, '--canonical', canonicalPath],
+        { cwd: repositoryRoot, encoding: 'utf8', env: cleanEnvironment() },
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('common.schema.json');
+    });
+  });
+
   it('rejects mirror symlinks and paths outside the repository', () => {
     withTemporaryDirectory(repositoryRoot, (temporaryDirectory) => {
       const symlinkPath = resolve(temporaryDirectory, 'mirror-link.md');

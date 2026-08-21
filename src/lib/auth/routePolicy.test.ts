@@ -117,6 +117,17 @@ describe('route authorization policy', () => {
     expect(actorMeetsRouteRequirement(officeActor, home)).toBe(true);
     expect(actorMeetsRouteRequirement(officeActor, settings)).toBe(false);
   });
+
+  it('keeps Management owner-only without making it a department route', () => {
+    const management = resolveRoutePolicy('/management', 'GET')?.requirement;
+    if (!management || management.kind !== 'employee') throw new Error('expected Management policy');
+
+    expect(management.department).toBeNull();
+    expect(actorMeetsRouteRequirement(actor('owner'), management)).toBe(true);
+    expect(actorMeetsRouteRequirement(actor('office'), management)).toBe(false);
+    expect(actorMeetsRouteRequirement(actor('advertising'), management)).toBe(false);
+    expect(actorMeetsRouteRequirement(actor('installer'), management)).toBe(false);
+  });
 });
 
 function actor(role: 'rep' | 'office' | 'advertising' | 'installer' | 'owner') {

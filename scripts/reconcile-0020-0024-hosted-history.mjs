@@ -91,9 +91,19 @@ function assertLocalMigrationManifest() {
     .filter(name => /^\d{4}_.+\.sql$/.test(name))
     .sort();
   const expected = CANONICAL.map(row => `${row.version}_${row.name}.sql`);
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+  const canonicalFiles = actual.filter(name =>
+    CANONICAL_BY_VERSION.has(name.slice(0, 4)),
+  );
+  const unreviewedPastOrCurrent = actual.filter(name =>
+    Number(name.slice(0, 4)) <= 24 && !CANONICAL_BY_VERSION.has(name.slice(0, 4)),
+  );
+  if (
+    JSON.stringify(canonicalFiles) !== JSON.stringify(expected)
+    || unreviewedPastOrCurrent.length > 0
+  ) {
     throw new Error('Local migration files no longer match the reviewed canonical 0001-0024 set');
   }
+  return actual.filter(name => Number(name.slice(0, 4)) > 24);
 }
 
 function stripSqlComments(sql) {
@@ -112,6 +122,21 @@ function assertEmptySchemaDiff(sql) {
 function assertEmptyDryRun(output) {
   if (/would push|applying migration|pending migration|\b\d{4}_[^\s]+\.sql\b/i.test(output)) {
     throw new Error('Supabase db push dry-run is not empty');
+  }
+}
+
+function assertDryRunAgainstFutureMigrations(output, futureMigrationFiles) {
+  if (futureMigrationFiles.length === 0) {
+    assertEmptyDryRun(output);
+    return;
+  }
+
+  const mentioned = [...output.matchAll(/\b\d{4}_[A-Za-z0-9][A-Za-z0-9_-]*\.sql\b/g)]
+    .map(match => match[0])
+    .sort();
+  const expected = [...futureMigrationFiles].sort();
+  if (JSON.stringify(mentioned) !== JSON.stringify(expected)) {
+    throw new Error('Supabase db push dry-run has unexpected pending migrations beyond 0024');
   }
 }
 
@@ -305,7 +330,7 @@ function parseConfig(argv = process.argv.slice(2), env = process.env) {
 }
 
 function main() {
-  assertLocalMigrationManifest();
+  const futureMigrationFiles = assertLocalMigrationManifest();
   const config = parseConfig();
   const runner = makeRunner(config);
 
@@ -319,8 +344,12 @@ function main() {
   verifySchemaAndAssertions(runner);
   verifyFullSchemaDiff(runner);
   const dryRun = runner.supabase(['db', 'push', '--dry-run'], 'Supabase db push dry-run');
-  assertEmptyDryRun(dryRun);
-  process.stdout.write('Hosted migration history is canonical and db push dry-run is empty.\n');
+  assertDryRunAgainstFutureMigrations(dryRun, futureMigrationFiles);
+  process.stdout.write(
+    futureMigrationFiles.length === 0
+      ? 'Hosted migration history is canonical and db push dry-run is empty.\n'
+      : 'Hosted migration history is canonical; only reviewed migrations after 0024 remain pending.\n',
+  );
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
@@ -336,6 +365,7 @@ export {
   CANONICAL,
   GENERATED,
   assertEmptyDryRun,
+  assertDryRunAgainstFutureMigrations,
   assertEmptySchemaDiff,
   classifyHistory,
   parseConfig,

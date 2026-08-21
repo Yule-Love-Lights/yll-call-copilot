@@ -68,6 +68,43 @@ function fakeClient(result: { data: unknown; error: unknown }) {
 describe('resolveHubActor', () => {
   afterEach(() => vi.unstubAllEnvs());
 
+  it('resolves a Quote Tool-authenticated user only through an active external employee identity', async () => {
+    const { client, from, eq } = fakeClient({
+      data: {
+        ...authIdentity(),
+        subject_user_id: AUTH_USER_ID,
+        issuer: 'quote_tool',
+      },
+      error: null,
+    });
+
+    const result = await resolveHubActor({ id: AUTH_USER_ID, identitySource: 'quote_tool' }, client);
+
+    expect(result.status).toBe('resolved');
+    if (result.status !== 'resolved') throw new Error('expected a resolved actor');
+    expect(result.actor.authUserId).toBe(AUTH_USER_ID);
+    expect(result.actor.authIdentitySource).toBe('quote_tool');
+    expect(from).toHaveBeenCalledWith('ops_employee_external_identities');
+    expect(eq).toHaveBeenCalledWith('issuer', 'quote_tool');
+    expect(eq).toHaveBeenCalledWith('subject_user_id', AUTH_USER_ID);
+    expect(eq).toHaveBeenCalledWith('state', 'active');
+  });
+
+  it('rejects an external identity whose issuer does not match the selected source', async () => {
+    const { client } = fakeClient({
+      data: {
+        ...authIdentity(),
+        subject_user_id: AUTH_USER_ID,
+        issuer: 'hub',
+      },
+      error: null,
+    });
+
+    await expect(
+      resolveHubActor({ id: AUTH_USER_ID, identitySource: 'quote_tool' }, client),
+    ).resolves.toEqual({ status: 'denied', reason: 'invalid_employee_identity' });
+  });
+
   it('resolves a phone-only session through its active versioned auth link', async () => {
     const { client, from, select, eq } = fakeClient({ data: authIdentity(), error: null });
 
@@ -78,6 +115,7 @@ describe('resolveHubActor', () => {
     expect(result.actor).toMatchObject({
       principalType: 'employee',
       authUserId: AUTH_USER_ID,
+      authIdentitySource: 'hub',
       employeeId: EMPLOYEE_ID,
       email: 'rep@yulelovelights.com',
       active: true,
@@ -197,6 +235,31 @@ describe('resolveHubActor', () => {
       expect(result.actor.capabilities).toContain('operations.admin');
     },
   );
+
+  it('uses the selected Quote Tool Auth UUID, not a Hub UUID, for the Owner/Admin ceiling', async () => {
+    vi.stubEnv('HUB_OWNER_ADMIN_AUTH_USER_IDS', `${AUTH_USER_ID},${SECOND_ADMIN_ID}`);
+    const { client } = fakeClient({
+      data: {
+        ...authIdentity({
+          role: 'owner',
+          memberships: [activeMembership('office')],
+        }),
+        subject_user_id: AUTH_USER_ID,
+        issuer: 'quote_tool',
+      },
+      error: null,
+    });
+
+    const result = await resolveHubActor(
+      { id: AUTH_USER_ID, identitySource: 'quote_tool' },
+      client,
+    );
+
+    expect(result.status).toBe('resolved');
+    if (result.status !== 'resolved') throw new Error('expected a resolved actor');
+    expect(result.actor.authIdentitySource).toBe('quote_tool');
+    expect(result.actor.role).toBe('owner_admin');
+  });
 
   it('enforces the exact two-person Owner/Admin UUID ceiling', async () => {
     const { client } = fakeClient({ data: authIdentity({ role: 'owner' }), error: null });

@@ -2,6 +2,8 @@
 // values at request time so a secretless `next build` can still complete while
 // deployed requests fail closed when authentication cannot be enforced.
 
+import { isBrowserSafeSupabaseKey } from './publicSupabaseKey';
+
 const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
 export type ServerAuthEnvironment = {
@@ -9,7 +11,12 @@ export type ServerAuthEnvironment = {
   NEXT_PUBLIC_SUPABASE_URL?: string;
   NEXT_PUBLIC_SUPABASE_ANON_KEY?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
+  NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE?: string;
+  NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL?: string;
+  NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY?: string;
 };
+
+export type HubAuthIdentitySource = 'hub' | 'quote_tool';
 
 export type ServerAuthConfiguration =
   | {
@@ -17,6 +24,18 @@ export type ServerAuthConfiguration =
       url: string;
       anonKey: string;
       serviceRoleKey: string;
+    }
+  | {
+      ok: false;
+      code: 'AUTH_CONFIGURATION_UNAVAILABLE';
+    };
+
+export type IdentityAuthConfiguration =
+  | {
+      ok: true;
+      source: HubAuthIdentitySource;
+      url: string;
+      anonKey: string;
     }
   | {
       ok: false;
@@ -60,6 +79,9 @@ function readServerAuthEnvironment(): ServerAuthEnvironment {
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: process.env.NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE,
+    NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: process.env.NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL,
+    NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY,
   };
 }
 
@@ -76,4 +98,35 @@ export function resolveServerAuthConfiguration(
   }
 
   return { ok: true, url, anonKey, serviceRoleKey };
+}
+
+// The Hub's data project remains authoritative for Hub roles, employees, and
+// permissions. Staging may instead authenticate a browser session against the
+// Quote Tool's existing Supabase Auth project, but only through an explicit
+// source selection and a separate immutable employee mapping.
+export function resolveIdentityAuthConfiguration(
+  environment: ServerAuthEnvironment = readServerAuthEnvironment(),
+): IdentityAuthConfiguration {
+  const hub = resolveServerAuthConfiguration(environment);
+  if (!hub.ok) return hub;
+
+  const source = nonBlank(environment.NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE)?.toLowerCase() ?? 'hub';
+  if (source === 'hub') {
+    if (!isBrowserSafeSupabaseKey(hub.anonKey)) {
+      return { ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' };
+    }
+    return { ok: true, source, url: hub.url, anonKey: hub.anonKey };
+  }
+  if (source !== 'quote_tool') {
+    return { ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' };
+  }
+
+  const quoteUrlRaw = nonBlank(environment.NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL);
+  const quoteAnonKey = nonBlank(environment.NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY);
+  const quoteUrl = quoteUrlRaw ? validSupabaseUrl(quoteUrlRaw, environment.NODE_ENV) : null;
+  if (!quoteUrl || !quoteAnonKey || quoteUrl === hub.url || !isBrowserSafeSupabaseKey(quoteAnonKey)) {
+    return { ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' };
+  }
+
+  return { ok: true, source, url: quoteUrl, anonKey: quoteAnonKey };
 }

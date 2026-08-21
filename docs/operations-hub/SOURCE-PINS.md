@@ -1,10 +1,11 @@
 # Source revisions reconciled by this review
 
-Prepared: 2026-08-07; last reconciled: 2026-08-20
+Prepared: 2026-08-07; last reconciled: 2026-08-21
 
 Current contract/schema pin verified: 2026-08-20
 
-Current Hub implementation baseline verified: 2026-08-20
+Hub implementation base audited through PR #61: 2026-08-21 at
+`master@ba3ecc7fa0d6248353aa75fb79a75d549a2288ba`
 
 | Source | Branch / PR | Pinned head | Use |
 |---|---|---|---|
@@ -19,11 +20,17 @@ Current Hub implementation baseline verified: 2026-08-20
 | Hub recording sync backlog cap | `naldo/recording-sync-backlog-cap`, PR #51 | head `0724b31242d39caac1e5d53847af14e36b4d0fed`; merge `f2c9bd0761365a275f4793cd4f70dcf9c75cee26` | Merged Hub implementation baseline before the Phase 0 completion branch |
 | Hub Phase 0 completion | `codex/operations-hub-phase-0-completion`, PR #52 | head `c4d5b52a835196a354077adf74d3aa5d1e86e083`; merge `0b33c23b456cacc70a85ea717bb5df9eb311beda` | Staging safeguards, commitment extraction, recording sync, and Phase 0 ledger corrections |
 | Hub contract/schema publication mirror | `codex/operations-hub-contract-v1-4-schema-mirror`, PR #53 | head `131579aaf997ba4fccd05b58f27205fd13a775fb`; merge `9be8cde51f673db07123e6895a12d4d08a03562f` | Byte-identical current contract, manifest, OpenAPI, and JSON Schema mirror |
-| Hub assistant merge rule | `naldo/assistant-managed-pr-merges`, PR #54 | head `1e1516d82f90048a9128a16b2dd01554c8105391`; merge `bad885dc85b5d2c255bad8567b21a83f6ab2d4ec` | Current Hub `master` implementation and repository-rule baseline |
+| Hub assistant merge rule | `naldo/assistant-managed-pr-merges`, PR #54 | head `1e1516d82f90048a9128a16b2dd01554c8105391`; merge `bad885dc85b5d2c255bad8567b21a83f6ab2d4ec` | Original assistant-managed merge-rule baseline, extended by this H0 update |
+| Hub release-ledger reconciliation | `codex/ops-ledger-reconciliation`, PR #57 | head `9337fd36ba6950267b70cc841945404b3f37d1bd`; merge `fc7d8d2c1c3a5b643f3b885697a3b0649d98e570` | Interim login, staging, hosted-migration, and release-state truth reconciliation |
+| Hub hosted-migration reconciliation | `codex/staging-migration-reconciliation`, PR #60 | head `4478357d08f7af2f2112b2bced723d66ccef88ec`; merge `51c9467f172fb03129c97d1fd06511ce14b309ca` | Fail-closed hosted migration, history-repair, and exact recording-release tooling; no hosted write performed |
+| Hub Phase 0 persona coverage | `codex/phase0-persona-coverage`, PR #58 | head `08d3e199c75a2b4eab950422a3416f816ef08ebc`; merge `2574935f2710ca2ed08b2742e77463bea7ca758d` | Audited pre-H0 Hub base; test-only immutable ownership, membership, Owner/Admin, revoked-link, and default-deny coverage |
+| Hub contract-skew gate | `codex/phase0-contract-skew-gate`, PR #61 | head `4cde5826a15ad8a9e2c64eec36d2dc6ff59966c4`; merge `ba3ecc7fa0d6248353aa75fb79a75d549a2288ba` | Trusted authenticated cross-repository byte gate, static compatibility helper, and approved four-mode planning reconciliation |
 
 ## Known source condition
 
 - PRs #35 and #36 are closed as superseded and remain historical source pins.
+- PR #56 is closed without merge and is superseded by merged PR #60. It is not
+  current implementation or procedure authority.
 - The historical v1.2.0-draft mirror in PR #36 was not byte-identical because
   it contained an extra header/prefix. The final-review branch now carries the
   exact merged canonical bytes with no Hub wrapper.

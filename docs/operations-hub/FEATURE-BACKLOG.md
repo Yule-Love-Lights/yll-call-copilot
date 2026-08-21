@@ -3,14 +3,17 @@
 Status values: `COMMITTED` is already required by decisions/spec;
 `PARTIALLY-RULED` has binding behavior plus a narrower remaining decision;
 `BLOCKED-DECISION` needs a ruling before its feature ships; `LATER` is not V1
-scope. This file does not authorize implementation beyond the approved master
-plan.
+scope; `DEFERRED` is an approved future target that requires a later activation
+decision. This file does not authorize implementation beyond the approved
+master plan.
 
-## Contract-committed / V1 plan
+## Current, committed, and deferred plan
 
 | Feature | Status | Owner |
 |---|---|---|
-| Phone + OTP identity UI; admin-seeded Track A identity bridge | COMMITTED | Hub / Quote boundary |
+| Invite-only email/password login | COMMITTED | Hub |
+| Phone + OTP activation, recovery, reassignment, and password-identity revocation | DEFERRED | Hub |
+| Versioned Hub/Quote employee identity link | COMMITTED | Hub / Quote boundary |
 | Multi-department memberships; one active context per paid shift | COMMITTED | Hub memberships, Quote time context |
 | Manager tier designed/tested but unprovisioned | COMMITTED | Hub |
 | Quote-owned canonical day clock, breaks, visits, travel, corrections | COMMITTED | Quote Tool |
@@ -24,7 +27,7 @@ plan.
 | $2.50 accepted-placement piece rate + $17/hr floor true-up | COMMITTED | Quote Tool only |
 | Installer assignment, manual Arrived/Departed, completion draft | COMMITTED | Both |
 | Pending-quality display law and seven-day window | COMMITTED | Quote Tool state; every surface |
-| Four department digests; admins receive all | COMMITTED | Both; Hub composition |
+| Four digest types; admins receive all | COMMITTED | Both; Hub composition |
 | Telegram shared commands, two-stage reply, advertising deep link | COMMITTED | Quote Tool bot |
 | Raw payroll CSV; QuickBooks deferred | COMMITTED | Quote Tool |
 | Six-year wage record / 120-day raw route retention | COMMITTED | Each canonical owner |

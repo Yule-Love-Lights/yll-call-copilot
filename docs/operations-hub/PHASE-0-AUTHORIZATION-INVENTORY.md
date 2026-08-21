@@ -2,11 +2,16 @@
 
 Status: **email/password remains active; staging database verified; phone-auth activation deferred; field provisioning blocked**
 Date: 2026-08-20
-Merged base: PRs #41 through #54 at
-`master@bad885dc85b5d2c255bad8567b21a83f6ab2d4ec`. PR #50 merged the additive
-identity foundation, PR #52 merged the disabled preview-only Phone Auth path,
-PR #53 vendored the canonical contract/schema pack, and PR #54 is the current
-rule baseline. None authorizes Advertising or Installer provisioning.
+Merged base audited through PR #61:
+`master@ba3ecc7fa0d6248353aa75fb79a75d549a2288ba`.
+PR #50 merged the additive identity foundation, PR #52 merged the disabled
+preview-only Phone Auth path, PR #53 vendored the canonical contract/schema
+pack, and PR #54 established the original assistant-managed merge-rule
+baseline. This H0 update extends it with the authenticated-byte bootstrap and
+four-mode order rules. PR #57 reconciled the release ledger, PR #60 merged
+fail-closed hosted-migration tooling without a hosted write, PR #58 merged
+test-only local persona coverage, and PR #61 activated the authenticated
+cross-repository byte gate. None authorizes Advertising or Installer provisioning.
 
 This document records what the merged Phase 0 authorization baseline enforces
 and names the activation gates for staging-only work on the current branch.
@@ -62,10 +67,10 @@ not split across identities.
 
 `src/lib/auth/routePolicy.ts` declares every current App Router surface:
 
-- 24 pages;
-- 74 API route files;
-- 81 exported API handler methods;
-- 105 page/API method combinations in total.
+- 25 pages;
+- 75 API route files;
+- 82 exported API handler methods;
+- 107 page/API method combinations in total.
 
 Each employee policy declares all required capabilities, department,
 paid-context requirement, resource-scope class, sensitivity, and whether an
@@ -222,7 +227,8 @@ This slice does **not** clear the field-user release stop:
    revoked-device writes quarantine for Naldo/Jason review and never
    automatically count toward pay or inventory. Those behaviors are not
    implemented by this foundation. Placement/photo visibility is ruled under
-   Decision 20, but Track B enforcement and hosted persona proof remain open.
+   Decision 20, but Advertising-phase enforcement and hosted persona proof
+   remain open.
 8. The lead-work branch introduces positive metric provenance for future
    reads, but historical derived records that may already combine performance
    and practice data still require a separately reviewed audit and data repair.
@@ -276,10 +282,11 @@ real-provider smokes remain.
 The local PostgreSQL/parser harness applied all 24 migrations and passed the
 seeded legacy upgrade, service-role provisioning and exact retry, deactivation
 denial, all four preflight-failure seeds, and exact manifests of 38 tables, 30
-routines, and 12 triggers. The authored pgTAP suites expect 51 identity and 17
-seeded-upgrade assertions, while default-deny expands to 304 assertions. PR #50
-CI executed the database, upgrade-order, and protective preflight suites
-successfully before the human-authorized merge.
+routines, and 12 triggers. PR #50 historically executed 51 identity and 304
+default-deny assertions. Merged PR #58 expands the current suites to 53
+identity and 307 default-deny assertions; the seeded-upgrade suite remains 17.
+The database, upgrade-order, and protective preflight suites passed before
+each applicable human-authorized merge.
 
 1. Complete hosted semantic persona and real-token PostgREST proof for the
    merged immutable Hub employee/Auth link, active state, membership versioning,
