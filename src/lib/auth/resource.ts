@@ -1,12 +1,17 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseAuthServerClient, getSupabaseServerClient } from '@/lib/supabase';
 import { resolveHubActor, type ActorResolution } from './actor';
+import { resolveIdentityAuthConfiguration } from './config';
 import { hasCapability, type Capability, type HubActor } from './capabilities';
 
 export async function resolveCurrentHubActor(
   providedAuthClient?: SupabaseClient | null,
   providedIdentityClient?: SupabaseClient | null,
 ): Promise<ActorResolution> {
+  const identityConfiguration = providedAuthClient === undefined
+    ? resolveIdentityAuthConfiguration()
+    : { ok: true as const, source: 'hub' as const };
+  if (!identityConfiguration.ok) return { status: 'unavailable' };
   const authClient = providedAuthClient === undefined
     ? await getSupabaseAuthServerClient()
     : providedAuthClient;
@@ -18,8 +23,8 @@ export async function resolveCurrentHubActor(
     return { status: 'denied', reason: 'invalid_session_identity' };
   }
   return providedIdentityClient === undefined
-    ? resolveHubActor(data.user)
-    : resolveHubActor(data.user, providedIdentityClient);
+    ? resolveHubActor({ ...data.user, identitySource: identityConfiguration.source })
+    : resolveHubActor({ ...data.user, identitySource: identityConfiguration.source }, providedIdentityClient);
 }
 
 export type OwnedResourceDecision = 'self' | 'team' | 'denied';
@@ -51,6 +56,7 @@ export async function auditTeamResourceAccess(
     detail: {
       actingEmployeeId: input.actor.employeeId,
       actingAuthUserId: input.actor.authUserId,
+      actingAuthIdentitySource: input.actor.authIdentitySource,
       action: input.action,
       resourceType: input.resourceType,
       resourceId: input.resourceId,
@@ -72,6 +78,7 @@ export async function auditSensitiveRouteAccess(input: {
     detail: {
       actingEmployeeId: input.actor.employeeId,
       actingAuthUserId: input.actor.authUserId,
+      actingAuthIdentitySource: input.actor.authIdentitySource,
       method: input.method,
       routeTemplate: input.routeTemplate,
     },

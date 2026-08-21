@@ -11,6 +11,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "link:quote-tool-identity": "node scripts/link-quote-tool-identity.mjs",
     "verify:auth-config": "node scripts/verify-auth-runtime-config.mjs",
     "verify:ops-contract": "node scripts/verify-operations-contract.mjs",
     "verify:ops-contract:cross-repo": "node scripts/verify-operations-contract.mjs --require-canonical"

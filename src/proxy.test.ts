@@ -33,7 +33,7 @@ function unavailableConfiguration() {
 
 function completeConfiguration() {
   vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
-  vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
+  vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'sb_publishable_1234567890abcdefghij');
   vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'service-role-key');
 }
 
@@ -332,6 +332,7 @@ describe('root authentication proxy', () => {
     expect(mocks.resolveHubActor).toHaveBeenCalledWith({
       id: 'auth-user-1',
       email: 'jason@example.com',
+      identitySource: 'hub',
     });
     expect(response.headers.get('x-middleware-next')).toBe('1');
   });
@@ -343,8 +344,31 @@ describe('root authentication proxy', () => {
 
     const response = await proxy(request('/scoreboard'));
 
-    expect(mocks.resolveHubActor).toHaveBeenCalledWith({ id: 'auth-user-1' });
+    expect(mocks.resolveHubActor).toHaveBeenCalledWith({ id: 'auth-user-1', identitySource: 'hub' });
     expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('uses the Quote Tool Auth session only when explicitly selected and maps its source', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    completeConfiguration();
+    vi.stubEnv('NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE', 'quote_tool');
+    vi.stubEnv('NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL', 'https://quote-auth.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY', 'sb_publishable_1234567890abcdefghij');
+    signedIn();
+
+    const response = await proxy(request('/scoreboard'));
+
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+    expect(mocks.createServerClient).toHaveBeenCalledWith(
+      'https://quote-auth.supabase.co/',
+      'sb_publishable_1234567890abcdefghij',
+      expect.any(Object),
+    );
+    expect(mocks.resolveHubActor).toHaveBeenCalledWith({
+      id: 'auth-user-1',
+      email: 'jason@example.com',
+      identitySource: 'quote_tool',
+    });
   });
 
   it('fails closed when staging phone auth is enabled without Turnstile configuration', async () => {

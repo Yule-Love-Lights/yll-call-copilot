@@ -13,6 +13,11 @@ Decision 25 keeps this invite-only email/password login as the active interim
 path. Phone OTP, Twilio Verify, and Turnstile are deferred; the separate
 staging Supabase project remains in use for migration, RLS, and persona tests.
 
+The staging-only [shared Quote Tool credentials rollout](docs/operations-hub/SHARED-QUOTE-IDENTITY-ROLLOUT.md)
+keeps the two applications separate while allowing an explicitly mapped Hub
+employee to use an existing Quote Tool email/password. It is disabled by
+default and never treats an email match alone as Hub authorization.
+
 Authentication and authorization fail closed: protected pages and non-health APIs return a generic 503 until the complete Supabase configuration is present. Once configured, every employee route requires a signed-in user, a resolved immutable employee actor, and the route's explicit capabilities. The identity-foundation branch preserves existing Office employee UUIDs while adding the new Hub-owned identity and membership model; it does not activate phone OTP.
 
 ## Checks

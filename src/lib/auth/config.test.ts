@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  resolveIdentityAuthConfiguration,
   resolveServerAuthConfiguration,
   type ServerAuthEnvironment,
 } from './config';
 
+const browserKey = 'sb_publishable_1234567890abcdefghij';
+
 const completeEnvironment: ServerAuthEnvironment = {
   NODE_ENV: 'production',
   NEXT_PUBLIC_SUPABASE_URL: 'https://project.supabase.co',
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: 'anon-key',
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: browserKey,
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
 };
 
@@ -16,7 +19,7 @@ describe('resolveServerAuthConfiguration', () => {
     expect(resolveServerAuthConfiguration(completeEnvironment)).toEqual({
       ok: true,
       url: 'https://project.supabase.co/',
-      anonKey: 'anon-key',
+      anonKey: browserKey,
       serviceRoleKey: 'service-role-key',
     });
   });
@@ -87,12 +90,12 @@ describe('resolveServerAuthConfiguration', () => {
     };
     try {
       process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon-key';
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = browserKey;
       process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-key';
       expect(resolveServerAuthConfiguration()).toMatchObject({
         ok: true,
         url: 'https://example.supabase.co/',
-        anonKey: 'anon-key',
+        anonKey: browserKey,
         serviceRoleKey: 'service-key',
       });
     } finally {
@@ -106,7 +109,7 @@ describe('resolveServerAuthConfiguration', () => {
     const saved = process.env.SUPABASE_SERVICE_ROLE_KEY;
     try {
       process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon-key';
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = browserKey;
       delete process.env.SUPABASE_SERVICE_ROLE_KEY;
       expect(resolveServerAuthConfiguration()).toEqual({
         ok: false,
@@ -116,5 +119,55 @@ describe('resolveServerAuthConfiguration', () => {
       if (saved === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
       else process.env.SUPABASE_SERVICE_ROLE_KEY = saved;
     }
+  });
+});
+
+describe('resolveIdentityAuthConfiguration', () => {
+  it('uses the Hub identity project unless an explicit external source is selected', () => {
+    expect(resolveIdentityAuthConfiguration(completeEnvironment)).toEqual({
+      ok: true,
+      source: 'hub',
+      url: 'https://project.supabase.co/',
+      anonKey: browserKey,
+    });
+  });
+
+  it('uses a distinct Quote Tool Auth project only with every explicit public value', () => {
+    expect(resolveIdentityAuthConfiguration({
+      ...completeEnvironment,
+      NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: 'quote_tool',
+      NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: 'https://quote-auth.supabase.co',
+      NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY: browserKey,
+    })).toEqual({
+      ok: true,
+      source: 'quote_tool',
+      url: 'https://quote-auth.supabase.co/',
+      anonKey: browserKey,
+    });
+  });
+
+  it.each([
+    { NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: undefined },
+    { NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: 'https://project.supabase.co' },
+    { NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: 'http://quote-auth.supabase.co' },
+    { NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY: '   ' },
+    { NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: 'anything_else' },
+  ])('fails closed for an incomplete or invalid external identity configuration: %#', overrides => {
+    expect(resolveIdentityAuthConfiguration({
+      ...completeEnvironment,
+      NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: 'quote_tool',
+      NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: 'https://quote-auth.supabase.co',
+      NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY: browserKey,
+      ...overrides,
+    })).toEqual({ ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' });
+  });
+
+  it('rejects an elevated key selected for browser authentication', () => {
+    expect(resolveIdentityAuthConfiguration({
+      ...completeEnvironment,
+      NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: 'quote_tool',
+      NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: 'https://quote-auth.supabase.co',
+      NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY: 'sb_secret_1234567890abcdefghij',
+    })).toEqual({ ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' });
   });
 });

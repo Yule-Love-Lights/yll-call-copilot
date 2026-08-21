@@ -44,6 +44,7 @@ export type HubRole = 'office' | 'advertising' | 'installer' | 'owner_admin';
 export interface HubActor {
   readonly principalType: 'employee';
   readonly authUserId: string;
+  readonly authIdentitySource: 'hub' | 'quote_tool';
   readonly employeeId: string;
   // Existing call/coaching facts still use an email attribution column. This
   // value comes from the UUID-linked employee row, never from auth metadata.
@@ -138,6 +139,7 @@ export function parseOpsEmployeeRole(value: unknown): OpsEmployeeRole | null {
 
 export function buildHubActor(input: {
   authUserId: string;
+  authIdentitySource?: 'hub' | 'quote_tool';
   employeeId: string;
   compatibilityEmail: string;
   employeeRole: OpsEmployeeRole;
@@ -164,6 +166,7 @@ export function buildHubActor(input: {
   return Object.freeze({
     principalType: 'employee',
     authUserId: input.authUserId,
+    authIdentitySource: input.authIdentitySource ?? 'hub',
     employeeId: input.employeeId,
     email: input.compatibilityEmail.toLowerCase(),
     active: true,
