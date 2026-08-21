@@ -42,6 +42,9 @@ version is `1.0.0-draft`.
     repair, and recording-release procedure.
 15. `LIVE-CALLING-ACTIVATION-BLOCKERS.md`: the positive customer-call kill
     switch and the evidence required before live calling may be enabled.
+16. `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md`: approved Quote Tool
+    prerequisites for real Office timing, workload, and quote-origin task
+    data; it is not a canonical-contract amendment.
 
 ## Scoped authority
 
