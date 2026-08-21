@@ -75,6 +75,11 @@ Completed:
   Turnstile token submission, fail-closed session-age enforcement, recording
   sync safeguards, and commitment extraction. Provider activation, recovery,
   reassignment, and password/session revocation remain open.
+- The staged shared-credentials bridge is documented in
+  [`SHARED-QUOTE-IDENTITY-ROLLOUT.md`](SHARED-QUOTE-IDENTITY-ROLLOUT.md). It
+  uses explicit, auditable Quote Tool Auth UUID mappings while keeping Hub
+  roles and authorization independent. It is not configured in staging or
+  production yet.
 - Quote Tool PR #803 published the canonical contract/schema pack, and Hub PR
   #53 vendored it byte-identically. Hub PR #54 established the original
   assistant-managed merge-rule baseline; this H0 update extends it with the

@@ -4,6 +4,7 @@
 // instead of a broken form, same pattern as /login.
 
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { resolveIdentityAuthConfiguration } from '@/lib/auth/config';
 import { resolvePhoneAuthConfiguration } from '@/lib/auth/phoneAuth';
 import { redirect } from 'next/navigation';
 import ForgotPasswordForm from './ForgotPasswordForm';
@@ -12,6 +13,8 @@ export const dynamic = 'force-dynamic';
 
 export default function ForgotPasswordPage() {
   if (resolvePhoneAuthConfiguration().mode !== 'disabled') redirect('/login');
+  const identityConfiguration = resolveIdentityAuthConfiguration();
+  if (identityConfiguration.ok && identityConfiguration.source === 'quote_tool') redirect('/login');
   const configured = isSupabaseConfigured();
 
   return (

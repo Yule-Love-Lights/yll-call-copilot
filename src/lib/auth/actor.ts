@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseServerClient } from '@/lib/supabase';
+import type { HubAuthIdentitySource } from './config';
 import {
   DEPARTMENTS,
   buildHubActor,
@@ -11,6 +12,7 @@ import {
 export interface AuthenticatedUserIdentity {
   readonly id?: unknown;
   readonly email?: unknown;
+  readonly identitySource?: unknown;
 }
 
 export type ActorResolution =
@@ -37,6 +39,18 @@ interface EmployeeAuthIdentityRow {
   id?: unknown;
   employee_id?: unknown;
   auth_user_id?: unknown;
+  state?: unknown;
+  entity_version?: unknown;
+  effective_at?: unknown;
+  revoked_at?: unknown;
+  employee?: unknown;
+}
+
+interface EmployeeExternalIdentityRow {
+  id?: unknown;
+  employee_id?: unknown;
+  issuer?: unknown;
+  subject_user_id?: unknown;
   state?: unknown;
   entity_version?: unknown;
   effective_at?: unknown;
@@ -99,6 +113,37 @@ const EMPLOYEE_AUTH_IDENTITY_SELECT = `
   )
 `;
 
+const EMPLOYEE_EXTERNAL_IDENTITY_SELECT = `
+  id,
+  employee_id,
+  issuer,
+  subject_user_id,
+  state,
+  entity_version,
+  effective_at,
+  revoked_at,
+  employee:ops_employees!inner (
+    id,
+    compatibility_email,
+    role,
+    active,
+    membership_version,
+    entity_version,
+    effective_at,
+    deactivated_at,
+    memberships:ops_employee_department_memberships (
+      state,
+      effective_at,
+      revoked_at,
+      membership_version,
+      department:ops_departments (
+        slug,
+        active
+      )
+    )
+  )
+`;
+
 // Resolves the one immutable Hub-local actor used by request authorization.
 // Supabase auth email/phone metadata is deliberately ignored. The auth UUID
 // resolves through one active, versioned link to the stable employee identity.
@@ -107,25 +152,36 @@ export async function resolveHubActor(
   client: SupabaseClient | null = getSupabaseServerClient(),
 ): Promise<ActorResolution> {
   const authUserId = normalizedUuid(user.id);
-  if (!authUserId) {
+  const identitySource = parseIdentitySource(user.identitySource);
+  if (!authUserId || !identitySource) {
     return { status: 'denied', reason: 'invalid_session_identity' };
   }
   if (!client) return { status: 'unavailable' };
 
-  const { data, error } = await client
-    .from('ops_employee_auth_identities')
-    .select(EMPLOYEE_AUTH_IDENTITY_SELECT)
-    .eq('auth_user_id', authUserId)
-    .eq('state', 'active')
-    .maybeSingle();
+  const { data, error } = identitySource === 'hub'
+    ? await client
+      .from('ops_employee_auth_identities')
+      .select(EMPLOYEE_AUTH_IDENTITY_SELECT)
+      .eq('auth_user_id', authUserId)
+      .eq('state', 'active')
+      .maybeSingle()
+    : await client
+      .from('ops_employee_external_identities')
+      .select(EMPLOYEE_EXTERNAL_IDENTITY_SELECT)
+      .eq('issuer', 'quote_tool')
+      .eq('subject_user_id', authUserId)
+      .eq('state', 'active')
+      .maybeSingle();
 
   if (error) return { status: 'unavailable' };
   if (!data) return { status: 'denied', reason: 'not_staff' };
 
-  const identity = data as EmployeeAuthIdentityRow;
+  const identity = data as EmployeeAuthIdentityRow | EmployeeExternalIdentityRow;
   const identityId = normalizedUuid(identity.id);
   const employeeId = normalizedUuid(identity.employee_id);
-  const linkedAuthUserId = normalizedUuid(identity.auth_user_id);
+  const linkedAuthUserId = identitySource === 'hub'
+    ? normalizedUuid((identity as EmployeeAuthIdentityRow).auth_user_id)
+    : normalizedUuid((identity as EmployeeExternalIdentityRow).subject_user_id);
   const identityVersion = positiveSafeInteger(identity.entity_version);
   const identityEffectiveAt = normalizedTimestamp(identity.effective_at);
   if (
@@ -142,6 +198,12 @@ export async function resolveHubActor(
     !identityEffectiveAt ||
     identityEffectiveAt.getTime() > Date.now() ||
     !isRecord(identity.employee)
+  ) {
+    return { status: 'denied', reason: 'invalid_employee_identity' };
+  }
+  if (
+    identitySource === 'quote_tool'
+    && (identity as EmployeeExternalIdentityRow).issuer !== 'quote_tool'
   ) {
     return { status: 'denied', reason: 'invalid_employee_identity' };
   }
@@ -209,6 +271,7 @@ export async function resolveHubActor(
 
   const actor = buildHubActor({
     authUserId,
+    authIdentitySource: identitySource,
     employeeId,
     compatibilityEmail,
     employeeRole: role,
@@ -217,6 +280,11 @@ export async function resolveHubActor(
   });
   if (!actor) return { status: 'denied', reason: 'manager_unprovisioned' };
   return { status: 'resolved', actor };
+}
+
+function parseIdentitySource(value: unknown): HubAuthIdentitySource | null {
+  if (value === undefined) return 'hub';
+  return value === 'hub' || value === 'quote_tool' ? value : null;
 }
 
 function resolveCurrentMemberships(

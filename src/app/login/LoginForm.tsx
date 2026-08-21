@@ -9,7 +9,13 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 
-export default function LoginForm({ denied }: { denied: boolean }) {
+export default function LoginForm({
+  denied,
+  passwordRecoveryAvailable = true,
+}: {
+  denied: boolean;
+  passwordRecoveryAvailable?: boolean;
+}) {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -91,11 +97,13 @@ export default function LoginForm({ denied }: { denied: boolean }) {
         {submitting ? 'Signing in…' : 'Sign in'}
       </button>
 
-      <p className="text-center text-sm">
-        <Link href="/forgot-password" className="text-[var(--op-dim)] hover:underline">
-          Forgot password?
-        </Link>
-      </p>
+      {passwordRecoveryAvailable && (
+        <p className="text-center text-sm">
+          <Link href="/forgot-password" className="text-[var(--op-dim)] hover:underline">
+            Forgot password?
+          </Link>
+        </p>
+      )}
     </form>
   );
 }

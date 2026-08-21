@@ -16,7 +16,7 @@ describe('isSupabaseConfigured', () => {
   it('uses the strict server auth configuration resolver', () => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
-    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'sb_publishable_1234567890abcdefghij');
     vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'service-role-key');
     expect(isSupabaseConfigured()).toBe(true);
 

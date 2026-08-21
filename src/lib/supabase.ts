@@ -4,7 +4,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
-import { resolveServerAuthConfiguration } from './auth/config';
+import { resolveIdentityAuthConfiguration, resolveServerAuthConfiguration } from './auth/config';
 
 // True when a Postgres/PostgREST error means "this table doesn't exist yet"
 // — a migration may not be applied in every environment while its phase's
@@ -27,7 +27,7 @@ export function isMissingTableError(error: unknown): boolean {
 }
 
 export function isSupabaseConfigured(): boolean {
-  return resolveServerAuthConfiguration().ok;
+  return resolveIdentityAuthConfiguration().ok;
 }
 
 // Server-only client using the service role key — full access, never expose
@@ -46,7 +46,7 @@ export function getSupabaseServerClient(): SupabaseClient | null {
 // Data access keeps going through getSupabaseServerClient(); this one is for
 // auth. cookies() is async in Next 16, hence the await.
 export async function getSupabaseAuthServerClient(): Promise<SupabaseClient | null> {
-  const configuration = resolveServerAuthConfiguration();
+  const configuration = resolveIdentityAuthConfiguration();
   if (!configuration.ok) return null;
   const cookieStore = await cookies();
   return createServerClient(configuration.url, configuration.anonKey, {
