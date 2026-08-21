@@ -20,6 +20,7 @@ import { summarizeHomeTrend } from '@/lib/scoreboard/homeTrendSummary';
 import { resolveCurrentHubActor } from '@/lib/auth/resource';
 import HomeConnectionPanel from './HomeConnectionPanel';
 import { redirect } from 'next/navigation';
+import OfficeWorkdayCard from './OfficeWorkdayCard';
 
 // Config + session are read per-request, not baked at build time -- same
 // reasoning as /login and /contacts.
@@ -197,6 +198,8 @@ export default async function Home() {
           <span className="text-[13.5px] text-[var(--op-dim)]">{queuesLine}</span>
         </div>
       </div>
+
+      <OfficeWorkdayCard />
 
       <div className="mt-10">
         <HomeConnectionPanel />

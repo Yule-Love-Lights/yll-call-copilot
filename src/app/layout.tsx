@@ -3,8 +3,8 @@ import "./globals.css";
 import CoachNav from "./CoachNav";
 
 export const metadata: Metadata = {
-  title: "YLL Call Copilot",
-  description: "Call copilot for Yule Love Lights reps",
+  title: "Yule Love Lights Operations Hub",
+  description: "Office call and coaching tools for Yule Love Lights",
 };
 
 export default function RootLayout({
