@@ -2,9 +2,11 @@
 
 Status: **owner-approved; contract/schema mirror current; staging database verified; phone-auth activation deferred; field provisioning blocked**
 Updated: 2026-08-20
-Merged Hub source: PRs #37 and #40 through #54 at
-`master@bad885dc85b5d2c255bad8567b21a83f6ab2d4ec`. The current contract and
-schema artifact pins are recorded in `SOURCE-PINS.md`.
+Merged Hub source audited through PR #58:
+`master@2574935f2710ca2ed08b2742e77463bea7ca758d`. This includes the approved
+baseline through PR #54, release-ledger PR #57, migration-reconciliation PR
+#60, and persona-coverage PR #58. The current contract and schema artifact
+pins are recorded in `SOURCE-PINS.md`.
 
 This pack is the reconciled and approved source for the Operations Hub.
 Quote Tool PR #701 established the original canonical baseline, PR #716 made it
@@ -35,7 +37,10 @@ version is `1.0.0-draft`.
     blocks.
 13. `PHASE-0-RLS-RUNBOOK.md` — the API-only database boundary, CI proof,
     hosted preflight, safe rollout order, and remaining identity tests.
-14. `LIVE-CALLING-ACTIVATION-BLOCKERS.md` — the positive customer-call kill
+14. `HOSTED-MIGRATION-0017-0024-RUNBOOK.md`: the measured hosted drift,
+    production-shaped rehearsal, exact reconciliation, migration-history
+    repair, and recording-release procedure.
+15. `LIVE-CALLING-ACTIVATION-BLOCKERS.md`: the positive customer-call kill
     switch and the evidence required before live calling may be enabled.
 
 ## Scoped authority
@@ -71,8 +76,22 @@ Completed:
   sync safeguards, and commitment extraction. Provider activation, recovery,
   reassignment, and password/session revocation remain open.
 - Quote Tool PR #803 published the canonical contract/schema pack, and Hub PR
-  #53 vendored it byte-identically. Hub PR #54 is the current merged rule
-  baseline.
+  #53 vendored it byte-identically. Hub PR #54 established the original
+  assistant-managed merge-rule baseline; this H0 update extends it with the
+  authenticated-byte bootstrap and four-mode order rules.
+- Hub PR #57 reconciled the release ledger. PR #60 merged the fail-closed
+  tooling and runbook for a later hosted migration rehearsal without writing
+  staging or production data; it superseded closed, unmerged PR #56. PR #58
+  merged test-only local persona coverage, bringing the identity suite to 53
+  assertions and default-deny to 307. The hosted rehearsal and real-token
+  persona proof remain open.
+- Trusted cross-repository workflow code is present for the fine-grained
+  `OPS_HUB_QUOTE_TOOL_READ_TOKEN`, which must be restricted to Contents: read
+  on the Quote Tool repository. It compares against current Quote Tool
+  `master`. The credential is not configured yet, so authenticated byte CI
+  remains open. The Hub's pure compatibility checker fails closed on
+  missing, malformed, or unsupported versions; it is not live remote
+  version-health proof.
 - Production migration `0019` was applied out of band and verified across the
   31 existing hosted public tables. Production migrations `0020` through
   `0024` remain unapplied. The separate `yll-ops-hub-staging` Supabase project
@@ -85,8 +104,9 @@ Completed:
 
 Phase 0 must now deliver:
 
-- Authenticated CI validation of canonical cross-repository bytes and runtime
-  version compatibility.
+- Configuration and exact-head success of authenticated repository-byte CI
+  through `OPS_HUB_QUOTE_TOOL_READ_TOKEN`.
+- Authenticated Quote Tool runtime version health and live deploy-skew proof.
 - RLS/authorization checklists and impersonated-role tests are defined for
   every field-facing Hub table and endpoint.
 - A production-shaped staging migration rehearsal, hosted persona proof,
@@ -122,9 +142,10 @@ Quote-owned capability and current-context surfaces, hosted identity-persona
 proof, recovery, and
 password/session revocation. Naldo ruled the Advertising placement/photo
 visibility boundary on 2026-08-18; implementation and hosted authorization
-proof remain Track B work.
+proof remain Advertising-phase work.
 
-PRs #35 and #36 are closed as superseded. Merged PR #37 is the only Hub
-planning source. Every implementation PR still requires current gates and a
-new exact-head human merge authorization; the authorized assistant performs
+PRs #35 and #36 are closed as superseded. This reconciled pack, initially
+merged by PR #37 and updated by later approved truth corrections, is the only
+Hub planning source. Every implementation PR still requires current gates and
+a new exact-head human merge authorization; the authorized assistant performs
 the GitHub Ready and Merge actions.

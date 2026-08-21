@@ -2,12 +2,16 @@
 
 Status: **email/password remains active; staging database verified; phone-auth activation deferred; field-user provisioning blocked**
 Date: 2026-08-20
-Merged base: Hub `master@bad885dc85b5d2c255bad8567b21a83f6ab2d4ec`
-after the human-authorized merges through PR #54. PR #50 merged the additive
-identity foundation, PR #52 merged the disabled preview-only phone-auth path,
-PR #53 vendored the canonical schema pack, and PR #54 is the current rule
-baseline. Provider, persona, runtime integration, and field-launch gates remain
-open.
+Merged base audited through PR #58: Hub
+`master@2574935f2710ca2ed08b2742e77463bea7ca758d`.
+PR #50 merged the additive identity foundation, PR #52 merged the disabled
+preview-only phone-auth path, PR #53 vendored the canonical schema pack, and PR
+#54 established the original assistant-managed merge-rule baseline. This H0
+update extends it with the authenticated-byte bootstrap and four-mode order
+rules. PR #57 reconciled the release ledger, PR #60 merged fail-closed
+hosted-migration tooling without performing a hosted write, and PR #58 merged
+test-only local persona coverage. Provider, hosted persona, runtime integration,
+and field-launch gates remain open.
 
 This checklist records the actual repository baseline and the safety gates that
 must precede Advertising or Installer accounts. It does not authorize Hub-owned
@@ -92,15 +96,29 @@ RLS, and impersonated-role gates below pass.
       schema version `1.0.0-draft`.
 - [x] Hub vendors the manifest, OpenAPI, and JSON Schema files
       byte-identically and pins each byte length and SHA-256.
-- [ ] A required authenticated CI job fetches the Quote file at the pinned
-      commit and compares it as data without executing PR-authored code.
-- [ ] Contract, schema, and supported-version deploy smoke fails closed on skew.
+- [x] The trusted CI workflow code is present to use the fine-grained
+      `OPS_HUB_QUOTE_TOOL_READ_TOKEN`, check out current Quote Tool `master`,
+      and compare the canonical contract and schema files as data. It fails
+      rather than skips when the credential is absent. Pull-request-authored
+      verifier code is never executed with the secret.
+- [ ] Configure `OPS_HUB_QUOTE_TOOL_READ_TOKEN` with Contents: read access only
+      on `Yule-Love-Lights/yll-quote-tool`, then prove the authenticated byte
+      job succeeds on the exact pull-request head and merged default branch.
+- [x] The Hub compatibility evaluator uses a positive allowlist derived from
+      the pinned manifest; its value gate returns unavailable for missing,
+      malformed, or unsupported contract/schema versions.
+- [ ] The Quote Tool exposes authenticated live version health, and the
+      deployment smoke reports the running client version and fails closed on
+      contract/schema skew.
 
-The cross-repository CI job needs a read-only GitHub App or fine-grained token
-that can read the private Quote repository. It must live in a trusted workflow,
-must not use `pull_request_target` to execute PR code, and must fail—not skip—if
-credentials are absent. Until that credential path is approved, CI performs
-only the honestly named local pin check.
+The required fine-grained token must be restricted to
+`Yule-Love-Lights/yll-quote-tool` with Contents: read only; the workflow does
+not persist it after checkout. It is not configured yet, so authenticated byte
+CI remains open. Once it passes, that job proves the repository artifacts on
+current Quote Tool `master`. The
+environment-independent Hub compatibility evaluator is a pure fail-closed
+checker, not evidence that a live Quote Tool endpoint exists or returned
+authenticated version health.
 
 ## 3. Identity and API authorization
 
@@ -221,8 +239,9 @@ only the honestly named local pin check.
       exact placement evidence plus non-sensitive team totals, approved
       campaign coverage, hotspots, and avoid zones; only Naldo/Jason see every
       employee's exact placement evidence and route history.
-- [ ] Track B enforces Decision 20 in API authorization, RLS/read models, maps,
-      photos, notes, history, and impersonated-role tests before field launch.
+- [ ] The Advertising phase enforces Decision 20 in API authorization,
+      RLS/read models, maps, photos, notes, history, and impersonated-role tests
+      before field launch.
 - [ ] Before field actors are enabled, replace the Office-only required
       compatibility-email projection with an actor/attribution shape that lets
       phone-only Advertising and Installer identities resolve without inventing
@@ -250,8 +269,9 @@ only the honestly named local pin check.
 - [ ] Legacy `src/lib/quoteTool.ts` remains read-only; new integration uses only
       the canonical `/api/ops/v1` boundary.
 
-Current branch inventory includes 24 pages and 74 API route files (81 handler
-methods), all declared in `src/lib/auth/routePolicy.ts`. The 12 legacy
+Current branch inventory includes 24 pages, 75 API route files, 82 exported
+handler methods, and 106 page/API-method surfaces in total, all declared in
+`src/lib/auth/routePolicy.ts`. The 12 legacy
 route-level role lookups now return only closed least-privileged values. See
 `PHASE-0-AUTHORIZATION-INVENTORY.md` for the capability matrix and remaining
 resource-scope, audit, identity-projection, and cross-repository gaps.
@@ -318,23 +338,25 @@ checks were green.
 Migration `0023` extends the reviewed manifest to 38 tables, 27 routines, and
 12 triggers. The local PostgreSQL/parser harness applied all 24 migrations,
 passed the seeded legacy upgrade, exact provisioning retry and deactivation
-denial, and matched all four protective preflight failures. PR #50 CI passed
-51 identity-foundation pgTAP assertions, the 304-assertion expanded
-default-deny suite, the 117-assertion lead-work suite, and all seeded migration
-upgrade/preflight jobs before merge.
+denial, and matched all four protective preflight failures. PR #50 CI
+historically passed 51 identity-foundation pgTAP assertions, the 304-assertion
+expanded default-deny suite, the 117-assertion lead-work suite, and all seeded
+migration upgrade/preflight jobs before merge. Merged PR #58 expands the
+current suites to 53 identity-foundation and 307 default-deny assertions.
 
 Claims shaped like inactive, self, wrong-department, stale-membership,
-unlinked, Office, Advertising, Installer, Owner/Admin, and Manager identities
-are also verified unable to override database default deny. That is not the
-semantic persona gate. PR #50 added database tests for preserved employee
-UUIDs, active/inactive and linked/unlinked identity, projection drift,
-deactivation/reactivation, exact provisioning retry/conflict/audit behavior,
-the three-department vocabulary, and Manager's exclusion from departments.
-The following still remain:
+current multi-membership, unlinked, revoked-link, Office, Advertising,
+Installer, Owner, Admin, and Manager identities are also verified unable to
+override database default deny. That is not the semantic persona gate. PR #50
+added database tests for preserved employee UUIDs, active/inactive and
+linked/unlinked identity, projection drift, deactivation/reactivation, exact
+provisioning retry/conflict/audit behavior, the three-department vocabulary,
+and Manager's exclusion from departments. PR #58 closes the local immutable
+self-versus-other ownership and current/revoked/future multi-membership test
+gaps. The following still remain:
 
-- [ ] immutable self-versus-other employee resource tests;
-- [ ] current/stale multi-membership plus Quote-owned department-context
-      integration tests;
+- [ ] Quote-owned department-context integration tests for multi-department
+      employees;
 - [ ] Office, Advertising, Installer, Owner/Admin, and unprovisioned Manager
       server-plus-database integration tests;
 - [ ] hosted owner/ACL/policy/routine/trigger/publication preflight and
@@ -377,12 +399,17 @@ ledger, compensation result, pay-period close, or payroll export.
 6. Additive Hub identity/audit/integration scaffolding (merged in PR #50) and
    disabled preview-only Phone Auth/Turnstile/session-age code (merged in PR
    #52; no provider activation or field provisioning).
-7. Add authenticated cross-repository CI plus version-health and deploy-skew
-   smoke tests for the vendored Quote-owned schemas.
-8. Use the separate staging database to rehearse the production-shaped
-   `0019` to `0024` migration, historical reconciliation, and hosted persona
-   gates. Complete the migration, ledger, and synthetic persona PRs before
-   resuming the phone-auth deployment-gate PR.
+7. Configure the fine-grained, Quote-Tool-only
+   `OPS_HUB_QUOTE_TOOL_READ_TOKEN`, prove authenticated cross-repository byte CI
+   on the exact head, and keep it required. Add the still-missing authenticated
+   Quote Tool version-health endpoint and live deploy-skew smoke for the
+   vendored Quote-owned schemas.
+8. PR #57 reconciled the release ledger, PR #60 merged the fail-closed
+   migration-reconciliation tooling, and PR #58 merged the local synthetic
+   persona coverage. Use the separate staging database to execute the still-open
+   production-shaped `0019` to `0024` migration rehearsal, historical
+   reconciliation, hosted preflight, and real-token persona gates before
+   resuming any phone-auth deployment-gate PR.
 9. Keep invite-only email/password active and phone auth false. A later owner
    decision may resume the dedicated Vercel staging deployment, Twilio Verify,
    Turnstile, recovery, revocation, and real-phone smoke work. Field

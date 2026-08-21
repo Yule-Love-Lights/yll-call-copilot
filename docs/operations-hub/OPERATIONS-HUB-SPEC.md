@@ -3,7 +3,7 @@
 Status: **owner-approved Hub behavior; implementation incomplete**
 Version: `1.3-review-1`
 Approved: 2026-08-07
-Last reconciled: 2026-08-18
+Last reconciled: 2026-08-20
 
 This file is the normative Hub-side behavior specification. Cross-repository
 fields, commands, events, time, pay, and Quote Tool behavior are authoritative
@@ -16,12 +16,34 @@ only after they exist in the merged canonical Quote Tool contract.
 - Existing office/call functionality SHALL remain available during the rename.
 - The primary supported field experience SHALL be an installed PWA on iPhone
   and Android. Browser limitations SHALL be stated honestly.
-- The Hub SHALL use role/department-aware home screens and SHALL route a user
-  with an active Placement Run directly to Camera Mode on every reopen.
+- The Hub SHALL use role/department-aware home screens and SHALL route a
+  non-owner Advertising employee with an active Placement Run directly to
+  Camera Mode on every reopen.
+- The Hub SHALL expose exactly four UI modes: Management, Office, Advertising,
+  and Installer. Management SHALL remain an owner/admin view, not a department
+  membership or paid-work context.
+- Naldo and Jason SHALL always land in Management after sign-in or reopen.
+  Department detail SHALL open as a Management drilldown with an explicit
+  return to Management; it SHALL NOT impersonate an employee or change paid
+  context.
+- Every other employee SHALL have an explicit primary home mode. The Hub SHALL
+  NOT use the last-viewed mode as the next sign-in default. A mode switcher
+  SHALL appear only when the employee has multiple active department
+  memberships.
+- Outside a paid day, the switcher SHALL change view only. During paid work, a
+  department change SHALL use the canonical Quote Tool context switch and fail
+  closed if that operation is unavailable. Hub SHALL reject with review during
+  an active Placement Run or open Installer job segment; that final owner rule
+  requires a canonical P16.2 amendment before it becomes cross-repository
+  contract authority. Open-break final policy remains unresolved, so the
+  current canonical safe default SHALL continue to reject with review.
 
 ## 2. Authentication and authorization
 
-- Authentication SHALL be invite-only phone number plus one-time PIN.
+- Authentication SHALL remain invite-only email/password while Decision 25 is
+  active. Phone OTP, Twilio Verify, Turnstile, recovery/reassignment, and
+  password-identity revocation SHALL remain disabled until a later owner
+  activation decision and their independent gates pass.
 - Naldo and Jason SHALL be the only provisioned owner/admin identities in V1.
 - Roles SHALL include owner/admin, Office, Advertising, and Installer. A Manager
   permission tier SHALL exist in design/tests but SHALL have no V1 assignee.
@@ -94,12 +116,14 @@ The pre-clock home SHALL show non-sensitive schedule summary. After an accepted
 clock-in it SHALL show exact route, jobs, crew, design/load list, job notes,
 arrival/departure actions, completion draft/actions, and personal metrics.
 
-### Owner/admin
+### Management
 
-The home SHALL show all four departments, open identity/time/placement/
-inventory/completion/command exceptions, current operations, digest health,
-contract/deploy versions, and payroll-readiness summaries supplied by the Quote
-Tool.
+The home SHALL show all three employee departments, open identity/time/
+placement/completion/command exceptions, inventory-reconciliation exception
+counts, current operations, digest health, contract/deploy versions, and
+payroll-readiness summaries supplied by the Quote Tool. Sign-inventory stock,
+allocation, and item detail SHALL live inside the Advertising drilldown, not on
+the Management home.
 
 ## 5. Canonical day clock capture
 
@@ -382,8 +406,10 @@ An accepted placement MAY later receive an append-only `reversed` event.
 
 - Hub SHALL compose four separate digests: Office, Advertising, Install, and
   Management.
-- Each department digest SHALL combine attendance and operational facts. Naldo
-  and Jason SHALL receive all four.
+- The Office, Advertising, and Install digest types SHALL combine their
+  department's attendance and operational facts. Management SHALL combine
+  authorized cross-department owner/admin facts without becoming a department
+  or paid-work context. Naldo and Jason SHALL receive all four.
 - "Per-department recipients" remains an owner configuration decision. Until
   that rule is approved, the Hub SHALL NOT infer that every active department
   member receives a department-wide digest.
