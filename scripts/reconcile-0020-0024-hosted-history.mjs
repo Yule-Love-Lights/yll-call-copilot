@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const SUPABASE_VERSION = '2.112.0';
 const MIGRATIONS_DIR = fileURLToPath(new URL('../supabase/migrations/', import.meta.url));
+const PROJECT_REF = /^[a-z0-9]{20}$/;
 
 const GENERATED = Object.freeze([
   { version: '20260819235532', name: '0017_live_dial_grants' },
@@ -283,8 +284,21 @@ function parseConfig(argv = process.argv.slice(2), env = process.env) {
   if (!dbUrl || !expectedRef) {
     throw new Error('SUPABASE_DB_URL and YLL_EXPECTED_SUPABASE_PROJECT_REF are required');
   }
+  if (!PROJECT_REF.test(expectedRef)) {
+    throw new Error('YLL_EXPECTED_SUPABASE_PROJECT_REF is not a canonical hosted project reference');
+  }
   const parsed = new URL(dbUrl);
-  if (!`${parsed.hostname}|${decodeURIComponent(parsed.username)}`.includes(expectedRef)) {
+  if (!['postgres:', 'postgresql:'].includes(parsed.protocol) || parsed.pathname !== '/postgres') {
+    throw new Error('SUPABASE_DB_URL is not a canonical hosted Postgres connection URL');
+  }
+  const hostname = parsed.hostname.toLowerCase();
+  const username = decodeURIComponent(parsed.username);
+  const isDirectConnection =
+    hostname === `db.${expectedRef}.supabase.co` && username === 'postgres';
+  const isPoolerConnection =
+    /^[a-z0-9-]+\.pooler\.supabase\.com$/.test(hostname) &&
+    username === `postgres.${expectedRef}`;
+  if (!isDirectConnection && !isPoolerConnection) {
     throw new Error('SUPABASE_DB_URL does not match YLL_EXPECTED_SUPABASE_PROJECT_REF');
   }
   return { localContainer: null, dbUrl };

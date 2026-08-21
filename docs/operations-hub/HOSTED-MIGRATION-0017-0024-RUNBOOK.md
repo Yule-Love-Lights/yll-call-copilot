@@ -5,7 +5,9 @@ Date: 2026-08-20
 Project: `mjmociuxxxwxvasnpxav` (Supabase, `us-east-2`, PostgreSQL 17.6.1.141)
 Hosted state: **0017 and 0018 ledger-applied; 0019 schema-applied out of band;
 0020 to 0024 absent**
-Staging: **not configured** (no Supabase branch or separate staging project exists)
+Staging: `yll-ops-hub-staging` (`ewbtkrytrnerypdkuimd`) exists with the clean
+`0001` through `0024` target verified; the sanitized production-shaped
+rehearsal remains pending
 
 This runbook covers the measured hosted state. It does not supersede
 `PHASE-0-RLS-RUNBOOK.md`. That runbook's staging, backup, smoke, and production
@@ -63,9 +65,12 @@ the cursor defect or the 42 GHL 422 rows with the schema incident.
 
 ## 3. Staging gate
 
-Create a separate staging project and restore a sanitized current-state copy.
-A Supabase preview branch alone is insufficient because preview branches do
-not copy production data. The staging fixture must reproduce:
+Use the existing separate `yll-ops-hub-staging` project for this rehearsal.
+Its clean `0001` through `0024` proof does not exercise the mixed production
+starting state. Before replacing that clean staging database, take a protected
+staging dump, verify the exact staging project reference, and restore a
+sanitized current-state copy. Never restore production customer data into
+staging. The staging fixture must reproduce:
 
 - the exact two-row migration ledger;
 - the schema after out-of-band 0019;

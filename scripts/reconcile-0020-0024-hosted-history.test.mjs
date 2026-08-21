@@ -53,17 +53,62 @@ describe('hosted migration history reconciliation', () => {
   });
 
   it('binds hosted operation to the expected project reference', () => {
+    const expectedRef = 'abcdefghijklmnopqrst';
     expect(
       parseConfig([], {
-        SUPABASE_DB_URL: 'postgresql://postgres.abc123:secret@pooler.example/postgres',
-        YLL_EXPECTED_SUPABASE_PROJECT_REF: 'abc123',
+        SUPABASE_DB_URL:
+          'postgresql://postgres.abcdefghijklmnopqrst:secret@aws-0-us-east-2.pooler.supabase.com/postgres',
+        YLL_EXPECTED_SUPABASE_PROJECT_REF: expectedRef,
+      }),
+    ).toMatchObject({ localContainer: null });
+    expect(
+      parseConfig([], {
+        SUPABASE_DB_URL:
+          'postgresql://postgres:secret@db.abcdefghijklmnopqrst.supabase.co/postgres',
+        YLL_EXPECTED_SUPABASE_PROJECT_REF: expectedRef,
       }),
     ).toMatchObject({ localContainer: null });
     expect(() =>
       parseConfig([], {
-        SUPABASE_DB_URL: 'postgresql://postgres.wrong:secret@pooler.example/postgres',
-        YLL_EXPECTED_SUPABASE_PROJECT_REF: 'abc123',
+        SUPABASE_DB_URL:
+          'postgresql://postgres.wrongabcdefghijklmnopqrst:secret@aws-0-us-east-2.pooler.supabase.com/postgres',
+        YLL_EXPECTED_SUPABASE_PROJECT_REF: expectedRef,
       }),
     ).toThrow(/does not match/);
+    expect(() =>
+      parseConfig([], {
+        SUPABASE_DB_URL:
+          'postgresql://postgres.abcdefghijklmnopqrst:secret@pooler.attacker.invalid/postgres',
+        YLL_EXPECTED_SUPABASE_PROJECT_REF: expectedRef,
+      }),
+    ).toThrow(/does not match/);
+    expect(() =>
+      parseConfig([], {
+        SUPABASE_DB_URL:
+          'postgresql://postgres:secret@db.abcdefghijklmnopqrst.supabase.co.attacker.invalid/postgres',
+        YLL_EXPECTED_SUPABASE_PROJECT_REF: expectedRef,
+      }),
+    ).toThrow(/does not match/);
+    expect(() =>
+      parseConfig([], {
+        SUPABASE_DB_URL:
+          'postgresql://postgres.short:secret@aws-0-us-east-2.pooler.supabase.com/postgres',
+        YLL_EXPECTED_SUPABASE_PROJECT_REF: 'short',
+      }),
+    ).toThrow(/canonical hosted project reference/);
+    expect(() =>
+      parseConfig([], {
+        SUPABASE_DB_URL:
+          'https://postgres:secret@db.abcdefghijklmnopqrst.supabase.co/postgres',
+        YLL_EXPECTED_SUPABASE_PROJECT_REF: expectedRef,
+      }),
+    ).toThrow(/canonical hosted Postgres connection URL/);
+    expect(() =>
+      parseConfig([], {
+        SUPABASE_DB_URL:
+          'postgresql://postgres:secret@db.abcdefghijklmnopqrst.supabase.co/template1',
+        YLL_EXPECTED_SUPABASE_PROJECT_REF: expectedRef,
+      }),
+    ).toThrow(/canonical hosted Postgres connection URL/);
   });
 });
