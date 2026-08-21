@@ -2,16 +2,17 @@
 
 Status: **email/password remains active; staging database verified; phone-auth activation deferred; field-user provisioning blocked**
 Date: 2026-08-20
-Merged base audited through PR #58: Hub
-`master@2574935f2710ca2ed08b2742e77463bea7ca758d`.
+Merged base audited through PR #61: Hub
+`master@ba3ecc7fa0d6248353aa75fb79a75d549a2288ba`.
 PR #50 merged the additive identity foundation, PR #52 merged the disabled
 preview-only phone-auth path, PR #53 vendored the canonical schema pack, and PR
 #54 established the original assistant-managed merge-rule baseline. This H0
 update extends it with the authenticated-byte bootstrap and four-mode order
 rules. PR #57 reconciled the release ledger, PR #60 merged fail-closed
-hosted-migration tooling without performing a hosted write, and PR #58 merged
-test-only local persona coverage. Provider, hosted persona, runtime integration,
-and field-launch gates remain open.
+hosted-migration tooling without performing a hosted write, PR #58 merged
+test-only local persona coverage, and PR #61 activated the authenticated
+cross-repository byte gate. Provider, hosted persona, runtime integration, and
+field-launch gates remain open.
 
 This checklist records the actual repository baseline and the safety gates that
 must precede Advertising or Installer accounts. It does not authorize Hub-owned
@@ -101,9 +102,9 @@ RLS, and impersonated-role gates below pass.
       and compare the canonical contract and schema files as data. It fails
       rather than skips when the credential is absent. Pull-request-authored
       verifier code is never executed with the secret.
-- [ ] Configure `OPS_HUB_QUOTE_TOOL_READ_TOKEN` with Contents: read access only
-      on `Yule-Love-Lights/yll-quote-tool`, then prove the authenticated byte
-      job succeeds on the exact pull-request head and merged default branch.
+- [x] `OPS_HUB_QUOTE_TOOL_READ_TOKEN` is configured with Contents: read-only
+      access to `Yule-Love-Lights/yll-quote-tool`; the authenticated byte job
+      succeeded on the first merged default-branch run after PR #61.
 - [x] The Hub compatibility evaluator uses a positive allowlist derived from
       the pinned manifest; its value gate returns unavailable for missing,
       malformed, or unsupported contract/schema versions.
@@ -111,11 +112,10 @@ RLS, and impersonated-role gates below pass.
       deployment smoke reports the running client version and fails closed on
       contract/schema skew.
 
-The required fine-grained token must be restricted to
+The required fine-grained token is restricted to
 `Yule-Love-Lights/yll-quote-tool` with Contents: read only; the workflow does
-not persist it after checkout. It is not configured yet, so authenticated byte
-CI remains open. Once it passes, that job proves the repository artifacts on
-current Quote Tool `master`. The
+not persist it after checkout. Its first default-branch run passed, proving the
+repository artifacts on current Quote Tool `master` at that run. The
 environment-independent Hub compatibility evaluator is a pure fail-closed
 checker, not evidence that a live Quote Tool endpoint exists or returned
 authenticated version health.
@@ -269,8 +269,8 @@ authenticated version health.
 - [ ] Legacy `src/lib/quoteTool.ts` remains read-only; new integration uses only
       the canonical `/api/ops/v1` boundary.
 
-Current branch inventory includes 24 pages, 75 API route files, 82 exported
-handler methods, and 106 page/API-method surfaces in total, all declared in
+Current branch inventory includes 25 pages, 75 API route files, 82 exported
+handler methods, and 107 page/API-method surfaces in total, all declared in
 `src/lib/auth/routePolicy.ts`. The 12 legacy
 route-level role lookups now return only closed least-privileged values. See
 `PHASE-0-AUTHORIZATION-INVENTORY.md` for the capability matrix and remaining

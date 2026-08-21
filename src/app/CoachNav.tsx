@@ -100,7 +100,12 @@ export default function CoachNav() {
     };
   }, []);
 
-  if (pathname === '/login' || pathname === '/forgot-password' || pathname === '/reset-password') return null;
+  if (
+    pathname === '/management' ||
+    pathname === '/login' ||
+    pathname === '/forgot-password' ||
+    pathname === '/reset-password'
+  ) return null;
 
   const countFor = (badge?: 'feedback') => (badge === 'feedback' ? feedbackCount : 0);
 

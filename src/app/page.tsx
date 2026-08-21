@@ -17,7 +17,9 @@ import { getSessionEmail } from '@/lib/auth/session';
 import { loadCallScores } from '@/lib/scoreboard/loader';
 import { buildRepStat, type CallScoreRow } from '@/lib/scoreboard/stats';
 import { summarizeHomeTrend } from '@/lib/scoreboard/homeTrendSummary';
+import { resolveCurrentHubActor } from '@/lib/auth/resource';
 import HomeConnectionPanel from './HomeConnectionPanel';
+import { redirect } from 'next/navigation';
 
 // Config + session are read per-request, not baked at build time -- same
 // reasoning as /login and /contacts.
@@ -42,6 +44,11 @@ function firstNameFromEmail(email: string | null): string | null {
 }
 
 export default async function Home() {
+  const actorResolution = await resolveCurrentHubActor();
+  if (actorResolution.status === 'resolved' && actorResolution.actor.role === 'owner_admin') {
+    redirect('/management');
+  }
+
   const configured = isSupabaseConfigured();
   const repEmail = configured ? await getSessionEmail() : null;
   const firstName = firstNameFromEmail(repEmail);
