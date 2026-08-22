@@ -20,10 +20,26 @@ const strongSecret = name => {
   }
 };
 
-required('NEXT_PUBLIC_SUPABASE_URL');
-required('NEXT_PUBLIC_SUPABASE_ANON_KEY');
-required('SUPABASE_SERVICE_ROLE_KEY');
-strongSecret('CRON_SECRET');
+const authConfigurationNames = [
+  'NEXT_PUBLIC_SUPABASE_URL',
+  'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'CRON_SECRET',
+  'NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE',
+  'NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL',
+  'NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY',
+  'HUB_OWNER_ADMIN_AUTH_USER_IDS',
+];
+const unconfiguredPreview =
+  process.env.VERCEL_ENV === 'preview'
+  && authConfigurationNames.every(name => !process.env[name]?.trim());
+
+if (!unconfiguredPreview) {
+  required('NEXT_PUBLIC_SUPABASE_URL');
+  required('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  required('SUPABASE_SERVICE_ROLE_KEY');
+  strongSecret('CRON_SECRET');
+}
 
 if (!['preview', 'production'].includes(process.env.VERCEL_ENV)) {
   errors.push('VERCEL_ENV must be exactly preview or production for deployment');
@@ -58,15 +74,17 @@ if (hubPublicKey?.trim() && !isBrowserSafeSupabaseKey(hubPublicKey)) {
 }
 
 const identitySource = process.env.NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE;
-if (!['hub', 'quote_tool'].includes(identitySource)) {
-  errors.push('NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE must be exactly hub or quote_tool');
-} else if (identitySource === 'quote_tool') {
-  if (process.env.VERCEL_ENV !== 'preview') {
-    errors.push('NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE may be quote_tool only when VERCEL_ENV is preview');
+if (!unconfiguredPreview) {
+  if (!['hub', 'quote_tool'].includes(identitySource)) {
+    errors.push('NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE must be exactly hub or quote_tool');
+  } else if (identitySource === 'quote_tool') {
+    if (process.env.VERCEL_ENV !== 'preview') {
+      errors.push('NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE may be quote_tool only when VERCEL_ENV is preview');
+    }
   }
-}
-if (process.env.VERCEL_ENV === 'production' && identitySource !== 'hub') {
-  errors.push('NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE must be hub in Vercel production');
+  if (process.env.VERCEL_ENV === 'production' && identitySource !== 'hub') {
+    errors.push('NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE must be hub in Vercel production');
+  }
 }
 
 const quoteUrlRaw = process.env.NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL;
@@ -117,7 +135,12 @@ const ownerIds = (process.env.HUB_OWNER_ADMIN_AUTH_USER_IDS ?? '')
   .filter(Boolean)
   .map(value => value.toLowerCase());
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-if (ownerIds.length !== 2 || new Set(ownerIds).size !== 2 || ownerIds.some(id => !uuid.test(id))) {
+if (
+  !unconfiguredPreview
+  && (ownerIds.length !== 2
+    || new Set(ownerIds).size !== 2
+    || ownerIds.some(id => !uuid.test(id)))
+) {
   errors.push('HUB_OWNER_ADMIN_AUTH_USER_IDS must contain exactly two unique Supabase Auth UUIDs (Naldo and Jason)');
 }
 
@@ -194,4 +217,8 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
-console.log('AUTH_RUNTIME_CONFIG_OK');
+console.log(
+  unconfiguredPreview
+    ? 'AUTH_RUNTIME_CONFIG_OK mode=unconfigured_preview'
+    : 'AUTH_RUNTIME_CONFIG_OK mode=configured',
+);

@@ -66,6 +66,10 @@ access, and it does not change Hub role or membership rules.
    `HUB_OWNER_ADMIN_AUTH_USER_IDS` must be the approved Quote Tool Auth UUIDs
    for those same two people. Do not mix Hub Auth UUIDs with Quote Tool Auth
    UUIDs in that setting.
+   Ordinary non-staging previews do not receive this branch-scoped auth bundle.
+   They may build only in the explicit `unconfigured_preview` mode, where
+   protected requests remain unavailable with a generic 503. Supplying any
+   partial Hub or Quote auth bundle still fails deployment preflight.
 5. Staging has verified that approved mapped users can sign in with their
    existing Quote Tool email/password. The current two mappings remain active
    and static. The unmapped-user, revocation, replacement, and rollback smokes

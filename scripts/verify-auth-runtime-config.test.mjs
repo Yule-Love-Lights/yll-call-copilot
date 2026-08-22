@@ -45,6 +45,27 @@ const previewEnvironment = {
   NEXT_PUBLIC_SUPABASE_URL: stagingHubProjectUrl,
   VERCEL_ENV: 'preview',
 };
+const unconfiguredPreviewEnvironment = {
+  NEXT_PUBLIC_SUPABASE_URL: '',
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: '',
+  SUPABASE_SERVICE_ROLE_KEY: '',
+  NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: '',
+  NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: '',
+  NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY: '',
+  HUB_OWNER_ADMIN_AUTH_USER_IDS: '',
+  CRON_SECRET: '',
+  VERCEL_ENV: 'preview',
+};
+const previewAuthBundleValues = {
+  NEXT_PUBLIC_SUPABASE_URL: stagingHubProjectUrl,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: publishableKey,
+  SUPABASE_SERVICE_ROLE_KEY: 'configured-service-role',
+  NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: 'hub',
+  NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: quoteProjectUrl,
+  NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY: publishableKey,
+  HUB_OWNER_ADMIN_AUTH_USER_IDS: '123e4567-e89b-42d3-a456-426614174000',
+  CRON_SECRET: '0123456789abcdef',
+};
 
 function run(overrides = {}) {
   return spawnSync(process.execPath, [script], {
@@ -54,6 +75,40 @@ function run(overrides = {}) {
 }
 
 describe('authorization runtime preflight', () => {
+  it('allows only a fully unconfigured preview to build in fail-closed mode', () => {
+    const unconfigured = run(unconfiguredPreviewEnvironment);
+    expect(unconfigured.status).toBe(0);
+    expect(unconfigured.stdout).toContain(
+      'AUTH_RUNTIME_CONFIG_OK mode=unconfigured_preview',
+    );
+
+    const production = run({
+      ...unconfiguredPreviewEnvironment,
+      VERCEL_ENV: 'production',
+    });
+    expect(production.status).toBe(1);
+    expect(production.stderr).toContain('NEXT_PUBLIC_SUPABASE_URL is required');
+
+    const enabledWriter = run({
+      ...unconfiguredPreviewEnvironment,
+      CRON_ENABLED: 'true',
+    });
+    expect(enabledWriter.status).toBe(1);
+    expect(enabledWriter.stderr).toContain('CRON_ENABLED must remain false');
+  });
+
+  it.each(Object.entries(previewAuthBundleValues))(
+    'rejects an unconfigured preview when only %s is supplied',
+    (name, value) => {
+      const result = run({
+        ...unconfiguredPreviewEnvironment,
+        [name]: value,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).not.toContain('mode=unconfigured_preview');
+    },
+  );
+
   it('accepts a complete least-privilege baseline without printing values', () => {
     const result = run();
     expect(result.status).toBe(0);
