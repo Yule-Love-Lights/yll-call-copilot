@@ -1,7 +1,7 @@
 # Operations Hub Phase 0 authorization inventory
 
 Status: **email/password remains active; staging database verified; phone-auth activation deferred; field provisioning blocked**
-Date: 2026-08-20
+Date: 2026-08-21
 Merged base audited through PR #61:
 `master@ba3ecc7fa0d6248353aa75fb79a75d549a2288ba`.
 PR #50 merged the additive identity foundation, PR #52 merged the disabled
@@ -111,8 +111,8 @@ issued access does not override a later opt-out. The branch also adds explicit
 `pending`, `performance`, and `training` provenance so operational metrics use
 only positively identified performance records. Application/database checks
 and Vercel passed before/after its human-authorized merge at `9000c683`.
-Railway remained intentionally red because the disabled live-call bridge
-correctly refused to start; this is not field-release evidence.
+The live-call bridge remained positively disabled and provided no field-release
+evidence. Its Railway host was retired on 2026-08-21.
 
 ## 3. Machine callers
 
@@ -273,9 +273,9 @@ Verification on 2026-08-13 passed the pinned-contract check, TypeScript, ESLint,
 lead-work pgTAP assertions, 259 default-deny assertions, 18 legacy-backfill
 assertions, and desktop plus 390px login-shell smokes without overflow or
 console errors. GitHub checks and Vercel then passed before/after the
-human-authorized merge at `9000c683`; Railway correctly remained red because
-the disabled live-call bridge refused to start. Authenticated production and
-real-provider smokes remain.
+human-authorized merge at `9000c683`; the disabled live-call bridge correctly
+refused to start. Its Railway host was retired on 2026-08-21. Authenticated
+production and real-provider smokes remain.
 
 ## 7. Identity-foundation verification and remaining work
 

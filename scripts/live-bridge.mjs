@@ -104,8 +104,8 @@ if (!isAllowedBridgeAppBaseUrl(LIVE_APP_BASE_URL)) {
 
 const deepgram = new DefaultDeepgramClient({ apiKey: DEEPGRAM_API_KEY });
 
-// PORT: a managed host (Railway/Render/Fly) assigns the public port via the
-// PORT env var and expects the process to bind to it; LIVE_BRIDGE_PORT/8787 is
+// PORT: a managed host assigns the public port via the PORT env var and expects
+// the process to bind to it; LIVE_BRIDGE_PORT/8787 is
 // only the local-dev fallback. process.env.PORT wins so the same file runs
 // unchanged whether hosted or local.
 // (see the const PORT line above for the resolved value)
@@ -260,8 +260,8 @@ function handleTwilioConnection(ws, expectedSessionId) {
 }
 
 // Attach the WebSocket server to a plain HTTP server rather than binding the
-// ws server to the port directly. Two reasons: managed hosts (Railway/Render/
-// Fly) health-check the service with an ordinary HTTP GET and mark the deploy
+// ws server to the port directly. Two reasons: managed hosts health-check the
+// service with an ordinary HTTP GET and mark the deploy
 // unhealthy if nothing answers, and the same server both serves that 200 and
 // upgrades the Twilio Media Stream connection on one port. GET / -> "ok".
 const httpServer = createServer((req, res) => {
