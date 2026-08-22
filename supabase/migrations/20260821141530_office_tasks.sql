@@ -186,9 +186,6 @@ begin
   if v_normalized_detail is not null and char_length(v_normalized_detail) > 2000 then
     raise exception using errcode = '22023', message = 'task detail is too long';
   end if;
-  if p_due_at is not null and p_due_at <= now() then
-    raise exception using errcode = '22023', message = 'task due time must be in the future';
-  end if;
   if not exists (
     select 1
     from public.ops_employees as employee
@@ -223,6 +220,10 @@ begin
       raise exception using errcode = '23505', message = 'idempotency key payload conflicts';
     end if;
     return v_task_id;
+  end if;
+
+  if p_due_at is not null and p_due_at <= now() then
+    raise exception using errcode = '22023', message = 'task due time must be in the future';
   end if;
 
   insert into public.ops_tasks (

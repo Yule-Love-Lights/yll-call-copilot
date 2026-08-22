@@ -161,6 +161,9 @@ describe('OfficeTasksCard', () => {
 
   it('reuses the create idempotency key after an ambiguous server failure', async () => {
     const createdTask = task({ title: 'Confirm permit pickup' });
+    const selectedDueAt = '2099-08-22T10:00';
+    const selectedDueAtTime = new Date(selectedDueAt).getTime();
+    const now = vi.spyOn(Date, 'now').mockReturnValue(selectedDueAtTime - 60_000);
     const randomUUID = vi.fn()
       .mockReturnValueOnce(IDEMPOTENCY_KEY)
       .mockReturnValueOnce(NEXT_IDEMPOTENCY_KEY);
@@ -183,9 +186,11 @@ describe('OfficeTasksCard', () => {
     act(() => root.render(<OfficeTasksCard />));
     await settle();
     act(() => changeControl(controlByLabel(container, /task title/i), createdTask.title));
+    act(() => changeControl(controlByLabel(container, /due time/i), selectedDueAt));
 
     act(() => button(container, /^add task$/i).click());
     await settle();
+    now.mockReturnValue(selectedDueAtTime + 60_000);
     act(() => button(container, /^add task$/i).click());
     await settle();
 
@@ -193,6 +198,11 @@ describe('OfficeTasksCard', () => {
     expect(postCalls).toHaveLength(2);
     expect(postCalls.map(([, init]) => new Headers(init?.headers).get('x-idempotency-key')))
       .toEqual([IDEMPOTENCY_KEY, IDEMPOTENCY_KEY]);
+    expect(postCalls.map(([, init]) => JSON.parse(String(init?.body)).dueAt))
+      .toEqual([
+        new Date(selectedDueAt).toISOString(),
+        new Date(selectedDueAt).toISOString(),
+      ]);
     expect(randomUUID).toHaveBeenCalledTimes(1);
     expect(itemFor(container, createdTask.title)).toBeDefined();
   });

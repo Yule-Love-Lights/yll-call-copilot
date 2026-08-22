@@ -232,6 +232,43 @@ select ok(
   'manual task creation records an open self-owned task without fabricated source evidence'
 );
 
+insert into public.ops_tasks (
+  id,
+  title,
+  due_at,
+  created_by_employee_id,
+  assigned_employee_id
+) values (
+  '96100000-0000-4000-8000-000000000030',
+  'Expired replay task',
+  now() - interval '2 hours',
+  '96000000-0000-4000-8000-000000000001',
+  '96000000-0000-4000-8000-000000000001'
+);
+
+insert into public.ops_task_events (
+  task_id,
+  event_type,
+  actor_employee_id,
+  idempotency_key,
+  detail
+) values (
+  '96100000-0000-4000-8000-000000000030',
+  'created',
+  '96000000-0000-4000-8000-000000000001',
+  '96200000-0000-4000-8000-000000000030',
+  jsonb_build_object(
+    'operation', 'create_manual',
+    'title', 'Expired replay task',
+    'detail', null,
+    'due_at', (
+      select due_at
+      from public.ops_tasks
+      where id = '96100000-0000-4000-8000-000000000030'
+    )
+  )
+);
+
 set local role service_role;
 select is(
   public.ops_create_manual_task(
@@ -247,6 +284,37 @@ select is(
     where label = 'default-due'
   ),
   'an exact manual-create replay returns the original task'
+);
+
+select is(
+  public.ops_create_manual_task(
+    'Expired replay task',
+    null,
+    (
+      select due_at
+      from public.ops_tasks
+      where id = '96100000-0000-4000-8000-000000000030'
+    ),
+    '96000000-0000-4000-8000-000000000001',
+    '96200000-0000-4000-8000-000000000030'
+  ),
+  '96100000-0000-4000-8000-000000000030'::uuid,
+  'an exact manual-create replay succeeds after its explicit due time passes'
+);
+
+select throws_ok(
+  $sql$
+    select public.ops_create_manual_task(
+      'New expired task',
+      null,
+      now() - interval '1 hour',
+      '96000000-0000-4000-8000-000000000001',
+      '96200000-0000-4000-8000-000000000031'
+    )
+  $sql$,
+  '22023',
+  null,
+  'a first-use manual task still requires a future explicit due time'
 );
 
 select throws_ok(

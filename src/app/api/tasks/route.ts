@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
       return taskError('INVALID_DUE_AT', 'Choose a valid future due time.', 400);
     }
     const dueDate = new Date(body.dueAt);
-    if (Number.isNaN(dueDate.getTime()) || dueDate.getTime() <= Date.now()) {
+    if (Number.isNaN(dueDate.getTime())) {
       return taskError('INVALID_DUE_AT', 'Choose a valid future due time.', 400);
     }
     dueAt = dueDate.toISOString();

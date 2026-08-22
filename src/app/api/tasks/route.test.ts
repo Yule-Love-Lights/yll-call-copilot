@@ -111,7 +111,7 @@ describe('/api/tasks', () => {
   it('maps a valid manual task payload to a self-owned idempotent RPC', async () => {
     const rpc = vi.fn(async () => ({ data: TASK_ID, error: null }));
     mocks.getSupabaseServerClient.mockReturnValue({ rpc });
-    const dueAt = '2026-08-22T14:00:00.000Z';
+    const dueAt = '2099-08-22T14:00:00.000Z';
 
     const response = await POST(postRequest({
       title: 'Confirm permit pickup',
@@ -130,6 +130,27 @@ describe('/api/tasks', () => {
     });
     const rpcCall = rpc.mock.calls[0] as unknown as [string, Record<string, unknown>];
     expect(rpcCall[1]).not.toHaveProperty('p_assigned_employee_id');
+  });
+
+  it('lets the database resolve an exact replay after its explicit due time passes', async () => {
+    const rpc = vi.fn(async () => ({ data: TASK_ID, error: null }));
+    mocks.getSupabaseServerClient.mockReturnValue({ rpc });
+    const expiredDueAt = '2020-08-22T14:00:00.000Z';
+
+    const response = await POST(postRequest({
+      title: 'Confirm permit pickup',
+      dueAt: expiredDueAt,
+    }, IDEMPOTENCY_KEY));
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ taskId: TASK_ID });
+    expect(rpc).toHaveBeenCalledWith('ops_create_manual_task', {
+      p_title: 'Confirm permit pickup',
+      p_detail: null,
+      p_due_at: expiredDueAt,
+      p_actor_employee_id: EMPLOYEE_ID,
+      p_idempotency_key: IDEMPOTENCY_KEY,
+    });
   });
 
   it('reports an unexpected database failure as a server error', async () => {

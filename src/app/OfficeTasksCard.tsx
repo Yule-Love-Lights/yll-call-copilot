@@ -142,7 +142,9 @@ export default function OfficeTasksCard() {
     let serializedDueAt: string | null = null;
     if (dueAt) {
       const selectedDueAt = new Date(dueAt);
-      if (Number.isNaN(selectedDueAt.getTime()) || selectedDueAt.getTime() <= Date.now()) {
+      const invalidDueAt = Number.isNaN(selectedDueAt.getTime())
+        || (selectedDueAt.getTime() <= Date.now() && createKeyRef.current === null);
+      if (invalidDueAt) {
         setCreateError('Choose a future due time or leave it blank for the 24-hour default.');
         return;
       }
