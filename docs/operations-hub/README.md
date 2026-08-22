@@ -2,23 +2,24 @@
 
 Status: **owner-approved planning baseline; staging rehearsal and shared password login verified; new production execution packet prepared for review but not authorized; field provisioning blocked**
 Updated: 2026-08-22
-Merged Hub source audited through Office task release rehearsal PR #71:
-`master@c1c9146810007d16b47d669f7506b486e0f6733f`. In addition to the Phase 0
+Merged Hub source audited through Flow Q mirror PR #70:
+`master@29809274b12c159c272f3cd2f3ee5143f6d90bc6`. In addition to the Phase 0
 baseline through PR #61, this includes the Management shell in PR #62, shared
 Quote Tool password identity in PR #64, the Office shell/dashboard in PRs #65
 and #67, Railway retirement in PR #69, and the Office task foundation in the
 later-merged PR #68. PR #71 then pinned the timestamped Office migration into
-the release-rehearsal guard. The current contract and schema artifact pins are
-recorded in `SOURCE-PINS.md`.
+the release-rehearsal guard, and PR #70 mirrored the current Flow Q contract
+pack. The current contract and schema artifact pins are recorded in
+`SOURCE-PINS.md`.
 
 This pack contains the reconciled, owner-approved Operations Hub planning
 baseline. The new production execution packet is a proposed operational
 procedure and is not covered by that prior approval. Quote Tool PR #701
 established the original canonical baseline, PR #716 made it self-contained,
 Naldo signed the master plan, and Hub PR #37 was human-merged.
-The current byte-identical mirror is `v1.5.0-draft`, pinned to Quote Tool
-commit `1445c5201f227474321809e0b64dfdb60f81b731`. Its independent schema
-version is `1.1.0-draft`.
+The current byte-identical mirror is `v1.5.0-draft`, pinned to
+Quote Tool PR #878 merge `ad53321eb5cf548bf9fe9adf400a5786a2d4fe44`.
+Its independent schema version is `1.1.0-draft`.
 
 ## Read in this order
 
@@ -93,8 +94,10 @@ Completed:
   the approved mapped users' existing email/password login. Its mappings must
   remain static; revocation/replacement and production activation are blocked
   on source-aware transaction checks and owner-attributed replacement audit.
-- Quote Tool PR #803 published the canonical contract/schema pack, and Hub PR
-  #53 vendored it byte-identically. Hub PR #54 established the original
+- Quote Tool PR #803 published the first canonical contract/schema pack, Hub
+  PR #53 vendored that version byte-identically, and Quote Tool PR #878
+  published the current Flow Q `v1.5.0-draft` / `1.1.0-draft` pack mirrored by
+  Hub PR #70. Hub PR #54 established the original
   assistant-managed merge-rule baseline; this H0 update extends it with the
   authenticated-byte bootstrap and four-mode order rules.
 - Hub PR #57 reconciled the release ledger. PR #60 merged the fail-closed
@@ -144,9 +147,13 @@ Merged PR #50 adds Hub-owned immutable employee, auth-link, active-state,
 membership-version, and local identity-audit scaffolding. PR #52 adds a
 disabled preview-only Phone Auth and Turnstile application path plus the
 30-day session-age check; it does not configure a provider or create field
-accounts. PRs #803 and #53 publish and vendor the cross-boundary contract and
-schema, but the runtime outbox, inbox, DLQ, supported-version envelope, and
-Quote-owned current-context projection are not implemented. The long-term
+accounts. PRs #803 and #53 established the shared contract/schema publication,
+and Quote Tool PR #878 published Flow Q `v1.5.0-draft` / `1.1.0-draft`, now
+mirrored by Hub PR #70. Flow Q still has blocking request/event-schema
+contradictions and omits the merged `office.tasks.work` capability from its
+snapshot enum; those require a corrective canonical PR. Its runtime outbox,
+inbox, DLQ, supported-version envelope, and Quote-owned current-context
+projection are not implemented. The long-term
 approved target remains Supabase Phone Auth with Turnstile, Twilio Verify
 delivery, owner-only recovery, password-identity revocation at activation with
 Supabase-console owner break-glass, and a 30-day maximum Hub session. Decision

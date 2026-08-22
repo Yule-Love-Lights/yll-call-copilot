@@ -198,9 +198,10 @@ Advertising, Installer, Manager, or an arbitrary role. It prints no employee
 identifier, phone, email, password, or provider error detail.
 
 Every existing Office route is labeled `legacy_pending_projection`, not
-"paid context unnecessary." The Quote-owned current-context read does not yet
-exist, so the F4 clock gate remains a release block for exact customer/job
-access rather than being silently represented as disabled policy.
+"paid context unnecessary." Contract v1.5 defines the Quote-owned
+current-context read, but its runtime does not yet exist, so the F4 clock gate
+remains a release block for exact customer/job access rather than being
+silently represented as disabled policy.
 
 No canonical time, pay, job, payroll, or shared-labor data was added. This
 paired artifact branch changes only the approved byte mirrors, their pin,
@@ -210,12 +211,13 @@ verification, tests, and status documentation.
 
 This slice does **not** clear the field-user release stop:
 
-1. The contract requires the Quote Tool to verify explicit Hub capabilities,
-   but the identity events/envelope do not yet transport a capability grant or
-   authorization-policy version. That requires a contract PR in the Quote Tool.
-2. The Quote Tool owns active department-context intervals, but the contract
-   does not yet define a canonical current-context read/projection for the Hub
-   resolver. The Hub must not invent a second context ledger.
+1. Contract v1.5 defines a Hub capability/policy-version snapshot, but its
+   closed capability enum omits the already-merged `office.tasks.work` grant
+   and no transport runtime exists. A corrective Quote Tool contract/schema PR
+   and runtime implementation are required before use.
+2. Contract v1.5 defines the Quote-owned current-context read, but no Quote
+   Tool endpoint or Hub projection runtime exists. The Hub must not invent a
+   second context ledger.
 3. Production must configure and verify exactly the approved Naldo/Jason Auth
    UUID ceiling. This branch may add the immutable employee/auth link while
    preserving existing `app_users.id` values; a role string never grants
@@ -328,9 +330,11 @@ each applicable human-authorized merge.
    implementations may now be built against the vendored canonical schema
    under the remaining activation gates.
 2. Audit and repair or invalidate historical derived performance outputs.
-3. Land the Quote-owned capability/policy-version transport and current-context
-   projection before consuming those protected facts in the Hub. The canonical
-   shared schema/OpenAPI artifacts are now vendored and pinned.
+3. Correct the canonical capability/event schemas, then land the Quote-owned
+   capability/policy-version transport and current-context projection before
+   consuming those protected facts in the Hub. The current draft schema and
+   OpenAPI artifacts are vendored and pinned for cross-repository drift proof,
+   not runtime activation.
 4. Preserve the completed production-shaped staging migration and historical-
    reconciliation evidence. Use the existing staging project for remaining
    RLS, real-key denial, and hosted-persona proof. Keep

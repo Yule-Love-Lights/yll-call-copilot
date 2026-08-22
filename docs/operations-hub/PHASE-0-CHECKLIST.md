@@ -2,8 +2,8 @@
 
 Status: **email/password remains active; staging rehearsal and shared login verified; production migration and field-user provisioning blocked**
 Date: 2026-08-22
-Merged base audited through Office task release rehearsal PR #71: Hub
-`master@c1c9146810007d16b47d669f7506b486e0f6733f`.
+Merged base audited through Flow Q mirror PR #70: Hub
+`master@29809274b12c159c272f3cd2f3ee5143f6d90bc6`.
 PR #50 merged the additive identity foundation, PR #52 merged the disabled
 preview-only phone-auth path, PR #53 vendored the canonical schema pack, and PR
 #54 established the original assistant-managed merge-rule baseline. This H0
@@ -14,7 +14,8 @@ PR #61 activated the authenticated cross-repository byte gate. PRs #62, #64,
 #65, and #67 added Management, shared Quote identity, and the Office shell and
 dashboard; PR #69 retired Railway; and the later-merged PR #68 added the Office
 task foundation. PR #71 pinned its timestamped migration into the exact
-release-rehearsal guard. Provider, hosted persona, runtime integration,
+release-rehearsal guard, and PR #70 mirrored the current Flow Q contract pack.
+Provider, hosted persona, runtime integration,
 production migration, and field-launch gates remain open.
 
 This checklist records the actual repository baseline and the safety gates that
@@ -95,7 +96,7 @@ RLS, and impersonated-role gates below pass.
 - [x] Quote Tool PR #701 established the `v1.3.0-draft` baseline and PR #716
       made it self-contained. The current canonical/mirror pin is
       `v1.5.0-draft` at Quote commit
-      `1445c5201f227474321809e0b64dfdb60f81b731`.
+      `ad53321eb5cf548bf9fe9adf400a5786a2d4fe44` after Quote Tool PR #878.
 - [x] The paired Hub mirror copies the current contract exactly: 63,985 bytes,
       SHA-256 `934506c96969f881a7252a4da04852720682a0d66efc20c7ad79e950d34dcecf`.
 - [x] `contract-pin.json` records one version, source commit/path, byte length,
@@ -108,6 +109,11 @@ RLS, and impersonated-role gates below pass.
       schema version `1.1.0-draft`.
 - [x] Hub vendors the manifest, OpenAPI, and JSON Schema files
       byte-identically and pins each byte length and SHA-256.
+- [ ] Before Flow Q implementation, Quote Tool must correct the merged draft's
+      request-event and event-specific schema contradictions plus the missing
+      `office.tasks.work` capability, bump the canonical versions, and Hub must
+      mirror the corrected bytes. The current byte-identical draft pin does
+      not authorize either runtime.
 - [x] The trusted CI workflow code is present to use the fine-grained
       `OPS_HUB_QUOTE_TOOL_READ_TOKEN`, check out current Quote Tool `master`,
       and compare the canonical contract and schema files as data. It fails
@@ -402,8 +408,10 @@ PR #50 added Hub-owned versions of:
 - `ops_employee_department_memberships`
 - `ops_identity_audit_events`
 
-Quote Tool PR #803 published the canonical shared manifest, OpenAPI, and JSON
-Schema, and Hub PR #53 vendored them byte-identically. Publication does not
+Quote Tool PR #803 first published the shared schema pack, Hub PR #53 vendored
+that version, and Quote Tool PR #878 advanced the canonical contract/schema to
+Flow Q `v1.5.0-draft` / `1.1.0-draft`; Hub PR #70 vendors those bytes.
+Publication does not
 implement the runtime outbox/inbox/DLQ, supported-version envelope, capability
 grant transport, or Quote-owned current-context projection. Those remain Phase
 0 dependencies at the repository boundary.

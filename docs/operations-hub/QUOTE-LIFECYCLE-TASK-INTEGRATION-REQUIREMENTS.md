@@ -1,7 +1,7 @@
 # Quote lifecycle and task integration requirements
 
-Status: **approved requirements; Quote Tool canonical-contract work required before implementation**
-Updated: 2026-08-21
+Status: **Flow Q canonical draft merged; corrective schema and runtime implementation still required**
+Updated: 2026-08-22
 
 ## Purpose
 
@@ -11,11 +11,23 @@ quotes, assignments, lifecycle facts, customer delivery, paid workday data,
 and every `/api/ops/v1` endpoint. Operations Hub remains the source of truth
 for Hub tasks and their Office presentation.
 
-This document specifies the Quote Tool change required before Hub consumes
-real quote timing or quote-origin task facts. It does not amend the canonical
-contract, OpenAPI, or JSON Schema. The Quote Tool change must originate those
-artifacts, receive the required owner decision, and then be mirrored
-byte-identically in this repository.
+Quote Tool PR #878 merged canonical Flow Q as contract `v1.5.0-draft` and
+schema `1.1.0-draft`; this branch mirrors those files byte-identically. The
+canonical contract now controls exact cross-repository behavior. This document
+remains a Hub implementation and release checklist and does not amend the
+contract, OpenAPI, or JSON Schema.
+
+The merged draft is not implementation-ready. Its normative text allows a
+`QuoteRequestReceived` before any quote exists and requires stable request and
+source identifiers, while the shared `QuoteLifecycleEvent` schema requires a
+non-null `quote_id`, makes `request_id` optional, and omits the required source
+pair. The same flat event schema omits several event-specific fields required
+by the contract and allows envelope `entity_version = 0` even though Flow Q
+starts quote versions at one. Its closed `HubCapability` enum also omits the
+Hub's already-merged `office.tasks.work` grant, so it cannot represent a
+complete current Office authorization snapshot. A corrective Quote Tool
+contract/schema PR must resolve those contradictions and be mirrored here
+before either repository implements or activates Flow Q.
 
 ## Current boundary and non-claims
 
@@ -30,10 +42,10 @@ The current Quote Tool dashboard metric is not approved turnaround data:
   send, meaningful-edit history, explicit wait interval, revision history, or
   quote lifecycle event stream.
 
-Until the requirements below are delivered and versioned, Hub must show an
-explicit unavailable state for real Quote Tool timing, workload, and
-quote-origin task data. It must not infer those values from contacts, inbox
-rows, timestamps, browser activity, or email addresses.
+Until the corrective schema and runtime requirements below are delivered and
+versioned, Hub must show an explicit unavailable state for real Quote Tool
+timing, workload, and quote-origin task data. It must not infer those values
+from contacts, inbox rows, timestamps, browser activity, or email addresses.
 
 ## Required durable Quote Tool facts
 
@@ -62,7 +74,7 @@ rows, timestamps, browser activity, or email addresses.
    entity version, server/effective timestamps, actor employee ID when known,
    local auth ID for forensics where appropriate, source/source reference,
    correlation ID, causation ID, idempotency key, and versioned payload.
-3. Minimum event union:
+3. The canonical closed event union is:
 
    - `QuoteRequestReceived`, `QuoteRequestLinked`, `QuoteCreated`
    - `QuoteAssigned`, `QuoteUnassigned`
@@ -71,9 +83,10 @@ rows, timestamps, browser activity, or email addresses.
    - `QuoteSentRecorded`, `QuoteDeliveryAttempted`,
      `QuoteDeliveryOutcomeRecorded`
    - `QuoteChangesRequested`, `QuoteAccepted`, `QuoteDeclined`,
-     `QuoteExpired`, `QuoteAbandoned`, `QuoteCancelled`, `QuoteBooked`, and
-     `QuoteReopened` or `QuoteRevived`
-   - `QuoteLongTurnaroundReasonRecorded`
+     `QuoteExpired`, `QuoteAbandoned`, `QuoteCancelled`, `QuoteBooked`,
+     `QuoteReopened`
+   - `QuotePromiseRecorded`, `QuotePromiseSuperseded`,
+     `QuotePromiseCancelled`, `QuotePromiseFulfilled`
 
 4. A meaningful edit is a successful persisted customer-facing, design, or
    pricing change with no-op detection. It is not keystroke, mouse, focus, or
@@ -88,10 +101,9 @@ rows, timestamps, browser activity, or email addresses.
    fresh-versus-retry, retry lineage, attempted/resolved times, provider ID,
    sanitized error code, and one of `accepted`, `failed`, or `unknown`.
    Unknown is first-class and later delivered/bounced stages may extend it.
-8. Long-turnaround reasons use an owner-approved enum. Candidates requiring
-   that decision are `waiting_customer_info`, `waiting_approval`,
-   `design_complexity`, `site_measurement`, `pricing_exception`, `workload`,
-   `system_delivery_issue`, and `other`.
+8. Long-turnaround reason reporting is not in the current closed event union.
+   It remains unavailable until a later canonical amendment and owner-approved
+   reason enum exist.
 
 ## Metric definitions
 
@@ -117,13 +129,14 @@ the planned `commitment-events` feed. The feed needs stable ordering, cursor
 semantics, retention, replay behavior, source watermark, outbox delivery,
 acknowledgement/reconciliation, kill switch, and dead-letter handling.
 
-Every emitted event carries the common canonical envelope and the stable quote
-ID/number, opaque customer reference, actor and assignee employee IDs when
-known, optional job ID, correlation/causation IDs, and contract/schema
-versions. Quote Tool must update the canonical contract, machine OpenAPI,
-JSON Schema, examples, and conformance tests together, then bump the approved
-versions. Hub mirrors the resulting artifacts exactly and rejects unknown,
-missing, malformed, or unsupported version declarations.
+Every emitted event must carry the common canonical envelope, the stable
+request and/or quote identifiers applicable to that event, opaque customer
+reference, actor and assignee employee IDs when known, optional job ID,
+correlation/causation IDs, and contract/schema versions. The corrective Quote
+Tool change must update the canonical contract,
+machine OpenAPI, JSON Schema, examples, and conformance tests together, then
+bump the approved versions. Hub mirrors the resulting artifacts exactly and
+rejects unknown, missing, malformed, or unsupported version declarations.
 
 ## Hub task projection
 
@@ -156,5 +169,6 @@ Before any real timing metric or quote-origin task activation:
    acknowledgement, kill switch, and dead-letter paths have conformance tests.
 6. Existing rows with unrecoverable request or first-send history remain
    explicitly unknown. No backfill fabricates those facts.
-7. The Quote Tool canonical change is mirrored byte-identically in Hub and
-   the authenticated cross-repository byte gate passes on the exact heads.
+7. The corrective Quote Tool canonical change is mirrored byte-identically in
+   Hub and the authenticated cross-repository byte gate passes on the exact
+   heads.
