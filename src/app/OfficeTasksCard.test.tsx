@@ -10,6 +10,7 @@ import OfficeTasksCard from './OfficeTasksCard';
 const OPEN_TASK_ID = '11111111-1111-4111-8111-111111111111';
 const SECOND_TASK_ID = '22222222-2222-4222-8222-222222222222';
 const IDEMPOTENCY_KEY = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const NEXT_IDEMPOTENCY_KEY = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
 type Task = {
   id: string;
@@ -158,6 +159,44 @@ describe('OfficeTasksCard', () => {
     expect(itemFor(container, 'Confirm permit pickup')).toBeDefined();
   });
 
+  it('reuses the create idempotency key after an ambiguous server failure', async () => {
+    const createdTask = task({ title: 'Confirm permit pickup' });
+    const randomUUID = vi.fn()
+      .mockReturnValueOnce(IDEMPOTENCY_KEY)
+      .mockReturnValueOnce(NEXT_IDEMPOTENCY_KEY);
+    vi.stubGlobal('crypto', { randomUUID });
+    let postCount = 0;
+    let getCount = 0;
+    fetchMock.mockImplementation((_input: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        postCount += 1;
+        return Promise.resolve(postCount === 1
+          ? jsonResponse({
+              error: { code: 'TASK_CREATE_FAILED', message: 'The task could not be saved.' },
+            }, 500)
+          : jsonResponse({ taskId: OPEN_TASK_ID }, 201));
+      }
+      getCount += 1;
+      return Promise.resolve(jsonResponse({ tasks: getCount === 1 ? [] : [createdTask] }));
+    });
+
+    act(() => root.render(<OfficeTasksCard />));
+    await settle();
+    act(() => changeControl(controlByLabel(container, /task title/i), createdTask.title));
+
+    act(() => button(container, /^add task$/i).click());
+    await settle();
+    act(() => button(container, /^add task$/i).click());
+    await settle();
+
+    const postCalls = fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST');
+    expect(postCalls).toHaveLength(2);
+    expect(postCalls.map(([, init]) => new Headers(init?.headers).get('x-idempotency-key')))
+      .toEqual([IDEMPOTENCY_KEY, IDEMPOTENCY_KEY]);
+    expect(randomUUID).toHaveBeenCalledTimes(1);
+    expect(itemFor(container, createdTask.title)).toBeDefined();
+  });
+
   it('requires an inline block reason and keeps the blocked task visible', async () => {
     const row = task();
     fetchMock.mockImplementation((_input: string, init?: RequestInit) => {
@@ -214,6 +253,63 @@ describe('OfficeTasksCard', () => {
     act(() => completion.resolve(jsonResponse({ taskId: row.id })));
     await settle();
     expect(itemFor(container, row.title)).toBeUndefined();
+  });
+
+  it('reuses the action idempotency key after an ambiguous server failure', async () => {
+    const row = task();
+    const randomUUID = vi.fn()
+      .mockReturnValueOnce(IDEMPOTENCY_KEY)
+      .mockReturnValueOnce(NEXT_IDEMPOTENCY_KEY);
+    vi.stubGlobal('crypto', { randomUUID });
+    let patchCount = 0;
+    fetchMock.mockImplementation((_input: string, init?: RequestInit) => {
+      if (init?.method === 'PATCH') {
+        patchCount += 1;
+        return Promise.resolve(patchCount === 1
+          ? jsonResponse({
+              error: { code: 'TASK_UPDATE_FAILED', message: 'The task action could not be saved.' },
+            }, 500)
+          : jsonResponse({ taskId: row.id }));
+      }
+      return Promise.resolve(jsonResponse({ tasks: [row] }));
+    });
+
+    act(() => root.render(<OfficeTasksCard />));
+    await settle();
+
+    act(() => button(container, /complete|done/i).click());
+    await settle();
+    act(() => button(container, /complete|done/i).click());
+    await settle();
+
+    const patchCalls = fetchMock.mock.calls.filter(([, init]) => init?.method === 'PATCH');
+    expect(patchCalls).toHaveLength(2);
+    expect(patchCalls.map(([, init]) => new Headers(init?.headers).get('x-idempotency-key')))
+      .toEqual([IDEMPOTENCY_KEY, IDEMPOTENCY_KEY]);
+    expect(randomUUID).toHaveBeenCalledTimes(1);
+    expect(itemFor(container, row.title)).toBeUndefined();
+  });
+
+  it('gives each task action a task-specific accessible name', async () => {
+    const first = task();
+    const second = task({ id: SECOND_TASK_ID, title: 'Review returned equipment' });
+    fetchMock.mockResolvedValue(jsonResponse({ tasks: [first, second] }));
+
+    act(() => root.render(<OfficeTasksCard />));
+    await settle();
+
+    expect(container.querySelector(
+      `button[aria-label="Complete task: ${first.title}"]`,
+    )).not.toBeNull();
+    expect(container.querySelector(
+      `button[aria-label="Complete task: ${second.title}"]`,
+    )).not.toBeNull();
+    expect(container.querySelector(
+      `button[aria-label="Block task: ${first.title}"]`,
+    )).not.toBeNull();
+    expect(container.querySelector(
+      `button[aria-label="Dismiss task: ${second.title}"]`,
+    )).not.toBeNull();
   });
 
   it('requires an inline dismiss reason and removes a dismissed task', async () => {

@@ -40,6 +40,10 @@ async function responseError(response: Response, fallback: string) {
   return { code, message };
 }
 
+function isAmbiguousMutationFailure(status: number): boolean {
+  return status >= 500 || status === 408 || status === 425 || status === 429;
+}
+
 function formatDueTime(value: string): string {
   const due = new Date(value);
   if (Number.isNaN(due.getTime())) return 'Due time unavailable';
@@ -167,7 +171,7 @@ export default function OfficeTasksCard() {
 
       if (!response.ok) {
         const error = await responseError(response, 'The task could not be created.');
-        createKeyRef.current = null;
+        if (!isAmbiguousMutationFailure(response.status)) createKeyRef.current = null;
         setCreateError(error.message);
         return;
       }
@@ -221,7 +225,9 @@ export default function OfficeTasksCard() {
 
       if (!response.ok) {
         const error = await responseError(response, 'The task action could not be saved.');
-        actionKeysRef.current.delete(signature);
+        if (!isAmbiguousMutationFailure(response.status)) {
+          actionKeysRef.current.delete(signature);
+        }
         setActionError({ taskId: task.id, message: error.message });
         return;
       }
@@ -415,6 +421,7 @@ export default function OfficeTasksCard() {
                   <div className="flex shrink-0 flex-wrap gap-2">
                     <button
                       type="button"
+                      aria-label={`Complete task: ${task.title}`}
                       onClick={() => void updateTask(task, 'completed')}
                       disabled={pending || !canMutate}
                       className="min-h-11 rounded-md bg-[var(--brand-evergreen)] px-3 py-2 text-sm font-semibold text-[var(--brand-cream)] disabled:opacity-50"
@@ -424,6 +431,7 @@ export default function OfficeTasksCard() {
                     {task.status === 'open' ? (
                       <button
                         type="button"
+                        aria-label={`Block task: ${task.title}`}
                         onClick={() => openReasonEditor(task.id, 'blocked')}
                         disabled={pending || !canMutate}
                         className="min-h-11 rounded-md border border-[var(--op-border-mid)] bg-white px-3 py-2 text-sm font-semibold text-[var(--op-text)] disabled:opacity-50"
@@ -433,6 +441,7 @@ export default function OfficeTasksCard() {
                     ) : null}
                     <button
                       type="button"
+                      aria-label={`Dismiss task: ${task.title}`}
                       onClick={() => openReasonEditor(task.id, 'dismissed')}
                       disabled={pending || !canMutate}
                       className="min-h-11 rounded-md border border-[var(--op-border-mid)] bg-white px-3 py-2 text-sm font-semibold text-[var(--op-text)] disabled:opacity-50"
@@ -466,6 +475,7 @@ export default function OfficeTasksCard() {
                     <div className="mt-2 flex flex-wrap gap-2">
                       <button
                         type="submit"
+                        aria-label={`${editing.action === 'blocked' ? 'Confirm block' : 'Confirm dismiss'} task: ${task.title}`}
                         disabled={pending || !editing.reason.trim()}
                         className="min-h-11 rounded-md bg-[var(--brand-evergreen)] px-3 py-2 text-sm font-semibold text-[var(--brand-cream)] disabled:opacity-50"
                       >
@@ -473,6 +483,7 @@ export default function OfficeTasksCard() {
                       </button>
                       <button
                         type="button"
+                        aria-label={`Cancel ${editing.action} for task: ${task.title}`}
                         onClick={() => {
                           setActionEditor(null);
                           setActionError(null);
