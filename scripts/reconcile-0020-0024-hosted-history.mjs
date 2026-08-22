@@ -88,7 +88,7 @@ function parseHistory(output) {
 
 function assertLocalMigrationManifest() {
   const actual = readdirSync(MIGRATIONS_DIR)
-    .filter(name => /^\d{4}_.+\.sql$/.test(name))
+    .filter(name => /^\d{4,}_.+\.sql$/.test(name))
     .sort();
   const expected = CANONICAL.map(row => `${row.version}_${row.name}.sql`);
   const canonicalFiles = actual.filter(name =>
@@ -367,6 +367,7 @@ export {
   assertEmptyDryRun,
   assertDryRunAgainstFutureMigrations,
   assertEmptySchemaDiff,
+  assertLocalMigrationManifest,
   classifyHistory,
   parseConfig,
   parseHistory,

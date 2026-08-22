@@ -5,6 +5,7 @@ import {
   GENERATED,
   assertDryRunAgainstFutureMigrations,
   assertEmptyDryRun,
+  assertLocalMigrationManifest,
   assertEmptySchemaDiff,
   classifyHistory,
   parseConfig,
@@ -66,6 +67,13 @@ describe('hosted migration history reconciliation', () => {
       'Would push these migrations: 0026_unreviewed.sql',
       ['0025_quote_tool_identity_bridge.sql'],
     )).toThrow(/unexpected pending/);
+  });
+
+  it('includes timestamped reviewed migrations in the local post-0024 manifest', () => {
+    expect(assertLocalMigrationManifest()).toEqual([
+      '0025_quote_tool_identity_bridge.sql',
+      '20260821141530_office_tasks.sql',
+    ]);
   });
 
   it('binds hosted operation to the expected project reference', () => {
