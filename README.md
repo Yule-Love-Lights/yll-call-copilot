@@ -48,6 +48,11 @@ in `docs/operations-hub/LIVE-CALLING-ACTIVATION-BLOCKERS.md`.
 
 ## Deploy note (Vercel)
 
+Vercel is the only deployed runtime for the Hub and its post-call processing.
+The standalone customer-call bridge in `scripts/live-bridge.mjs` remains
+positively disabled, retained as unhosted dormant code, and is not used by the
+GoHighLevel recording transcription, scoring, or commitment-task pipeline.
+
 `vercel.json` carries six GET cron entries. Every request must present Vercel's `Authorization: Bearer $CRON_SECRET` header; `CRON_ENABLED=true` is a separate kill switch. Configure both values in the Vercel project before enabling scheduled work.
 
 Before a production deploy, run `npm run verify:auth-config` in an environment

@@ -1,7 +1,7 @@
 # Operations Hub Phase 0 safety checklist
 
 Status: **email/password remains active; staging database verified; phone-auth activation deferred; field-user provisioning blocked**
-Date: 2026-08-20
+Date: 2026-08-21
 Merged base audited through PR #61: Hub
 `master@ba3ecc7fa0d6248353aa75fb79a75d549a2288ba`.
 PR #50 merged the additive identity foundation, PR #52 merged the disabled
@@ -59,8 +59,8 @@ transaction boundaries, current HighLevel contact and channel permission
 checks, append-only live segments, idempotency keys, durable follow-up send
 state, and positive metric provenance. Its application/database checks and
 Vercel deploy passed before/after the human-authorized merge at `9000c683`.
-Railway remained intentionally red because the disabled live-call bridge
-correctly refused to start; this is not identity release evidence.
+The live-call bridge remained positively disabled and provided no identity
+release evidence. Its Railway host was retired on 2026-08-21.
 
 Customer live calling is positively disabled with
 `LIVE_CUSTOMER_CALLS_ENABLED=false`. Runtime preflight rejects enabling it and
