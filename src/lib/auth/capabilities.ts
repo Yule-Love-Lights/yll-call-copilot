@@ -2,9 +2,10 @@ export const DEPARTMENTS = ['office', 'advertising', 'installer'] as const;
 
 export type Department = (typeof DEPARTMENTS)[number];
 
-// Capability names are Hub-local policy labels. They are not cross-repository
-// claims. The integration contract does not yet define how capabilities are
-// transported to, or verified by, the Quote Tool.
+// Capability names are Hub-local policy labels. Contract v1.5 defines a
+// cross-repository snapshot transport, but its current closed enum omits the
+// already-merged office.tasks.work label. Do not emit snapshots until the
+// canonical schema is corrected and the runtime path is separately activated.
 export const CAPABILITIES = [
   'internal_public.read',
   'office.tools.use',

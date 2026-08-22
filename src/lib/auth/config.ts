@@ -3,11 +3,17 @@
 // deployed requests fail closed when authentication cannot be enforced.
 
 import { isBrowserSafeSupabaseKey } from './publicSupabaseKey';
+import {
+  matchesFrozenHubSupabaseProject,
+  matchesFrozenQuoteToolAuthSupabaseProject,
+  normalizeHostedSupabaseProjectUrl,
+} from './publicSupabaseConfig.mjs';
 
 const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
 export type ServerAuthEnvironment = {
   NODE_ENV?: string;
+  VERCEL_ENV?: string;
   NEXT_PUBLIC_SUPABASE_URL?: string;
   NEXT_PUBLIC_SUPABASE_ANON_KEY?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
@@ -48,16 +54,22 @@ function nonBlank(value: string | undefined): string | null {
 }
 
 function validSupabaseUrl(rawUrl: string, nodeEnvironment: string | undefined): string | null {
+  const hostedUrl = normalizeHostedSupabaseProjectUrl(rawUrl);
+  if (hostedUrl) return hostedUrl;
+
   try {
     const parsed = new URL(rawUrl);
     const localDevelopmentHttp =
       nodeEnvironment === 'development' &&
       parsed.protocol === 'http:' &&
-      LOOPBACK_HOSTNAMES.has(parsed.hostname);
+      LOOPBACK_HOSTNAMES.has(parsed.hostname) &&
+      !parsed.username &&
+      !parsed.password &&
+      parsed.pathname === '/' &&
+      !parsed.search &&
+      !parsed.hash;
 
-    if (parsed.protocol !== 'https:' && !localDevelopmentHttp) return null;
-    if (parsed.username || parsed.password) return null;
-    return parsed.toString();
+    return localDevelopmentHttp ? parsed.toString() : null;
   } catch {
     return null;
   }
@@ -76,6 +88,7 @@ function validSupabaseUrl(rawUrl: string, nodeEnvironment: string | undefined): 
 function readServerAuthEnvironment(): ServerAuthEnvironment {
   return {
     NODE_ENV: process.env.NODE_ENV,
+    VERCEL_ENV: process.env.VERCEL_ENV,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -92,8 +105,25 @@ export function resolveServerAuthConfiguration(
   const anonKey = nonBlank(environment.NEXT_PUBLIC_SUPABASE_ANON_KEY);
   const serviceRoleKey = nonBlank(environment.SUPABASE_SERVICE_ROLE_KEY);
   const url = rawUrl ? validSupabaseUrl(rawUrl, environment.NODE_ENV) : null;
+  const localDevelopmentTarget = (() => {
+    if (!url || environment.NODE_ENV !== 'development' || environment.VERCEL_ENV !== undefined) {
+      return false;
+    }
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === 'http:' && LOOPBACK_HOSTNAMES.has(parsed.hostname);
+    } catch {
+      return false;
+    }
+  })();
 
-  if (!url || !anonKey || !serviceRoleKey) {
+  if (
+    !url
+    || !anonKey
+    || !serviceRoleKey
+    || (!localDevelopmentTarget
+      && !matchesFrozenHubSupabaseProject(url, environment.VERCEL_ENV))
+  ) {
     return { ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' };
   }
 
@@ -110,7 +140,7 @@ export function resolveIdentityAuthConfiguration(
   const hub = resolveServerAuthConfiguration(environment);
   if (!hub.ok) return hub;
 
-  const source = nonBlank(environment.NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE)?.toLowerCase() ?? 'hub';
+  const source = environment.NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE ?? 'hub';
   if (source === 'hub') {
     if (!isBrowserSafeSupabaseKey(hub.anonKey)) {
       return { ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' };
@@ -120,11 +150,20 @@ export function resolveIdentityAuthConfiguration(
   if (source !== 'quote_tool') {
     return { ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' };
   }
+  if (environment.VERCEL_ENV !== 'preview') {
+    return { ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' };
+  }
 
   const quoteUrlRaw = nonBlank(environment.NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL);
   const quoteAnonKey = nonBlank(environment.NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY);
   const quoteUrl = quoteUrlRaw ? validSupabaseUrl(quoteUrlRaw, environment.NODE_ENV) : null;
-  if (!quoteUrl || !quoteAnonKey || quoteUrl === hub.url || !isBrowserSafeSupabaseKey(quoteAnonKey)) {
+  if (
+    !quoteUrl
+    || !quoteAnonKey
+    || quoteUrl === hub.url
+    || !matchesFrozenQuoteToolAuthSupabaseProject(quoteUrl)
+    || !isBrowserSafeSupabaseKey(quoteAnonKey)
+  ) {
     return { ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' };
   }
 

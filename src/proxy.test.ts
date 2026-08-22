@@ -32,7 +32,12 @@ function unavailableConfiguration() {
 }
 
 function completeConfiguration() {
-  vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
+  vi.stubEnv(
+    'NEXT_PUBLIC_SUPABASE_URL',
+    process.env.VERCEL_ENV === 'preview'
+      ? 'https://ewbtkrytrnerypdkuimd.supabase.co'
+      : 'https://mjmociuxxxwxvasnpxav.supabase.co',
+  );
   vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'sb_publishable_1234567890abcdefghij');
   vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'service-role-key');
 }
@@ -350,9 +355,10 @@ describe('root authentication proxy', () => {
 
   it('uses the Quote Tool Auth session only when explicitly selected and maps its source', async () => {
     vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('VERCEL_ENV', 'preview');
     completeConfiguration();
     vi.stubEnv('NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE', 'quote_tool');
-    vi.stubEnv('NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL', 'https://quote-auth.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL', 'https://chhntsbnbofyqrpivuog.supabase.co');
     vi.stubEnv('NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY', 'sb_publishable_1234567890abcdefghij');
     signedIn();
 
@@ -360,7 +366,7 @@ describe('root authentication proxy', () => {
 
     expect(response.headers.get('x-middleware-next')).toBe('1');
     expect(mocks.createServerClient).toHaveBeenCalledWith(
-      'https://quote-auth.supabase.co/',
+      'https://chhntsbnbofyqrpivuog.supabase.co/',
       'sb_publishable_1234567890abcdefghij',
       expect.any(Object),
     );
@@ -371,11 +377,26 @@ describe('root authentication proxy', () => {
     });
   });
 
-  it('fails closed when staging phone auth is enabled without Turnstile configuration', async () => {
+  it('fails closed at the request boundary when Quote Tool Auth is selected in production', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     completeConfiguration();
-    vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'true');
+    vi.stubEnv('NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE', 'quote_tool');
+    vi.stubEnv('NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL', 'https://chhntsbnbofyqrpivuog.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY', 'sb_publishable_1234567890abcdefghij');
+
+    const response = await proxy(request('/scoreboard'));
+
+    expect(response.status).toBe(503);
+    expect(await response.text()).toBe('Authentication is temporarily unavailable.');
+    expect(mocks.createServerClient).not.toHaveBeenCalled();
+    expect(mocks.resolveHubActor).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when staging phone auth is enabled without Turnstile configuration', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('VERCEL_ENV', 'preview');
+    completeConfiguration();
+    vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'true');
 
     const response = await proxy(request('/scoreboard'));
 
@@ -400,10 +421,10 @@ describe('root authentication proxy', () => {
 
   it('allows a verified staging phone session inside the 30-day maximum', async () => {
     vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('VERCEL_ENV', 'preview');
     completeConfiguration();
     vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'true');
     vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', 'public-site-key');
-    vi.stubEnv('VERCEL_ENV', 'preview');
     const authenticatedAt = Math.floor((Date.now() - 29 * 24 * 60 * 60 * 1000) / 1000);
     const signOut = vi.fn();
     mocks.createServerClient.mockReturnValue({
@@ -443,10 +464,10 @@ describe('root authentication proxy', () => {
 
   it('ends a staging phone session after the 30-day maximum before actor resolution', async () => {
     vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('VERCEL_ENV', 'preview');
     completeConfiguration();
     vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'true');
     vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', 'public-site-key');
-    vi.stubEnv('VERCEL_ENV', 'preview');
     const authenticatedAt = Math.floor((Date.now() - 31 * 24 * 60 * 60 * 1000) / 1000);
     const signOut = vi.fn(async () => ({ error: null }));
     mocks.createServerClient.mockReturnValue({
@@ -485,10 +506,10 @@ describe('root authentication proxy', () => {
 
   it('rejects a password-authenticated session when staging phone mode is enabled', async () => {
     vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('VERCEL_ENV', 'preview');
     completeConfiguration();
     vi.stubEnv('HUB_PHONE_AUTH_STAGING_ENABLED', 'true');
     vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', 'public-site-key');
-    vi.stubEnv('VERCEL_ENV', 'preview');
     const signOut = vi.fn(async () => ({ error: null }));
     mocks.createServerClient.mockReturnValue({
       auth: {

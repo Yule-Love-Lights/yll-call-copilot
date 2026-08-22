@@ -1,18 +1,22 @@
 # Operations Hub Phase 0 safety checklist
 
-Status: **email/password remains active; staging database verified; phone-auth activation deferred; field-user provisioning blocked**
-Date: 2026-08-21
-Merged base audited through PR #61: Hub
-`master@ba3ecc7fa0d6248353aa75fb79a75d549a2288ba`.
+Status: **email/password remains active; staging rehearsal and shared login verified; production migration and field-user provisioning blocked**
+Date: 2026-08-22
+Merged base audited through Flow Q mirror PR #70: Hub
+`master@29809274b12c159c272f3cd2f3ee5143f6d90bc6`.
 PR #50 merged the additive identity foundation, PR #52 merged the disabled
 preview-only phone-auth path, PR #53 vendored the canonical schema pack, and PR
 #54 established the original assistant-managed merge-rule baseline. This H0
 update extends it with the authenticated-byte bootstrap and four-mode order
 rules. PR #57 reconciled the release ledger, PR #60 merged fail-closed
-hosted-migration tooling without performing a hosted write, PR #58 merged
-test-only local persona coverage, and PR #61 activated the authenticated
-cross-repository byte gate. Provider, hosted persona, runtime integration, and
-field-launch gates remain open.
+hosted-migration tooling, PR #58 merged test-only local persona coverage, and
+PR #61 activated the authenticated cross-repository byte gate. PRs #62, #64,
+#65, and #67 added Management, shared Quote identity, and the Office shell and
+dashboard; PR #69 retired Railway; and the later-merged PR #68 added the Office
+task foundation. PR #71 pinned its timestamped migration into the exact
+release-rehearsal guard, and PR #70 mirrored the current Flow Q contract pack.
+Provider, hosted persona, runtime integration,
+production migration, and field-launch gates remain open.
 
 This checklist records the actual repository baseline and the safety gates that
 must precede Advertising or Installer accounts. It does not authorize Hub-owned
@@ -35,8 +39,10 @@ was built for a small office allowlist:
   without changing the employee ID. The Quote-owned active-context projection
   is still unavailable;
 - owner/admin runtime access now requires the server-only Naldo/Jason Auth UUID
-  ceiling and audited team access on the protected call/live resources, but
-  staging Auth identities and the hosted employee/Auth links are not configured;
+  ceiling and audited team access on the protected call/live resources.
+  Staging has two static, active Quote Tool Auth mappings and shared password
+  login works there; replacement/revocation and production activation remain
+  blocked;
 - route policies now inventory resource scope, but remaining service-role
   handlers and the hosted database rollout still need the authorization gates
   below;
@@ -49,9 +55,15 @@ was built for a small office allowlist:
 Production migration `0019` was applied out of band and verified on those 31
 hosted public tables. Production migrations `0020` through `0024` remain
 unapplied. The separate staging project has applied the clean `0001` through
-`0024` sequence and verified the 38-table, 30-routine, 12-trigger default-deny
-target. That clean-target proof does not replace the required
-production-shaped reconciliation rehearsal.
+`0024` sequence and passed the sanitized production-shaped rehearsal at the
+38-table, 30-routine, 12-trigger default-deny target. Staging then applied
+`0025` separately and now has 39 tables, 33 routines, and 13 triggers. These
+proofs do not authorize the production rollout. Shared staging has not applied
+`20260821141530_office_tasks.sql`. The current clean local and CI target applies
+all 26 checked-in migrations and has 41 tables, 37 routines, and 15 triggers.
+Production application of both `0025_quote_tool_identity_bridge.sql` and
+`20260821141530_office_tasks.sql` remains deferred; the production packet is
+limited to `0020` through `0024`.
 
 Merged PR #46 addresses the known Office lead/call resource gaps. It adds
 immutable employee identifiers to claims and calls, self-claim and self-call
@@ -84,7 +96,7 @@ RLS, and impersonated-role gates below pass.
 - [x] Quote Tool PR #701 established the `v1.3.0-draft` baseline and PR #716
       made it self-contained. The current canonical/mirror pin is
       `v1.5.0-draft` at Quote commit
-      `1445c5201f227474321809e0b64dfdb60f81b731`.
+      `ad53321eb5cf548bf9fe9adf400a5786a2d4fe44` after Quote Tool PR #878.
 - [x] The paired Hub mirror copies the current contract exactly: 63,985 bytes,
       SHA-256 `934506c96969f881a7252a4da04852720682a0d66efc20c7ad79e950d34dcecf`.
 - [x] `contract-pin.json` records one version, source commit/path, byte length,
@@ -97,6 +109,11 @@ RLS, and impersonated-role gates below pass.
       schema version `1.1.0-draft`.
 - [x] Hub vendors the manifest, OpenAPI, and JSON Schema files
       byte-identically and pins each byte length and SHA-256.
+- [ ] Before Flow Q implementation, Quote Tool must correct the merged draft's
+      request-event and event-specific schema contradictions plus the missing
+      `office.tasks.work` capability, bump the canonical versions, and Hub must
+      mirror the corrected bytes. The current byte-identical draft pin does
+      not authorize either runtime.
 - [x] The trusted CI workflow code is present to use the fine-grained
       `OPS_HUB_QUOTE_TOOL_READ_TOKEN`, check out current Quote Tool `master`,
       and compare the canonical contract and schema files as data. It fails
@@ -169,13 +186,15 @@ authenticated version health.
       or invalidated before release use. Current feedback reads already require
       positively proven performance scores and are not an additional deletion
       class.
-      Migration `0020` now fails closed while any legacy weekly digest, brain
-      review, playbook proposal, or potentially proposal-applied `edited`
-      playbook version remains. Before retrying, an operator must export those
-      rows, remove the reviews/digests/proposals and edited versions, reset each
-      affected `verticals.active_version` to a retained generated version, and
-      recreate only verified manual edits after migration. There is no bypass
-      because legacy rows do not carry enough provenance for safe automation.
+      Migration `0020` fails closed while a legacy artifact remains. Production
+      must use the target-bound read-only exporter, second-person-reviewed exact
+      protected identity/artifact manifests and export set, and generated one-
+      transaction driver in
+      `PRODUCTION-0020-0024-EXECUTION-PACKET.md`. No row may be removed and no
+      fallback may be reset in a standalone commit. The current edited count is
+      zero; any future edited version stops this packet and requires separate
+      recreation authorization. There is no bypass because legacy rows do not
+      carry enough provenance for safe relabeling.
       The disposable migration fixture lives in
       `supabase/tests/migration/0020_metric_scope_backfill.seed.sql` with its
       pgTAP assertions beside it. Run migrations `0001` through `0019`, apply
@@ -191,7 +210,10 @@ authenticated version health.
 - [x] Decision 25 keeps invite-only email/password as the active interim login
       and defers phone OTP, Twilio Verify, Turnstile, recovery/reassignment,
       and password-identity revocation until a later owner activation decision.
-      `HUB_PHONE_AUTH_STAGING_ENABLED` stays false.
+      `HUB_PHONE_AUTH_STAGING_ENABLED` stays false. Deployment preflight rejects
+      that flag as true, rejects any configured `NEXT_PUBLIC_TURNSTILE_SITE_KEY`,
+      and rejects a missing, blank, or unknown `VERCEL_ENV`, so phone auth and
+      Turnstile cannot be deployed while password login remains selected.
 - [x] PR #52 merged the fail-closed preview-only Phone Auth request/verify path,
       Turnstile token submission, `shouldCreateUser: false`, and the maximum
       30-day signed-session-age check. These application safeguards remain
@@ -212,12 +234,12 @@ authenticated version health.
       query `auth.sessions` on every request, so revocation may lag until the
       access JWT expires. Production still requires audited password/session
       revocation and owner recovery.
-- [ ] Before any Auth-link replacement or recovery path is enabled, every
+- [ ] Before any Auth-link replacement or recovery path is used, every
       `0020` employee mutation routine atomically locks and verifies the current
-      active Auth link against its supplied Auth UUID. The foundation has no
-      reachable replacement routine; its guarded legacy Office provisioner
-      refuses employees with link history. This gate prevents an already
-      resolved old request from using a compatibility projection recreated for
+      active identity source and Auth UUID. Migration `0025` exposes service-
+      role link and revoke routines, so the two staging mappings must remain
+      static until this gate is fixed. This prevents an already resolved old
+      request from using a compatibility projection retained or recreated for
       a replacement login.
 - [ ] That future Owner/Admin replacement routine also records the acting
       employee, reason, old-link revocation, and new-link creation atomically.
@@ -260,17 +282,19 @@ authenticated version health.
       matching first `start` event before opening Deepgram.
 - [x] HighLevel signed webhook retries/replays are race-safely deduplicated by
       a persisted unique source digest.
-- [ ] Production preflight and signed postdeploy smoke are run for cron,
-      HighLevel, Twilio, and the live bridge. `npm run verify:auth-config`
-      validates variable presence/shape before deploy. Customer live calling
-      remains disabled until every gate in
+- [ ] Production preflight and approved postdeploy checks prove password login,
+      non-provider Office access, real-key PostgREST denial, and that cron,
+      follow-up sends, and live calls remain disabled. Do not run recovery,
+      HighLevel-send, Twilio, or live-bridge smokes. `npm run
+      verify:auth-config` validates variable presence/shape before deploy.
+      Customer live calling remains disabled until every gate in
       `LIVE-CALLING-ACTIVATION-BLOCKERS.md` is implemented, tested with real
       providers and browsers, reviewed, and approved.
 - [ ] Legacy `src/lib/quoteTool.ts` remains read-only; new integration uses only
       the canonical `/api/ops/v1` boundary.
 
-Current branch inventory includes 25 pages, 75 API route files, 82 exported
-handler methods, and 107 page/API-method surfaces in total, all declared in
+Current branch inventory includes 25 pages, 77 API route files, 85 exported
+handler methods, and 110 page/API-method surfaces in total, all declared in
 `src/lib/auth/routePolicy.ts`. The 12 legacy
 route-level role lookups now return only closed least-privileged values. See
 `PHASE-0-AUTHORIZATION-INVENTORY.md` for the capability matrix and remaining
@@ -328,6 +352,9 @@ proves RLS independently of ACLs.
 | `ops_employee_auth_identities` | [x] | [x] | [x] | [x] |
 | `ops_employee_department_memberships` | [x] | [x] | [x] | [x] |
 | `ops_identity_audit_events` | [x] | [x] | [x] | [x] |
+| `ops_employee_external_identities` | [x] | [x] | [x] | [x] |
+| `ops_tasks` | [x] | [x] | [x] | [x] |
+| `ops_task_events` | [x] | [x] | [x] | [x] |
 
 Merged PR #46 adds RLS, default-deny coverage, an append-only service-role
 grant, and impersonation tests for `live_segments`, the 32nd baseline table.
@@ -335,14 +362,19 @@ Before merge its database suites passed 117 lead-work assertions, 259
 default-deny assertions, and 18 migration-backfill assertions; GitHub and hosted
 checks were green.
 
-Migration `0023` extends the reviewed manifest to 38 tables, 27 routines, and
-12 triggers. The local PostgreSQL/parser harness applied all 24 migrations,
-passed the seeded legacy upgrade, exact provisioning retry and deactivation
-denial, and matched all four protective preflight failures. PR #50 CI
+Migration `0023` extends the reviewed production-packet manifest to 38 tables,
+and migration `0025` extends the observed shared-staging state to 39 tables, 33
+routines, and 13 triggers. Migration `20260821141530_office_tasks.sql` extends
+the current clean local and CI manifest to 41 tables, 37 routines, and 15
+triggers. The local PostgreSQL/parser harness applied all 26 migrations, passed
+the seeded legacy upgrade, exact provisioning retry and deactivation denial,
+and matched all four protective preflight failures. PR #50 CI
 historically passed 51 identity-foundation pgTAP assertions, the 304-assertion
 expanded default-deny suite, the 117-assertion lead-work suite, and all seeded
 migration upgrade/preflight jobs before merge. Merged PR #58 expands the
-current suites to 53 identity-foundation and 307 default-deny assertions.
+then-current suites to 53 identity-foundation and 307 default-deny assertions.
+PR #68 adds dedicated Office task pgTAP coverage and the expanded clean
+manifest checks.
 
 Claims shaped like inactive, self, wrong-department, stale-membership,
 current multi-membership, unlinked, revoked-link, Office, Advertising,
@@ -376,8 +408,10 @@ PR #50 added Hub-owned versions of:
 - `ops_employee_department_memberships`
 - `ops_identity_audit_events`
 
-Quote Tool PR #803 published the canonical shared manifest, OpenAPI, and JSON
-Schema, and Hub PR #53 vendored them byte-identically. Publication does not
+Quote Tool PR #803 first published the shared schema pack, Hub PR #53 vendored
+that version, and Quote Tool PR #878 advanced the canonical contract/schema to
+Flow Q `v1.5.0-draft` / `1.1.0-draft`; Hub PR #70 vendors those bytes.
+Publication does not
 implement the runtime outbox/inbox/DLQ, supported-version envelope, capability
 grant transport, or Quote-owned current-context projection. Those remain Phase
 0 dependencies at the repository boundary.
@@ -406,10 +440,10 @@ ledger, compensation result, pay-period close, or payroll export.
    vendored Quote-owned schemas.
 8. PR #57 reconciled the release ledger, PR #60 merged the fail-closed
    migration-reconciliation tooling, and PR #58 merged the local synthetic
-   persona coverage. Use the separate staging database to execute the still-open
-   production-shaped `0019` to `0024` migration rehearsal, historical
-   reconciliation, hosted preflight, and real-token persona gates before
-   resuming any phone-auth deployment-gate PR.
+   persona coverage. The separate staging database passed the production-
+   shaped `0019` to `0024` migration rehearsal. Complete the protected
+   production reconciliation, hosted preflight, real-token denial, and persona
+   gates before resuming any phone-auth deployment-gate PR.
 9. Keep invite-only email/password active and phone auth false. A later owner
    decision may resume the dedicated Vercel staging deployment, Twilio Verify,
    Turnstile, recovery, revocation, and real-phone smoke work. Field
