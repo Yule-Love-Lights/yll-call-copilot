@@ -21,6 +21,7 @@ export const CAPABILITIES = [
   'office.scoreboard.manage',
   'office.second_mile.work',
   'office.second_mile.send',
+  'office.tasks.work',
   'office.job_operations',
   'advertising.navigation',
   'installer.navigation',
@@ -69,6 +70,7 @@ const OFFICE_CAPABILITIES: readonly Capability[] = [
   'office.scoreboard.self',
   'office.second_mile.work',
   'office.second_mile.send',
+  'office.tasks.work',
 ];
 
 // Deliberately enumerated instead of aliasing CAPABILITIES. Adding a future
@@ -89,6 +91,7 @@ const OWNER_ADMIN_CAPABILITIES: readonly Capability[] = [
   'office.scoreboard.manage',
   'office.second_mile.work',
   'office.second_mile.send',
+  'office.tasks.work',
   'office.job_operations',
   'advertising.navigation',
   'installer.navigation',

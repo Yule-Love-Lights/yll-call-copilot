@@ -22,6 +22,7 @@ import HomeConnectionPanel from './HomeConnectionPanel';
 import { redirect } from 'next/navigation';
 import OfficeWorkdayCard from './OfficeWorkdayCard';
 import OfficeQuoteAndTasksCard from './OfficeQuoteAndTasksCard';
+import OfficeTasksCard from './OfficeTasksCard';
 
 // Config + session are read per-request, not baked at build time -- same
 // reasoning as /login and /contacts.
@@ -202,6 +203,7 @@ export default async function Home() {
 
       <OfficeWorkdayCard />
       <OfficeQuoteAndTasksCard />
+      <OfficeTasksCard />
 
       <div className="mt-10">
         <HomeConnectionPanel />

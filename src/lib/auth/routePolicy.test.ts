@@ -112,10 +112,14 @@ describe('route authorization policy', () => {
     const officeActor = actor('office');
     const home = resolveRoutePolicy('/', 'GET')?.requirement;
     const settings = resolveRoutePolicy('/api/rubric', 'POST')?.requirement;
-    if (!home || !settings) throw new Error('expected declared routes');
+    const tasks = resolveRoutePolicy('/api/tasks', 'POST')?.requirement;
+    if (!home || !settings || !tasks) throw new Error('expected declared routes');
 
     expect(actorMeetsRouteRequirement(officeActor, home)).toBe(true);
     expect(actorMeetsRouteRequirement(officeActor, settings)).toBe(false);
+    expect(actorMeetsRouteRequirement(officeActor, tasks)).toBe(true);
+    expect(actorMeetsRouteRequirement(actor('advertising'), tasks)).toBe(false);
+    expect(actorMeetsRouteRequirement(actor('installer'), tasks)).toBe(false);
   });
 
   it('keeps Management owner-only without making it a department route', () => {

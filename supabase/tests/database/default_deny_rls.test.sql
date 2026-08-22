@@ -39,6 +39,8 @@ insert into expected_hub_tables (table_name) values
   ('ops_employee_external_identities'),
   ('ops_employees'),
   ('ops_identity_audit_events'),
+  ('ops_task_events'),
+  ('ops_tasks'),
   ('playbook_proposals'),
   ('playbook_versions'),
   ('practice_sessions'),
@@ -113,16 +115,20 @@ insert into expected_hub_routines (routine_signature) values
   ('enforce_ops_employee_auth_identity_transition()'),
   ('enforce_ops_employee_external_identity_transition()'),
   ('enforce_ops_employee_identity_immutability()'),
+  ('enforce_ops_task_transition()'),
   ('enforce_transcript_metric_scope()'),
   ('finish_owned_followup_send(uuid,text,uuid,uuid,text,text)'),
   ('guard_app_users_projection()'),
   ('is_contact_calling_time_allowed(timestamp with time zone,text)'),
   ('link_quote_tool_employee_identity(uuid,uuid,text)'),
+  ('ops_create_manual_task(text,text,timestamp with time zone,uuid,uuid)'),
+  ('ops_update_own_task(uuid,text,text,uuid,uuid)'),
   ('revoke_quote_tool_employee_identity(uuid,uuid,text)'),
   ('provision_legacy_office_employee(uuid,text,text)'),
   ('record_commitment_extraction_failure(uuid,text)'),
   ('reject_live_segment_mutation()'),
   ('reject_ops_identity_audit_event_mutation()'),
+  ('reject_ops_task_event_mutation()'),
   ('start_claimed_live_attempt(uuid,text,text,uuid,text,uuid)'),
   ('sync_app_user_projection()'),
   ('update_owned_followup_draft(uuid,text,uuid,text,text)');
@@ -162,6 +168,8 @@ insert into expected_hub_triggers (trigger_signature) values
   ('ops_employees.enforce_ops_employee_identity_immutability'),
   ('ops_employees.sync_app_user_projection'),
   ('ops_identity_audit_events.reject_ops_identity_audit_event_mutation'),
+  ('ops_task_events.reject_ops_task_event_mutation'),
+  ('ops_tasks.enforce_ops_task_transition'),
   ('transcripts.enforce_transcript_metric_scope');
 
 select set_eq(
@@ -304,7 +312,9 @@ select ok(
       'ops_employee_department_memberships',
       'ops_employee_external_identities',
       'ops_employees',
-      'ops_identity_audit_events'
+      'ops_identity_audit_events',
+      'ops_task_events',
+      'ops_tasks'
     ) then
       has_table_privilege('service_role', format('public.%I', table_name), 'SELECT')
         and not has_table_privilege('service_role', format('public.%I', table_name), 'INSERT')

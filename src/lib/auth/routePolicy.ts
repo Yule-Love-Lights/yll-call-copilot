@@ -178,6 +178,10 @@ const SECOND_MILE_SEND = employeeRoute('office.second_mile.send', {
   sensitivity: 'sensitive',
   auditBeforeFieldLaunch: true,
 });
+const TASKS = employeeRoute('office.tasks.work', {
+  resourceScope: 'self',
+  sensitivity: 'internal',
+});
 
 // This registry is the server-side inventory for every page and route handler
 // in src/app. New files fail the completeness test until they declare a policy.
@@ -277,6 +281,8 @@ export const APP_ROUTE_POLICIES: readonly AppRoutePolicy[] = [
   api('/api/second-mile/:id/send', { POST: SECOND_MILE_SEND }),
   api('/api/second-mile/cold-snap', { POST: SECOND_MILE_SEND }),
   api('/api/twilio/token', { GET: CALLS }),
+  api('/api/tasks', { GET: TASKS, POST: TASKS }),
+  api('/api/tasks/:id', { PATCH: TASKS }),
   api('/api/verticals', { GET: KNOWLEDGE_READ, POST: KNOWLEDGE_MANAGE }),
   api('/api/verticals/seed', { POST: KNOWLEDGE_MANAGE }),
   api('/api/verticals/:id', { GET: KNOWLEDGE_READ, PUT: KNOWLEDGE_MANAGE }),
