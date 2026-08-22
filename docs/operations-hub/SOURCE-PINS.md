@@ -56,17 +56,17 @@ Hub implementation base audited through PR #61: 2026-08-21 at
 
 ## Current contract pin
 
-- Contract version: `v1.4.0-draft`
+- Contract version: `v1.5.0-draft`
 - Quote Tool canonical commit:
-  `c60bce4927a7fc47a8d6ee1d14a6eb88257755aa`
+  `1445c5201f227474321809e0b64dfdb60f81b731`
 - Canonical and Hub mirror SHA-256:
-  `d3551f65561863af42721d020b357888acc6c90eb0c8c586f7bc151305395e7f`
-- Canonical and Hub mirror byte length: `56963`
-- Schema version: `v1.0.0-draft`
+  `934506c96969f881a7252a4da04852720682a0d66efc20c7ad79e950d34dcecf`
+- Canonical and Hub mirror byte length: `63985`
+- Schema version: `v1.1.0-draft`
 - Canonical manifest SHA-256:
-  `f55582fbbc7a99a5f1f1d06f9aa6897af96886ddcd94833a820e4cbd315956dd`
+  `7ef7c633fc9c57871e253717965b53529be47daa151714ab399fd584eab47132`
 - Canonical OpenAPI SHA-256:
-  `2b57dec5de60cfdae774897905988e0ce855c3b38211abebce48d39a6b8d9ae1`
+  `9d2c3d541cd0536e3be8974e12e5dbfa138a71b9d722218e621cdb2fe45ddc53`
 - Canonical JSON Schema SHA-256:
-  `dd78f02291718bdcbc68c68487885ff2ea69888801c641f4ca8a93436db2047a`
+  `78e0a3ee44bf786170c9229f99b335797af4fa8ddbc70f9ce1226bf8135a5358`
 - Machine-readable authority: `docs/operations-hub/contract-pin.json`

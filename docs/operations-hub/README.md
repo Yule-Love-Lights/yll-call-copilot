@@ -11,9 +11,9 @@ pins are recorded in `SOURCE-PINS.md`.
 This pack is the reconciled and approved source for the Operations Hub.
 Quote Tool PR #701 established the original canonical baseline, PR #716 made it
 self-contained, Naldo signed the master plan, and Hub PR #37 was human-merged.
-The current byte-identical mirror is `v1.4.0-draft`, pinned to Quote Tool PR
-#803 merge `c60bce4927a7fc47a8d6ee1d14a6eb88257755aa`. Its independent schema
-version is `1.0.0-draft`.
+The current byte-identical mirror is `v1.5.0-draft`, pinned to Quote Tool
+commit `1445c5201f227474321809e0b64dfdb60f81b731`. Its independent schema
+version is `1.1.0-draft`.
 
 ## Read in this order
 
