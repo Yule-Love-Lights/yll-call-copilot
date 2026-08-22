@@ -2,8 +2,8 @@
 
 Status: **email/password remains active; staging rehearsal and shared login verified; production migration and field provisioning blocked**
 Date: 2026-08-22
-Merged base audited through Office task release rehearsal PR #71:
-`master@c1c9146810007d16b47d669f7506b486e0f6733f`.
+Merged base audited through Flow Q mirror PR #70:
+`master@29809274b12c159c272f3cd2f3ee5143f6d90bc6`.
 PR #50 merged the additive identity foundation, PR #52 merged the disabled
 preview-only Phone Auth path, PR #53 vendored the canonical contract/schema
 pack, and PR #54 established the original assistant-managed merge-rule
@@ -14,8 +14,9 @@ test-only local persona coverage, and PR #61 activated the authenticated
 cross-repository byte gate. PRs #62, #64, #65, and #67 added Management,
 shared Quote identity, and the Office shell and dashboard; PR #69 retired
 Railway; and the later-merged PR #68 added the Office task foundation. PR #71
-pinned its timestamped migration into the exact release-rehearsal guard. None
-authorizes Advertising or Installer provisioning.
+pinned its timestamped migration into the exact release-rehearsal guard, and
+PR #70 mirrored the current Flow Q contract pack. None authorizes Advertising
+or Installer provisioning.
 
 This document records what the merged Phase 0 authorization baseline enforces
 and names the gates for production-rollout preparation, later staging
