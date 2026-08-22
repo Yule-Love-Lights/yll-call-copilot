@@ -83,10 +83,10 @@ RLS, and impersonated-role gates below pass.
 
 - [x] Quote Tool PR #701 established the `v1.3.0-draft` baseline and PR #716
       made it self-contained. The current canonical/mirror pin is
-      `v1.4.0-draft` at Quote commit
-      `c60bce4927a7fc47a8d6ee1d14a6eb88257755aa` after Quote Tool PR #803.
-- [x] The paired Hub mirror copies the current contract exactly: 56,963 bytes,
-      SHA-256 `d3551f65561863af42721d020b357888acc6c90eb0c8c586f7bc151305395e7f`.
+      `v1.5.0-draft` at Quote commit
+      `1445c5201f227474321809e0b64dfdb60f81b731`.
+- [x] The paired Hub mirror copies the current contract exactly: 63,985 bytes,
+      SHA-256 `934506c96969f881a7252a4da04852720682a0d66efc20c7ad79e950d34dcecf`.
 - [x] `contract-pin.json` records one version, source commit/path, byte length,
       and raw-byte SHA-256.
 - [x] Local verification detects mirror/pin drift and clearly reports
@@ -94,7 +94,7 @@ RLS, and impersonated-role gates below pass.
 - [x] Local cross-repository verification against a separate Quote Tool clone
       reports `CROSS_REPO_BYTES_OK` and rejects same-file/hardlink shortcuts.
 - [x] Quote Tool publishes `docs/context/ops-contract-schema/` canonically at
-      schema version `1.0.0-draft`.
+      schema version `1.1.0-draft`.
 - [x] Hub vendors the manifest, OpenAPI, and JSON Schema files
       byte-identically and pins each byte length and SHA-256.
 - [x] The trusted CI workflow code is present to use the fine-grained
