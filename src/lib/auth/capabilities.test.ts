@@ -38,6 +38,7 @@ describe('capability policy', () => {
     expect(actor.membershipVersion).toBe(7);
     expect(hasCapability(actor, 'installer.navigation')).toBe(true);
     expect(hasCapability(actor, 'office.tools.use')).toBe(false);
+    expect(hasCapability(actor, 'office.tasks.work')).toBe(false);
   });
 
   it('does not invent management as a department membership for Owner/Admin', () => {
@@ -54,6 +55,7 @@ describe('capability policy', () => {
     expect(actor.memberships).toEqual(['office', 'advertising', 'installer']);
     expect(actor.role).toBe('owner_admin');
     expect(hasCapability(actor, 'operations.admin')).toBe(true);
+    expect(hasCapability(actor, 'office.tasks.work')).toBe(true);
   });
 
   it('adds only navigation capabilities from secondary department memberships', () => {
