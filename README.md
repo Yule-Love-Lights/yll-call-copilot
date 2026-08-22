@@ -62,5 +62,5 @@ Twilio/live-bridge/legacy-HighLevel credential set without printing values.
 
 ## Notes
 
-- Auth is live and capability-gated in `src/proxy.ts`; every current page/API method is declared in `src/lib/auth/routePolicy.ts`. Default-deny row-level security is merged. The clean staging database target is verified; production-shaped migration rehearsal, remaining resource-scoped service-role checks, immutable identity integration, and hosted semantic persona tests remain field-release gates.
+- Auth is live and capability-gated in `src/proxy.ts`; every current page/API method is declared in `src/lib/auth/routePolicy.ts`. Default-deny row-level security is merged. The protected production-shaped staging rehearsal passed; an exact-current rehearsal of the hardened production helper, remaining resource-scoped service-role checks, immutable identity integration, and hosted semantic persona tests remain field-release gates.
 - Never commit `.env.local` or paste real key values into code, logs, or chat.

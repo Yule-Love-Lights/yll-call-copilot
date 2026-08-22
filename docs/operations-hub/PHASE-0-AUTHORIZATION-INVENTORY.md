@@ -1,9 +1,9 @@
 # Operations Hub Phase 0 authorization inventory
 
-Status: **email/password remains active; staging database verified; phone-auth activation deferred; field provisioning blocked**
-Date: 2026-08-21
-Merged base audited through PR #61:
-`master@ba3ecc7fa0d6248353aa75fb79a75d549a2288ba`.
+Status: **email/password remains active; staging rehearsal and shared login verified; production migration and field provisioning blocked**
+Date: 2026-08-22
+Merged base audited through Office task release rehearsal PR #71:
+`master@c1c9146810007d16b47d669f7506b486e0f6733f`.
 PR #50 merged the additive identity foundation, PR #52 merged the disabled
 preview-only Phone Auth path, PR #53 vendored the canonical contract/schema
 pack, and PR #54 established the original assistant-managed merge-rule
@@ -11,12 +11,17 @@ baseline. This H0 update extends it with the authenticated-byte bootstrap and
 four-mode order rules. PR #57 reconciled the release ledger, PR #60 merged
 fail-closed hosted-migration tooling without a hosted write, PR #58 merged
 test-only local persona coverage, and PR #61 activated the authenticated
-cross-repository byte gate. None authorizes Advertising or Installer provisioning.
+cross-repository byte gate. PRs #62, #64, #65, and #67 added Management,
+shared Quote identity, and the Office shell and dashboard; PR #69 retired
+Railway; and the later-merged PR #68 added the Office task foundation. PR #71
+pinned its timestamped migration into the exact release-rehearsal guard. None
+authorizes Advertising or Installer provisioning.
 
 This document records what the merged Phase 0 authorization baseline enforces
-and names the activation gates for staging-only work on the current branch.
-It does not amend the byte-mirrored integration contract and does not authorize
-Advertising or Installer identities.
+and names the gates for production-rollout preparation, later staging
+activation, and field release. It does not amend the byte-mirrored integration
+contract or authorize a production write, Advertising identity, or Installer
+identity.
 
 ## 1. Central actor
 
@@ -68,9 +73,9 @@ not split across identities.
 `src/lib/auth/routePolicy.ts` declares every current App Router surface:
 
 - 25 pages;
-- 75 API route files;
-- 82 exported API handler methods;
-- 107 page/API method combinations in total.
+- 77 API route files;
+- 85 exported API handler methods;
+- 110 page/API method combinations in total.
 
 Each employee policy declares all required capabilities, department,
 paid-context requirement, resource-scope class, sensitivity, and whether an
@@ -79,9 +84,14 @@ template, evaluates the exact HTTP method, and denies undeclared paths and
 methods. A filesystem completeness test fails CI when a page or route handler
 is added without a declaration.
 
-All existing employee routes belong to the Office department. Consequently:
+Employee work routes belong to the Office department. The Management surface
+added in PR #62 is owner/admin-only and is not a department. Consequently:
 
 - Office employees can use only the existing tools granted to their profile;
+- Office and approved Owner/Admin actors receive `office.tasks.work`. The
+  `/api/tasks` GET/POST and `/api/tasks/:id` PATCH surfaces are self-scoped to
+  manual tasks created by or assigned to the immutable current employee, and
+  task mutations require idempotency keys and guarded database routines;
 - settings, team coaching, knowledge mutation, AI pipeline, and scoreboard
   management routes require separate owner/admin capabilities;
 - Advertising and Installer actors are denied from every existing Office page
@@ -141,29 +151,39 @@ inside their handler:
   at least 16 characters; a browser fallback must resolve an Office actor with
   `office.calls.work` and may post only to a call owned by that actor.
 
-Required deployment configuration:
+Current deployment requirements:
 
+- `VERCEL_ENV`: exactly `preview` or `production`; missing, blank, or unknown
+  values fail deployment preflight;
 - `CRON_SECRET`: unpadded, at least 16 characters;
-- `LIVE_BRIDGE_SECRET`: unpadded, at least 16 characters and identical in the
-  Hub and bridge process;
-- `TWILIO_AUTH_TOKEN`: required before Twilio is considered configured;
-- `LIVE_CUSTOMER_CALLS_ENABLED`: must remain exactly `false`; runtime preflight
-  rejects `true` and the live bridge exits unless the separately reviewed
-  activation gates are satisfied;
-- `LIVE_BRIDGE_URL`: the same credential-free, query-free `wss://` base URL in
-  the Hub and bridge process so exact upgrade signatures can be reconstructed;
-- `LIVE_APP_BASE_URL`: the Hub's `https://` base URL used for durable grant
-  consumption and transcript writes; plaintext HTTP is accepted only on a
-  loopback host for local development;
 - `HUB_OWNER_ADMIN_AUTH_USER_IDS`: exactly the two approved Supabase Auth UUIDs
   for Naldo and Jason;
 - signed HighLevel delivery is preferred; if the legacy compatibility path is
   still used, `GHL_WEBHOOK_SECRET` must be unpadded and at least 16 characters.
 
+Hub Preview and production are pinned to their reviewed Hub Supabase projects.
+Shared Quote Tool password identity is Preview-only and is pinned to Quote Tool
+Auth project ref `chhntsbnbofyqrpivuog` at
+`https://chhntsbnbofyqrpivuog.supabase.co/`; an arbitrary Quote Tool project URL
+fails closed. Password login remains selected, and deployment preflight rejects
+`HUB_PHONE_AUTH_STAGING_ENABLED=true` or any configured
+`NEXT_PUBLIC_TURNSTILE_SITE_KEY`.
+
+Later live-call activation-only requirements:
+
+- `LIVE_CUSTOMER_CALLS_ENABLED` must remain exactly `false`; runtime preflight
+  rejects `true`;
+- `LIVE_BRIDGE_SECRET`, `TWILIO_AUTH_TOKEN`, `LIVE_BRIDGE_URL`, and
+  `LIVE_APP_BASE_URL` are required only if live calling is separately restored
+  and approved. The bridge secret must be unpadded and at least 16 characters;
+  the bridge URL must be credential/query-free `wss://`; the app URL must use
+  HTTPS except for loopback development.
+
 `CRON_ENABLED` remains only a kill switch. It is never caller authentication.
 
-The Twilio and bridge entries above describe preparatory defenses, not approval
-to place customer calls. Customer live calling is positively disabled. See
+The production database rollout does not require or change any bridge/provider
+variable. The entries above describe later defenses, not approval to place a
+customer call. Customer live calling is positively disabled. See
 `LIVE-CALLING-ACTIVATION-BLOCKERS.md` for the complete activation checklist.
 
 ## 4. Compatibility boundaries
@@ -217,9 +237,17 @@ This slice does **not** clear the field-user release stop:
    `assigned`, or `resource` scope.
    Production migration `0019` was later applied out of band and verified on
    the current 31-table hosted state. Migrations `0020` through `0024` remain
-   unapplied in production. Staging has verified a clean `0001` through `0024`
-   application and the 38-table, 30-routine, 12-trigger target; the
-   production-shaped `0019` to `0024` reconciliation rehearsal remains open.
+   unapplied in production. Staging verified both a clean `0001` through
+   `0024` application and the sanitized production-shaped `0019` to `0024`
+   reconciliation at the 38-table, 30-routine, 12-trigger target. It later
+   applied `0025` separately and now has 39 tables, 33 routines, and 13
+   triggers. It has not applied `20260821141530_office_tasks.sql`. The current
+   clean local and CI target applies all 26 migrations and has 41 tables, 37
+   routines, and 15 triggers. Production application of both
+   `0025_quote_tool_identity_bridge.sql` and
+   `20260821141530_office_tasks.sql` remains deferred; the production packet
+   applies only `0020` through `0024`. Production backup/export review, exact
+   apply authorization, and post-apply proof remain open.
 6. HighLevel's legacy query-secret compatibility path must be removed after the
    workflow is reconfigured for signed delivery or a secret header.
 7. Owner ruled a 30-day maximum Hub session and an online Placement Run start
@@ -279,12 +307,17 @@ production and real-provider smokes remain.
 
 ## 7. Identity-foundation verification and remaining work
 
-The local PostgreSQL/parser harness applied all 24 migrations and passed the
+The local PostgreSQL/parser harness applies all 26 migrations and passed the
 seeded legacy upgrade, service-role provisioning and exact retry, deactivation
-denial, all four preflight-failure seeds, and exact manifests of 38 tables, 30
-routines, and 12 triggers. PR #50 historically executed 51 identity and 304
-default-deny assertions. Merged PR #58 expands the current suites to 53
-identity and 307 default-deny assertions; the seeded-upgrade suite remains 17.
+denial, all four preflight-failure seeds, and the current exact manifest of 41
+tables, 37 routines, and 15 triggers. The completed production-shaped staging
+rehearsal intentionally stopped at `0024`, where it verified 38 tables, 30
+routines, and 12 triggers. Shared staging later applied only `0025`, where it
+has 39 tables, 33 routines, and 13 triggers. PR #50 historically executed 51
+identity and 304 default-deny assertions. Merged PR #58 expanded its
+then-current suites to 53 identity and 307 default-deny assertions; PR #68 adds
+dedicated Office task pgTAP and expanded manifest coverage. The seeded-upgrade
+suite remains 17.
 The database, upgrade-order, and protective preflight suites passed before
 each applicable human-authorized merge.
 
@@ -298,8 +331,9 @@ each applicable human-authorized merge.
 3. Land the Quote-owned capability/policy-version transport and current-context
    projection before consuming those protected facts in the Hub. The canonical
    shared schema/OpenAPI artifacts are now vendored and pinned.
-4. Use the existing staging Supabase project for the production-shaped
-   migration, historical-reconciliation, RLS, and hosted-persona proof. Keep
+4. Preserve the completed production-shaped staging migration and historical-
+   reconciliation evidence. Use the existing staging project for remaining
+   RLS, real-key denial, and hosted-persona proof. Keep
    invite-only email/password active and phone auth false under Decision 25.
    Twilio Verify, Turnstile, dedicated phone-login deployment, owner-only
    recovery, phone reassignment, and password/session revocation remain parked
@@ -319,7 +353,8 @@ each applicable human-authorized merge.
    email in the runtime actor/legacy attribution bridge with an explicit
    phone-only field shape. Nullable field storage does not by itself make a
    phone-only Advertising or Installer actor resolvable.
-8. Complete hosted preflight, authenticated recovery, real-token denial, and
-   semantic persona integration tests before any field account is provisioned.
+8. Complete hosted preflight, password sign-in, real-token denial, and semantic
+   persona integration tests before any field account is provisioned. Password
+   recovery remains Quote Tool-owned and is not a production rollout smoke.
 9. Keep live customer calling disabled until the separate activation checklist
    is fully implemented, tested, reviewed, and approved.

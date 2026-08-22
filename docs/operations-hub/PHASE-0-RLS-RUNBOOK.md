@@ -1,7 +1,7 @@
 # Phase 0 database default-deny runbook
 
-Status: **clean staging target verified; production-shaped reconciliation rehearsal and production `0020`-`0024` pending**
-Date: 2026-08-20
+Status: **production-shaped staging rehearsal passed; production `0020`-`0024` pending protected execution and separate write authorization**
+Date: 2026-08-22
 
 This runbook covers the Hub-owned Supabase database only. It does not create
 Quote-owned time, pay, job, payroll, or shared-labor tables, and it does not
@@ -9,12 +9,18 @@ authorize Advertising or Installer accounts.
 
 Production currently has the 31 pre-`0020` public application tables. Migration
 `0019` was applied out of band and the RLS/grant state was verified live across
-those tables. The separate `yll-ops-hub-staging` project now has a clean `0001`
-through `0024` application and the expected 38 tables, 30 routines, 12
-triggers, forced RLS, zero client policies, and denied client-table access.
-That proves the clean target, not the production-shaped reconciliation path,
-and it does not authorize applying migrations `0020` through `0024` to
-production.
+those tables. The separate `yll-ops-hub-staging` project passed both a clean
+`0001` through `0024` application and the sanitized production-shaped `0019`
+through `0024` reconciliation rehearsal. That rehearsed target had 38 tables,
+30 routines, and 12 triggers. Staging later applied deferred migration `0025`
+for static shared-password mappings and now has 39 tables, 33 routines, and 13
+triggers. Both states had forced RLS, zero client policies, and denied client-
+table access. None of this authorizes applying migrations `0020` through
+`0024` to production. Shared staging has not applied
+`20260821141530_office_tasks.sql`. Production has applied neither
+`0025_quote_tool_identity_bridge.sql` nor
+`20260821141530_office_tasks.sql`; both remain deferred outside the production
+`0020` through `0024` packet.
 
 ## 1. Enforced architecture
 
@@ -40,11 +46,11 @@ impersonation.
 
 It proves:
 
-- the exact current manifest contains 38 non-extension application tables and two
-  identity sequences;
+- the exact current manifest contains 41 non-extension application tables and
+  two identity sequences;
 - no unreviewed application view, materialized view, foreign table, routine,
   non-internal trigger, policy, or publication path exists in the clean schema;
-- all 38 tables enable and force RLS with zero client policies;
+- all 41 tables enable and force RLS with zero client policies;
 - `anon` and `authenticated` lack schema, table, column, and sequence access;
 - a transaction-local grant cannot overcome RLS default deny;
 - arbitrary caller-supplied JWT persona claims cannot overcome database
@@ -53,7 +59,7 @@ It proves:
   reset privileges;
 - future public objects receive no automatic API-role access.
 
-The current clean target also contains 30 public routines and 12 non-internal
+The current clean target also contains 37 public routines and 15 non-internal
 triggers. Claims-shaped tests are not employee-policy tests. Inactive state,
 immutable self linkage, multi-membership departments, membership versions,
 Owner/Admin, and Manager behavior require server-plus-database semantic persona
@@ -180,17 +186,28 @@ Stop before migration if review finds:
 2. Run and archive the hosted read-only preflight.
 3. Resolve every drift item; do not weaken migration assertions to make drift
    disappear.
-4. Snapshot or back up the hosted database.
-5. Apply the migration to a staging clone containing current-state data.
-6. Run the pgTAP suite plus authenticated sign-in/recovery, representative
-   Office reads/writes, cron, HighLevel, Twilio, and live-bridge smokes.
-7. Apply production during a low-traffic window. The five-second lock timeout
-   must roll back rather than wait on a busy table.
-8. Repeat signed smokes and monitor permission errors and failed service writes.
+4. Rehearse the exact-current migration/history tooling in a disposable
+   production-shaped target. The protected PR #60 `0024` rehearsal remains
+   evidence, but current all-26-migration CI is not a replacement.
+5. Obtain B1 authorization, pause/drain Vercel, capture the protected dump and
+   target-bound read-only export, then resume. Prove the dump restores into a
+   new Supabase-compatible PostgreSQL 17 target before requesting B2.
+6. Obtain the separate export-set, identity-manifest, artifact-manifest, and
+   driver-hash-bound B2 authorization. Pause and drain again, take a fresh dump,
+   reproduce the exact authorized live set, and apply during the writer freeze.
+   The five-second lock timeout must roll back rather than wait on a busy table.
+7. While Vercel remains paused, run direct database/Auth configuration proof,
+   real-key PostgREST denial, and positive proof that calls, sends, and cron
+   remain disabled.
+8. Resume Vercel, then run password sign-in and representative non-provider
+   Office reads. Re-pause on failure. Do not send a recovery email, place a
+   call, send a message, deploy a live bridge, or enable a scheduled writer.
 
 If a server path loses needed access, keep user roles denied and apply a
 targeted forward migration granting only the missing `service_role` operation.
-Do not roll back by disabling RLS or restoring `anon`/`authenticated` access.
+That fix requires a new PR, disposable rehearsal, SHA-bound merge authorization,
+and separate exact production-write authorization. Do not roll back by
+disabling RLS or restoring `anon`/`authenticated` access.
 
 ## 5. Remaining release gates
 
@@ -200,9 +217,9 @@ Do not roll back by disabling RLS or restoring `anon`/`authenticated` access.
   implement the runtime inbox/outbox/DLQ and supported-version envelope against
   the published and vendored canonical schema.
 - Add real persona and cross-employee impersonation tests against that schema.
-- Restore a sanitized production-shaped staging fixture and rehearse the exact
-  historical reconciliation plus `0020` through `0024` before any production
-  application. The clean staging apply is complete but is not a substitute.
+- Preserve the completed sanitized production-shaped staging evidence for the
+  exact historical reconciliation plus `0020` through `0024`. Rehearse again
+  if any canonical migration, generator, manifest rule, or apply order changes.
 - Land the Quote-owned current-context projection; do not invent it in the Hub.
 - Archive the verified PostgreSQL 17.6 evidence and run a full-stack Data API
   denial smoke with real staging keys.

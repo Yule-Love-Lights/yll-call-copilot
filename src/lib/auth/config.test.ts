@@ -6,19 +6,28 @@ import {
 } from './config';
 
 const browserKey = 'sb_publishable_1234567890abcdefghij';
+const hubProjectUrl = 'https://mjmociuxxxwxvasnpxav.supabase.co';
+const stagingHubProjectUrl = 'https://ewbtkrytrnerypdkuimd.supabase.co';
+const quoteProjectUrl = 'https://chhntsbnbofyqrpivuog.supabase.co';
 
 const completeEnvironment: ServerAuthEnvironment = {
   NODE_ENV: 'production',
-  NEXT_PUBLIC_SUPABASE_URL: 'https://project.supabase.co',
+  VERCEL_ENV: 'production',
+  NEXT_PUBLIC_SUPABASE_URL: hubProjectUrl,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: browserKey,
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
+};
+const previewEnvironment: ServerAuthEnvironment = {
+  ...completeEnvironment,
+  VERCEL_ENV: 'preview',
+  NEXT_PUBLIC_SUPABASE_URL: stagingHubProjectUrl,
 };
 
 describe('resolveServerAuthConfiguration', () => {
   it('returns only the validated configuration when every dependency is present', () => {
     expect(resolveServerAuthConfiguration(completeEnvironment)).toEqual({
       ok: true,
-      url: 'https://project.supabase.co/',
+      url: `${hubProjectUrl}/`,
       anonKey: browserKey,
       serviceRoleKey: 'service-role-key',
     });
@@ -38,8 +47,15 @@ describe('resolveServerAuthConfiguration', () => {
     }
   });
 
-  it('rejects malformed and non-HTTPS production URLs', () => {
-    for (const url of ['not-a-url', 'http://project.supabase.co', 'ftp://project.supabase.co']) {
+  it('rejects malformed, non-HTTPS, and noncanonical production URLs', () => {
+    for (const url of [
+      'not-a-url',
+      'http://abcdefghijklmnopqrst.supabase.co',
+      'ftp://abcdefghijklmnopqrst.supabase.co',
+      'https://credential-capture.example.com',
+      'https://short.supabase.co',
+      `${hubProjectUrl}/rest/v1`,
+    ]) {
       expect(
         resolveServerAuthConfiguration({
           ...completeEnvironment,
@@ -49,11 +65,28 @@ describe('resolveServerAuthConfiguration', () => {
     }
   });
 
+  it('binds Vercel production and preview to their frozen Hub projects', () => {
+    expect(resolveServerAuthConfiguration({
+      ...completeEnvironment,
+      NEXT_PUBLIC_SUPABASE_URL: stagingHubProjectUrl,
+    })).toEqual({ ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' });
+    expect(resolveServerAuthConfiguration({
+      ...previewEnvironment,
+      NEXT_PUBLIC_SUPABASE_URL: hubProjectUrl,
+    })).toEqual({ ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' });
+    expect(resolveServerAuthConfiguration({
+      ...completeEnvironment,
+      VERCEL_ENV: undefined,
+      NEXT_PUBLIC_SUPABASE_URL: 'https://abcdefghijklmnopqrst.supabase.co',
+    })).toEqual({ ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' });
+  });
+
   it('accepts HTTP only for a loopback Supabase instance under development', () => {
     expect(
       resolveServerAuthConfiguration({
         ...completeEnvironment,
         NODE_ENV: 'development',
+        VERCEL_ENV: undefined,
         NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321',
       }),
     ).toMatchObject({ ok: true, url: 'http://127.0.0.1:54321/' });
@@ -62,6 +95,7 @@ describe('resolveServerAuthConfiguration', () => {
       resolveServerAuthConfiguration({
         ...completeEnvironment,
         NODE_ENV: 'development',
+        VERCEL_ENV: undefined,
         NEXT_PUBLIC_SUPABASE_URL: 'http://[::1]:54321',
       }),
     ).toMatchObject({ ok: true, url: 'http://[::1]:54321/' });
@@ -70,6 +104,7 @@ describe('resolveServerAuthConfiguration', () => {
       resolveServerAuthConfiguration({
         ...completeEnvironment,
         NODE_ENV: 'development',
+        VERCEL_ENV: undefined,
         NEXT_PUBLIC_SUPABASE_URL: 'http://supabase.internal:54321',
       }),
     ).toEqual({ ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' });
@@ -87,28 +122,35 @@ describe('resolveServerAuthConfiguration', () => {
       url: process.env.NEXT_PUBLIC_SUPABASE_URL,
       anon: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
       service: process.env.SUPABASE_SERVICE_ROLE_KEY,
+      vercel: process.env.VERCEL_ENV,
     };
     try {
-      process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+      process.env.NEXT_PUBLIC_SUPABASE_URL = hubProjectUrl;
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = browserKey;
       process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-key';
+      process.env.VERCEL_ENV = 'production';
       expect(resolveServerAuthConfiguration()).toMatchObject({
         ok: true,
-        url: 'https://example.supabase.co/',
+        url: `${hubProjectUrl}/`,
         anonKey: browserKey,
         serviceRoleKey: 'service-key',
       });
     } finally {
-      process.env.NEXT_PUBLIC_SUPABASE_URL = saved.url;
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = saved.anon;
-      process.env.SUPABASE_SERVICE_ROLE_KEY = saved.service;
+      if (saved.url === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+      else process.env.NEXT_PUBLIC_SUPABASE_URL = saved.url;
+      if (saved.anon === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = saved.anon;
+      if (saved.service === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+      else process.env.SUPABASE_SERVICE_ROLE_KEY = saved.service;
+      if (saved.vercel === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = saved.vercel;
     }
   });
 
   it('still fails closed on the no-argument path when a variable is absent', () => {
     const saved = process.env.SUPABASE_SERVICE_ROLE_KEY;
     try {
-      process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+      process.env.NEXT_PUBLIC_SUPABASE_URL = hubProjectUrl;
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = browserKey;
       delete process.env.SUPABASE_SERVICE_ROLE_KEY;
       expect(resolveServerAuthConfiguration()).toEqual({
@@ -127,46 +169,63 @@ describe('resolveIdentityAuthConfiguration', () => {
     expect(resolveIdentityAuthConfiguration(completeEnvironment)).toEqual({
       ok: true,
       source: 'hub',
-      url: 'https://project.supabase.co/',
+      url: `${hubProjectUrl}/`,
       anonKey: browserKey,
     });
   });
 
   it('uses a distinct Quote Tool Auth project only with every explicit public value', () => {
     expect(resolveIdentityAuthConfiguration({
-      ...completeEnvironment,
+      ...previewEnvironment,
       NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: 'quote_tool',
-      NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: 'https://quote-auth.supabase.co',
+      NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: quoteProjectUrl,
       NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY: browserKey,
     })).toEqual({
       ok: true,
       source: 'quote_tool',
-      url: 'https://quote-auth.supabase.co/',
+      url: `${quoteProjectUrl}/`,
       anonKey: browserKey,
     });
   });
 
   it.each([
     { NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: undefined },
-    { NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: 'https://project.supabase.co' },
-    { NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: 'http://quote-auth.supabase.co' },
+    { NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: stagingHubProjectUrl },
+    { NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: 'http://bcdefghijklmnopqrstu.supabase.co' },
+    { NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: 'https://bcdefghijklmnopqrstu.supabase.co' },
+    { NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: 'https://credential-capture.example.com' },
     { NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY: '   ' },
     { NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: 'anything_else' },
+    { NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: 'QUOTE_TOOL' },
+    { NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: ' quote_tool ' },
   ])('fails closed for an incomplete or invalid external identity configuration: %#', overrides => {
     expect(resolveIdentityAuthConfiguration({
-      ...completeEnvironment,
+      ...previewEnvironment,
       NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: 'quote_tool',
-      NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: 'https://quote-auth.supabase.co',
+      NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: quoteProjectUrl,
       NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY: browserKey,
       ...overrides,
     })).toEqual({ ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' });
   });
 
+  it.each([undefined, 'production', 'Preview', ' preview '])(
+    'fails closed when Quote Tool Auth is selected outside the exact Vercel preview environment: %s',
+    vercelEnvironment => {
+    expect(resolveIdentityAuthConfiguration({
+      ...previewEnvironment,
+      VERCEL_ENV: vercelEnvironment,
+        NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: 'quote_tool',
+        NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: quoteProjectUrl,
+        NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY: browserKey,
+      })).toEqual({ ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' });
+    },
+  );
+
   it('rejects an elevated key selected for browser authentication', () => {
     expect(resolveIdentityAuthConfiguration({
-      ...completeEnvironment,
+      ...previewEnvironment,
       NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: 'quote_tool',
-      NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: 'https://quote-auth.supabase.co',
+      NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: quoteProjectUrl,
       NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY: 'sb_secret_1234567890abcdefghij',
     })).toEqual({ ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' });
   });

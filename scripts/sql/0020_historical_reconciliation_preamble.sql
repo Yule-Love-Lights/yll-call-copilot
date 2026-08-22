@@ -2,11 +2,13 @@
 -- scripts/prepare-0020-hosted-apply.mjs replaces the manifest marker below
 -- and places this preamble inside the same transaction as canonical 0020-0024.
 
+set local lock_timeout = '5s';
+set local statement_timeout = '60s';
+
 select pg_advisory_xact_lock(202608200020);
 
-set local lock_timeout = '5s';
-
 lock table
+  public.app_users,
   public.verticals,
   public.brain_reviews,
   public.playbook_proposals,
@@ -17,8 +19,71 @@ lock table
   public.call_scores,
   public.feedback_cards,
   public.second_mile_touches,
-  public.weekly_digests
+  public.weekly_digests,
+  auth.users
 in share row exclusive mode;
+
+create temporary table reviewed_identity_backfill (
+  employee_id uuid primary key,
+  normalized_email_hex text not null check (
+    normalized_email_hex ~ '^[0-9a-f]+$'
+    and length(normalized_email_hex) % 2 = 0
+  ),
+  legacy_role text not null check (legacy_role in ('rep', 'office', 'owner', 'admin')),
+  backfilled_role text not null check (backfilled_role in ('office', 'owner', 'admin')),
+  legacy_created_at_epoch text check (
+    legacy_created_at_epoch is null
+    or legacy_created_at_epoch ~ '^[0-9]+(?:\.[0-9]+)?$'
+  ),
+  auth_user_id uuid not null unique
+) on commit drop;
+
+copy reviewed_identity_backfill (
+  employee_id,
+  normalized_email_hex,
+  legacy_role,
+  backfilled_role,
+  legacy_created_at_epoch,
+  auth_user_id
+)
+from stdin with (format csv, header true);
+__REVIEWED_IDENTITY_BACKFILL__
+\.
+
+create temporary table current_identity_backfill on commit drop as
+select
+  legacy_user.id as employee_id,
+  encode(convert_to(lower(btrim(legacy_user.email)), 'UTF8'), 'hex')
+    as normalized_email_hex,
+  lower(btrim(legacy_user.role)) as legacy_role,
+  case lower(btrim(legacy_user.role))
+    when 'rep' then 'office'
+    else lower(btrim(legacy_user.role))
+  end as backfilled_role,
+  case
+    when legacy_user.created_at is null then null
+    else extract(epoch from legacy_user.created_at)::text
+  end as legacy_created_at_epoch,
+  auth_user.id as auth_user_id
+from public.app_users as legacy_user
+join auth.users as auth_user
+  on lower(btrim(auth_user.email)) = lower(btrim(legacy_user.email));
+
+do $reviewed_identity_guard$
+begin
+  if exists (
+    select * from current_identity_backfill
+    except
+    select * from reviewed_identity_backfill
+  ) or exists (
+    select * from reviewed_identity_backfill
+    except
+    select * from current_identity_backfill
+  ) then
+    raise exception 'Reviewed identity backfill does not exactly match the locked live mapping';
+  end if;
+end
+$reviewed_identity_guard$;
 
 create temporary table reviewed_metric_artifacts (
   artifact_class text not null check (

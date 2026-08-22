@@ -1,16 +1,21 @@
 # Operations Hub final-review pack
 
-Status: **owner-approved; contract/schema mirror current; staging database verified; phone-auth activation deferred; field provisioning blocked**
-Updated: 2026-08-20
-Merged Hub source audited through PR #61:
-`master@ba3ecc7fa0d6248353aa75fb79a75d549a2288ba`. This includes the approved
-baseline through PR #54, release-ledger PR #57, migration-reconciliation PR
-#60, and persona-coverage PR #58. The current contract and schema artifact
-pins are recorded in `SOURCE-PINS.md`.
+Status: **owner-approved planning baseline; staging rehearsal and shared password login verified; new production execution packet prepared for review but not authorized; field provisioning blocked**
+Updated: 2026-08-22
+Merged Hub source audited through Office task release rehearsal PR #71:
+`master@c1c9146810007d16b47d669f7506b486e0f6733f`. In addition to the Phase 0
+baseline through PR #61, this includes the Management shell in PR #62, shared
+Quote Tool password identity in PR #64, the Office shell/dashboard in PRs #65
+and #67, Railway retirement in PR #69, and the Office task foundation in the
+later-merged PR #68. PR #71 then pinned the timestamped Office migration into
+the release-rehearsal guard. The current contract and schema artifact pins are
+recorded in `SOURCE-PINS.md`.
 
-This pack is the reconciled and approved source for the Operations Hub.
-Quote Tool PR #701 established the original canonical baseline, PR #716 made it
-self-contained, Naldo signed the master plan, and Hub PR #37 was human-merged.
+This pack contains the reconciled, owner-approved Operations Hub planning
+baseline. The new production execution packet is a proposed operational
+procedure and is not covered by that prior approval. Quote Tool PR #701
+established the original canonical baseline, PR #716 made it self-contained,
+Naldo signed the master plan, and Hub PR #37 was human-merged.
 The current byte-identical mirror is `v1.5.0-draft`, pinned to Quote Tool
 commit `1445c5201f227474321809e0b64dfdb60f81b731`. Its independent schema
 version is `1.1.0-draft`.
@@ -39,10 +44,13 @@ version is `1.1.0-draft`.
     hosted preflight, safe rollout order, and remaining identity tests.
 14. `HOSTED-MIGRATION-0017-0024-RUNBOOK.md`: the measured hosted drift,
     production-shaped rehearsal, exact reconciliation, migration-history
-    repair, and recording-release procedure.
-15. `LIVE-CALLING-ACTIVATION-BLOCKERS.md`: the positive customer-call kill
+    repair, and deferred recording boundary.
+15. `PRODUCTION-0020-0024-EXECUTION-PACKET.md`: the exact later production
+    authority boundary, entry gates, writer freeze, artifacts, stops, and exit
+    proof. It is not production-write authorization.
+16. `LIVE-CALLING-ACTIVATION-BLOCKERS.md`: the positive customer-call kill
     switch and the evidence required before live calling may be enabled.
-16. `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md`: approved Quote Tool
+17. `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md`: approved Quote Tool
     prerequisites for real Office timing, workload, and quote-origin task
     data; it is not a canonical-contract amendment.
 
@@ -81,18 +89,20 @@ Completed:
 - The staged shared-credentials bridge is documented in
   [`SHARED-QUOTE-IDENTITY-ROLLOUT.md`](SHARED-QUOTE-IDENTITY-ROLLOUT.md). It
   uses explicit, auditable Quote Tool Auth UUID mappings while keeping Hub
-  roles and authorization independent. It is not configured in staging or
-  production yet.
+  roles and authorization independent. Staging now uses it successfully for
+  the approved mapped users' existing email/password login. Its mappings must
+  remain static; revocation/replacement and production activation are blocked
+  on source-aware transaction checks and owner-attributed replacement audit.
 - Quote Tool PR #803 published the canonical contract/schema pack, and Hub PR
   #53 vendored it byte-identically. Hub PR #54 established the original
   assistant-managed merge-rule baseline; this H0 update extends it with the
   authenticated-byte bootstrap and four-mode order rules.
 - Hub PR #57 reconciled the release ledger. PR #60 merged the fail-closed
-  tooling and runbook for a later hosted migration rehearsal without writing
-  staging or production data; it superseded closed, unmerged PR #56. PR #58
+  tooling and runbook without writing staging or production data; it
+  superseded closed, unmerged PR #56. The later protected staging rehearsal
+  passed at PR #60's merge revision. PR #58
   merged test-only local persona coverage, bringing the identity suite to 53
-  assertions and default-deny to 307. The hosted rehearsal and real-token
-  persona proof remain open.
+  assertions and default-deny to 307. Real-token persona proof remains open.
 - Trusted cross-repository byte CI is active with a fine-grained
   `OPS_HUB_QUOTE_TOOL_READ_TOKEN` restricted to Contents: read on the Quote
   Tool repository. Its first `master` run succeeded after PR #61. The Hub's
@@ -101,24 +111,34 @@ Completed:
 - Production migration `0019` was applied out of band and verified across the
   31 existing hosted public tables. Production migrations `0020` through
   `0024` remain unapplied. The separate `yll-ops-hub-staging` Supabase project
-  now has a clean `0001` through `0024` application with the expected 38
-  tables, 30 routines, 12 triggers, forced RLS on all 38 tables, zero client
-  policies, and no `anon` or `authenticated` application-table access.
+  passed both the clean `0001` through `0024` target and the production-shaped
+  `0019` through `0024` reconciliation rehearsal. The `0024` target is 38
+  tables, 30 routines, and 12 triggers. Staging subsequently applied `0025`
+  and now has 39 tables, 33 routines, and 13 triggers, with forced RLS, zero
+  client policies, and no `anon` or `authenticated` application-table access.
+  It has not applied `20260821141530_office_tasks.sql`. The current clean local
+  and CI target applies all 26 checked-in migrations and contains 41 tables, 37
+  routines, and 15 triggers.
 - Staging public signup is off, its session timebox is 30 days, and its access
-  token lifetime is 15 minutes. This clean-target proof does not replace the
-  still-required production-shaped `0019` to `0024` reconciliation rehearsal.
+  token lifetime is 15 minutes. Production application remains separately
+  blocked on PostgreSQL 17 client and Docker availability, a protected reviewed
+  Supabase CA and exact-current CA-backed helper rehearsal, B1
+  dump/export/restore proof, independent
+  export-set/identity-manifest/artifact-manifest/driver review, separate B2
+  authorization, and post-apply proof.
 
 Phase 0 must now deliver:
 
-- Configuration and exact-head success of authenticated repository-byte CI
-  through `OPS_HUB_QUOTE_TOOL_READ_TOKEN`.
 - Authenticated Quote Tool runtime version health and live deploy-skew proof.
 - RLS/authorization checklists and impersonated-role tests are defined for
   every field-facing Hub table and endpoint.
-- A production-shaped staging migration rehearsal, hosted persona proof,
-  idempotency, DLQ, kill-switch, and fail-closed activation gates. Phone
-  provider configuration, recovery, reassignment, and password/session
-  revocation are deliberately deferred under Decision 25.
+- The reviewed production `0020` through `0024` rollout, hosted persona proof,
+  idempotency, DLQ, kill-switch, and fail-closed activation gates. Production
+  application of `0025_quote_tool_identity_bridge.sql` and
+  `20260821141530_office_tasks.sql` is excluded from that packet and remains
+  separate deferred work. Identity replacement, phone provider configuration,
+  recovery, reassignment, and password/session revocation also remain deferred
+  under Decision 25 and the staging-only identity boundary.
 
 Merged PR #50 adds Hub-owned immutable employee, auth-link, active-state,
 membership-version, and local identity-audit scaffolding. PR #52 adds a
@@ -132,6 +152,9 @@ delivery, owner-only recovery, password-identity revocation at activation with
 Supabase-console owner break-glass, and a 30-day maximum Hub session. Decision
 25 keeps the current invite-only email/password login and leaves the phone-auth
 flag false while higher-priority migration, ledger, and persona work finishes.
+Deployment preflight rejects a true phone-auth flag, any configured Turnstile
+site key, and a missing, blank, or unknown `VERCEL_ENV`, so the deferred phone
+and Turnstile path cannot be deployed while password login remains selected.
 Placement Runs will require an
 online start, allow at most 12 hours under an authorized offline window, and
 quarantine expired or revoked-device work for Naldo/Jason review without

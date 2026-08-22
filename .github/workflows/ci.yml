@@ -278,6 +278,7 @@ jobs:
           supabase db reset --local --no-seed --version 0019
           node scripts/prepare-0020-hosted-apply.mjs \
             --manifest supabase/tests/migration/0020_empty_reconciliation.csv \
+            --identity-manifest supabase/tests/migration/0020_empty_identity_backfill.csv \
             --output /tmp/0020-0024-empty-hosted.sql
           "${psql_command[@]}" < /tmp/0020-0024-empty-hosted.sql
 
@@ -286,6 +287,7 @@ jobs:
             < supabase/tests/migration/0020_edited_fallback.seed.sql
           node scripts/prepare-0020-hosted-apply.mjs \
             --manifest supabase/tests/migration/0020_edited_fallback.csv \
+            --identity-manifest supabase/tests/migration/0020_empty_identity_backfill.csv \
             --output /tmp/0020-0024-edited-fallback.sql
           "${psql_command[@]}" < /tmp/0020-0024-edited-fallback.sql
           "${psql_command[@]}" --tuples-only --no-align --command="
@@ -306,6 +308,7 @@ jobs:
           "
           node scripts/prepare-0020-hosted-apply.mjs \
             --manifest supabase/tests/migration/0020_edited_fallback.csv \
+            --identity-manifest supabase/tests/migration/0020_empty_identity_backfill.csv \
             --output /tmp/0020-0024-no-fallback.sql
           if no_fallback_output="$(
             "${psql_command[@]}" < /tmp/0020-0024-no-fallback.sql 2>&1
@@ -337,6 +340,7 @@ jobs:
             < supabase/tests/migration/0020_historical_reconciliation.seed.sql
           node scripts/prepare-0020-hosted-apply.mjs \
             --manifest supabase/tests/migration/0020_historical_reconciliation_wrong_id.csv \
+            --identity-manifest supabase/tests/migration/0020_empty_identity_backfill.csv \
             --output /tmp/0020-0024-wrong-id.sql
           if wrong_id_output="$(
             "${psql_command[@]}" < /tmp/0020-0024-wrong-id.sql 2>&1
@@ -363,6 +367,7 @@ jobs:
           "
           node scripts/prepare-0020-hosted-apply.mjs \
             --manifest supabase/tests/migration/0020_historical_reconciliation.csv \
+            --identity-manifest supabase/tests/migration/0020_empty_identity_backfill.csv \
             --output /tmp/0020-0024-reviewed-hosted.sql
           if later_failure_output="$(
             "${psql_command[@]}" < /tmp/0020-0024-reviewed-hosted.sql 2>&1

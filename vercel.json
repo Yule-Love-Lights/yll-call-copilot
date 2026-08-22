@@ -1,4 +1,5 @@
 {
+  "buildCommand": "npm run verify:auth-config && npm run build",
   "crons": [
     {
       "path": "/api/cron/brain-review",

@@ -1,11 +1,11 @@
 # Source revisions reconciled by this review
 
-Prepared: 2026-08-07; last reconciled: 2026-08-21
+Prepared: 2026-08-07; last reconciled: 2026-08-22
 
 Current contract/schema pin verified: 2026-08-20
 
-Hub implementation base audited through PR #61: 2026-08-21 at
-`master@ba3ecc7fa0d6248353aa75fb79a75d549a2288ba`
+Hub implementation base audited through Office task release rehearsal PR #71:
+2026-08-22 at `master@c1c9146810007d16b47d669f7506b486e0f6733f`
 
 | Source | Branch / PR | Pinned head | Use |
 |---|---|---|---|
@@ -25,6 +25,13 @@ Hub implementation base audited through PR #61: 2026-08-21 at
 | Hub hosted-migration reconciliation | `codex/staging-migration-reconciliation`, PR #60 | head `4478357d08f7af2f2112b2bced723d66ccef88ec`; merge `51c9467f172fb03129c97d1fd06511ce14b309ca` | Fail-closed hosted migration, history-repair, and exact recording-release tooling; no hosted write performed |
 | Hub Phase 0 persona coverage | `codex/phase0-persona-coverage`, PR #58 | head `08d3e199c75a2b4eab950422a3416f816ef08ebc`; merge `2574935f2710ca2ed08b2742e77463bea7ca758d` | Audited pre-H0 Hub base; test-only immutable ownership, membership, Owner/Admin, revoked-link, and default-deny coverage |
 | Hub contract-skew gate | `codex/phase0-contract-skew-gate`, PR #61 | head `4cde5826a15ad8a9e2c64eec36d2dc6ff59966c4`; merge `ba3ecc7fa0d6248353aa75fb79a75d549a2288ba` | Trusted authenticated cross-repository byte gate, static compatibility helper, and approved four-mode planning reconciliation |
+| Hub Management shell | `codex/management-shell`, PR #62 | head `42300adeae78c92e09a82bf67654ad1af2e1c0a3`; merge `16b6e6e2ed44a6cdda6f7f0b0cdf0ad6a1f6f189` | Owner-only Management landing and explicit unavailable-state boundaries |
+| Hub shared Quote identity | `naldo/shared-quote-identity`, PR #64 | head `a8ff7bb6ea968fc6ecab436ddab8a8d0177167c4`; merge `40dd99a9b29e4b43e3ffc49c513a3e83054b09a1` | Staging-only shared Quote Tool email/password authority with Hub-owned mappings and authorization |
+| Hub Office shell | `codex/office-shell`, PR #65 | head `2c572618f79ed8ba463bc3909eb227983d5d9ccd`; merge `40cb4e99f452bee1a32b237de64e2fa36da4faed` | Office navigation shell and unavailable-state foundation |
+| Hub Office dashboard | `codex/office-dashboard`, PR #67 | head `3b3a95234a1cd0417e806e3ed2fc49b91a3a6ad3`; merge `d967397928049f82d992b3569e81dacb7cd0aac4` | Office quote/task availability dashboard without invented Quote Tool facts |
+| Railway retirement | `naldo/retire-railway`, PR #69 | head `1132ad00c586cf0d54edb806ca50153f5e2c0df9`; merge `58ea70a716f9e1612462ee8493a8fb3aa522cdd2` | Removes Railway deployment configuration while retaining the disabled, unhosted live bridge code |
+| Hub Office task foundation | `codex/office-task-foundation`, PR #68 | head `358103f1142c31c6efdb50b85ecb02bc37cfa456`; merge `487ac1c7e3ad751fd6090ab70492cadb8524c1e0` | Office task UI and APIs, retry-safe create/update routines, task-event audit, route authorization, and default-deny coverage |
+| Hub Office task release rehearsal | `codex/office-task-release-rehearsal`, PR #71 | head `b2b94c389068de54f0d43650ff671d564611a79a`; merge `c1c9146810007d16b47d669f7506b486e0f6733f` | Pins the timestamped Office task migration in the post-`0024` rehearsal guard and history-helper tests; no production apply authority |
 
 ## Known source condition
 
@@ -62,7 +69,7 @@ Hub implementation base audited through PR #61: 2026-08-21 at
 - Canonical and Hub mirror SHA-256:
   `934506c96969f881a7252a4da04852720682a0d66efc20c7ad79e950d34dcecf`
 - Canonical and Hub mirror byte length: `63985`
-- Schema version: `v1.1.0-draft`
+- Schema version: `1.1.0-draft`
 - Canonical manifest SHA-256:
   `7ef7c633fc9c57871e253717965b53529be47daa151714ab399fd584eab47132`
 - Canonical OpenAPI SHA-256:
