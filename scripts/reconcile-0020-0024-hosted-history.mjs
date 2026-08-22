@@ -88,7 +88,7 @@ function parseHistory(output) {
 
 function assertLocalMigrationManifest() {
   const actual = readdirSync(MIGRATIONS_DIR)
-    .filter(name => /^\d{4}_.+\.sql$/.test(name))
+    .filter(name => /^\d{4,}_.+\.sql$/.test(name))
     .sort();
   const expected = CANONICAL.map(row => `${row.version}_${row.name}.sql`);
   const canonicalFiles = actual.filter(name =>
@@ -131,7 +131,7 @@ function assertDryRunAgainstFutureMigrations(output, futureMigrationFiles) {
     return;
   }
 
-  const mentioned = [...output.matchAll(/\b\d{4}_[A-Za-z0-9][A-Za-z0-9_-]*\.sql\b/g)]
+  const mentioned = [...output.matchAll(/\b\d{4,}_[A-Za-z0-9][A-Za-z0-9_-]*\.sql\b/g)]
     .map(match => match[0])
     .sort();
   const expected = [...futureMigrationFiles].sort();
@@ -367,6 +367,7 @@ export {
   assertEmptyDryRun,
   assertDryRunAgainstFutureMigrations,
   assertEmptySchemaDiff,
+  assertLocalMigrationManifest,
   classifyHistory,
   parseConfig,
   parseHistory,
