@@ -85,9 +85,10 @@ Complete these steps in staging in order:
 3. Build the reviewed six-class manifest. Generate and run its reconciliation
    and canonical 0020 to 0024 in the single transaction in section 5.
 4. Run the official migration-history reconciliation in section 7.
-5. Run the pgTAP suite and the sign-in, Office read/write, cron, HighLevel,
+5. Apply the reviewed post-0024 migrations in section 8.
+6. Run the pgTAP suite and the sign-in, Office read/write, cron, HighLevel,
    Twilio, and live-bridge smokes required by `PHASE-0-RLS-RUNBOOK.md`.
-6. Rehearse the canary and remainder recording release in section 8.
+7. Rehearse the canary and remainder recording release in section 9.
 
 Production remains blocked if any step is skipped, weakened, or produces a
 state not explicitly handled by this runbook.
@@ -106,6 +107,10 @@ YLL_MIGRATION_ENVIRONMENT="staging" # exactly staging or production
 case "$YLL_MIGRATION_ENVIRONMENT" in
   staging|production) ;;
   *) echo "YLL_MIGRATION_ENVIRONMENT must be staging or production" >&2; exit 2 ;;
+esac
+case "$YLL_MIGRATION_ENVIRONMENT" in
+  staging) YLL_EXPECTED_SUPABASE_PROJECT_REF="ewbtkrytrnerypdkuimd" ;;
+  production) YLL_EXPECTED_SUPABASE_PROJECT_REF="mjmociuxxxwxvasnpxav" ;;
 esac
 YLL_MIGRATION_BASE_DIR="/Users/naldovenseizeme/Documents/YLL-Protected-Backups/yll-call-copilot"
 install -d -m 700 "$YLL_MIGRATION_BASE_DIR"
@@ -205,10 +210,11 @@ select
 ## 7. Reconcile migration history with the official CLI
 
 Only after section 5 succeeds, bind the operation to the expected project and
-run the checked-in repair script:
+run the checked-in repair script. It refuses a connection URL whose project
+reference does not equal `YLL_EXPECTED_SUPABASE_PROJECT_REF`:
 
 ```sh
-YLL_EXPECTED_SUPABASE_PROJECT_REF="mjmociuxxxwxvasnpxav" \
+YLL_EXPECTED_SUPABASE_PROJECT_REF="$YLL_EXPECTED_SUPABASE_PROJECT_REF" \
   node scripts/reconcile-0020-0024-hosted-history.mjs
 ```
 
@@ -227,7 +233,34 @@ If its connection result is unknown, query ordered `version` and `name` values:
 - exact canonical 0001 through 0024 proceeds to schema diff and dry-run proof;
 - any mixed, extra, or wrong-name row blocks production.
 
-## 8. Release parked recordings in two transactions
+## 8. Apply reviewed post-0024 migrations in staging
+
+The repository now contains two reviewed migrations after the canonical 0024
+history boundary: `0025_quote_tool_identity_bridge.sql` and
+`20260821141530_office_tasks.sql`. The history-reconciliation script must
+report exactly those two files as pending during its final dry run. Any missing,
+extra, or reordered file blocks the rehearsal.
+
+Only after the 0020 through 0024 transaction and its history repair pass,
+apply those two pending migrations to staging with the pinned CLI. Do not use
+`--include-all` and do not apply them to production in this step:
+
+```sh
+npx --yes supabase@2.112.0 db push \
+  --db-url "$SUPABASE_DB_URL" \
+  --yes
+```
+
+Use the same connection URL that section 7 just bound to the expected staging
+project. If the target is not `ewbtkrytrnerypdkuimd`, stop before this command.
+
+Record the resulting ordered migration history, rerun the pgTAP suite, and
+verify the Office task tables, task RPCs, forced RLS, and service-role-only
+mutation grants. Production application of these post-0024 migrations requires
+the completed staging evidence and a separate exact authorization; it is not
+part of the one-transaction historical reconciliation.
+
+## 9. Release parked recordings in two transactions
 
 Create two reviewed, one-UUID-per-line files in the protected directory: an
 exact three-ID canary file and an exact sixteen-ID remainder file. Their
@@ -285,7 +318,7 @@ eligible row, or wrong ID blocks writer restart.
 The 24 paid-transcription failures are a separate deliberate re-drive. The 42
 GHL 422 rows must not be retried without a recording source.
 
-## 9. Completion evidence
+## 10. Completion evidence
 
 Attach all of the following to the deployment ticket before resuming writers:
 
