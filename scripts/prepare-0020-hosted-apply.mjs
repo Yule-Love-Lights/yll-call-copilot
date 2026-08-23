@@ -344,6 +344,56 @@ function buildDashboard(entries, manifestText, identityManifestText, preamble) {
   return dashboardDriver;
 }
 
+function assertSha256(value, label) {
+  if (!/^[0-9a-f]{64}$/.test(value)) throw new Error(`${label} must be a lowercase SHA-256`);
+}
+
+function buildDashboardDigestBound(entries, {
+  identityCount,
+  identityDigest,
+  artifactDigest,
+  artifactCounts,
+}, preamble) {
+  if (!Number.isSafeInteger(identityCount) || identityCount < 0) {
+    throw new Error('identity count must be a non-negative safe integer');
+  }
+  assertSha256(identityDigest, 'identity digest');
+  assertSha256(artifactDigest, 'artifact digest');
+  const expectedClasses = [...ARTIFACT_CLASSES].sort();
+  if (
+    !artifactCounts ||
+    JSON.stringify(Object.keys(artifactCounts).sort()) !== JSON.stringify(expectedClasses) ||
+    expectedClasses.some(key => !Number.isSafeInteger(artifactCounts[key]) || artifactCounts[key] < 0)
+  ) {
+    throw new Error('artifact counts must contain each allowed class with a non-negative safe integer');
+  }
+
+  const psqlDriver = build(
+    entries,
+    `${MANIFEST_HEADER}\n`,
+    `${IDENTITY_MANIFEST_HEADER}\n`,
+    preamble,
+  );
+  const emptyIdentityCopy =
+    `copy reviewed_identity_backfill (\n  employee_id,\n  normalized_email_hex,\n  legacy_role,\n  backfilled_role,\n  legacy_created_at_epoch,\n  auth_user_id\n)\nfrom stdin with (format csv, header true);\n${IDENTITY_MANIFEST_HEADER}\n\\.\n`;
+  const emptyArtifactCopy =
+    `copy reviewed_metric_artifacts (artifact_class, id)\nfrom stdin with (format csv, header true);\n${MANIFEST_HEADER}\n\\.\n`;
+  const identityBinding = `insert into reviewed_identity_backfill\nselect * from current_identity_backfill;\n\ndo $dashboard_identity_digest_guard$\nbegin\n  if (select count(*) from reviewed_identity_backfill) <> ${identityCount}\n    or (\n      select encode(digest(coalesce(string_agg(concat_ws('|', employee_id::text, normalized_email_hex, legacy_role, backfilled_role, legacy_created_at_epoch, auth_user_id::text), E'\\n' order by employee_id, auth_user_id), ''), 'sha256'), 'hex')\n      from reviewed_identity_backfill\n    ) <> '${identityDigest}'\n  then\n    raise exception 'Dashboard identity mapping digest mismatch';\n  end if;\nend\n$dashboard_identity_digest_guard$;\n\n`;
+  const artifactBinding = `insert into reviewed_metric_artifacts\nselect * from current_metric_artifacts;\n\ndo $dashboard_artifact_digest_guard$\nbegin\n  if (select count(*) from reviewed_metric_artifacts) <> ${expectedClasses.reduce((sum, key) => sum + artifactCounts[key], 0)}\n    or (\n      select encode(digest(coalesce(string_agg(artifact_class || '|' || id::text, E'\\n' order by artifact_class, id), ''), 'sha256'), 'hex')\n      from reviewed_metric_artifacts\n    ) <> '${artifactDigest}'\n    or ${expectedClasses.map(key => `(select count(*) from reviewed_metric_artifacts where artifact_class = '${key}') <> ${artifactCounts[key]}`).join('\n    or ')}\n  then\n    raise exception 'Dashboard artifact manifest digest or count mismatch';\n  end if;\nend\n$dashboard_artifact_digest_guard$;\n\n`;
+  const identityMarker = '\n\ndo $reviewed_identity_guard$';
+  const artifactMarker = '\n\ndo $reviewed_manifest_guard$';
+  const dashboardDriver = psqlDriver
+    .replace(/^\\\\set ON_ERROR_STOP on\n/, '')
+    .replace(emptyIdentityCopy, '')
+    .replace(emptyArtifactCopy, '')
+    .replace(identityMarker, `\n\n${identityBinding}do $reviewed_identity_guard$`)
+    .replace(artifactMarker, `\n\n${artifactBinding}do $reviewed_manifest_guard$`);
+  if (dashboardDriver.includes('from stdin') || dashboardDriver.includes('\\\\.\n')) {
+    throw new Error('failed to render dashboard digest-bound driver');
+  }
+  return dashboardDriver;
+}
+
 function extractEmbeddedManifest(driverText, tableName, header) {
   const copyMarker = `copy ${tableName} (`;
   const copyAt = driverText.indexOf(copyMarker);
@@ -386,6 +436,26 @@ function assertGeneratedHostedDriver(sql) {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const args = process.argv.slice(2);
+  if (args[0] === '--dashboard-digest-bound') {
+    const option = flag => args[args.indexOf(flag) + 1];
+    const output = option('--output');
+    const artifactCountsText = option('--artifact-counts-json');
+    if (
+      args.length !== 11 || !output || !artifactCountsText ||
+      !option('--identity-count') || !option('--identity-sha256') || !option('--artifact-sha256')
+    ) {
+      throw new Error('Usage: prepare-0020-hosted-apply.mjs --dashboard-digest-bound --identity-count N --identity-sha256 SHA256 --artifact-sha256 SHA256 --artifact-counts-json JSON --output FILE');
+    }
+    const out = buildDashboardDigestBound(loadMigrations(), {
+      identityCount: Number(option('--identity-count')),
+      identityDigest: option('--identity-sha256'),
+      artifactDigest: option('--artifact-sha256'),
+      artifactCounts: JSON.parse(artifactCountsText),
+    });
+    writeFileSync(output, out, { flag: 'wx', mode: 0o600 });
+    process.stderr.write(`wrote ${output} (driver SHA-256 ${createHash('sha256').update(out).digest('hex')})\n`);
+    process.exit(0);
+  }
   if (
     (args.length !== 6 && args.length !== 8) ||
     args[0] !== '--manifest' ||
@@ -433,6 +503,7 @@ export {
   assertGeneratedHostedDriver,
   build,
   buildDashboard,
+  buildDashboardDigestBound,
   loadMigrations,
   parseManifest,
   parseIdentityManifest,
