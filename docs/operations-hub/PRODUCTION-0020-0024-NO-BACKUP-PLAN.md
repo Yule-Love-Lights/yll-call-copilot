@@ -27,7 +27,7 @@ It must not change Quote Tool, Supabase Auth users, Railway, Vercel environment 
 
 ## What remains required
 
-- A read-only, aggregate-only production compatibility check with a current credential and reviewed TLS certificate.
+- A read-only, aggregate-only production compatibility check through an authenticated Supabase dashboard session or a current reviewed direct connection.
 - A temporary private identity mapping needed to retain password login. It is operational input, not a backup, and must not be printed or retained after the transaction.
 - A generated, hash-bound, one-transaction driver. A mismatched schema, migration history, identity mapping, or expected row count stops before the first write.
 - A Vercel maintenance pause/resume only for the later authorized write window.
@@ -35,11 +35,11 @@ It must not change Quote Tool, Supabase Auth users, Railway, Vercel environment 
 
 The existing reconciliation deletes specific legacy metric artifacts that violate the new invariant. That deletion remains in the same transaction. It is not a full database wipe, does not touch Quote Tool, and does not delete `auth.users`.
 
-## Current blocker
+## Current preflight result
 
-The latest read-only attempt was rejected by PostgreSQL password authentication before any query ran. Replace the private Keychain maintenance URL with a current production credential. Do not put a credential in chat, repository files, or a pull request.
+On 2026-08-23, the authenticated production Supabase dashboard confirmed the expected pre-migration state without reading customer records: 31 public tables, history ending at `0017` and `0018`, no `0020` through `0024` feature objects, and zero Storage buckets or objects.
 
-Docker must also be running for the local canonical-schema comparison. These are tooling prerequisites, not recovery steps.
+The previously saved direct database credential was rejected before this dashboard check. It is not needed for the dashboard route and must not be pasted into chat, repository files, or a pull request. Docker is likewise not required for this owner-authorized dashboard route.
 
 ## Required future authorization
 
