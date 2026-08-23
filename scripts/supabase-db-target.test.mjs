@@ -144,7 +144,7 @@ describe('Supabase migration target guard', () => {
     const childEnv = buildSanitizedPostgresEnv(env, target);
 
     expect(childEnv).toMatchObject({
-      PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+      PATH: '/opt/homebrew/opt/libpq@17/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
       PGDATABASE: 'postgres',
       PGHOST: `db.${productionRef}.supabase.co`,
       PGPASSWORD: secret,
@@ -198,7 +198,7 @@ describe('Supabase migration target guard', () => {
     expect(buildSanitizedSupabaseCliEnv(postgresEnv, '/private/tmp/yll-cli-home')).toEqual({
       LANG: 'C',
       LC_ALL: 'C',
-      PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+      PATH: '/opt/homebrew/opt/libpq@17/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
       PGDATABASE: 'postgres',
       PGHOST: `db.${productionRef}.supabase.co`,
       PGPASSWORD: secret,

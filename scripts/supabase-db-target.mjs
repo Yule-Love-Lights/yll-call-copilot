@@ -8,7 +8,7 @@ const SUPABASE_PROJECT_REFS = Object.freeze({
 });
 
 const SESSION_POOLER_HOST = /^aws-\d+-[a-z0-9]+(?:-[a-z0-9]+)*\.pooler\.supabase\.com$/;
-const SAFE_EXEC_PATH = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin';
+const SAFE_EXEC_PATH = '/opt/homebrew/opt/libpq@17/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin';
 
 function requiredEnvironmentValue(env, name) {
   const value = env[name];
