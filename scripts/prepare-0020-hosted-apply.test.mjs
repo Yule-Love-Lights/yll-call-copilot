@@ -7,6 +7,7 @@ import {
   MIGRATIONS,
   build,
   buildDashboard,
+  buildDashboardDigestBound,
   loadMigrations,
   parseIdentityManifest,
   parseManifest,
@@ -51,6 +52,34 @@ describe('prepare-0020-hosted-apply', () => {
     for (const [version, filename] of MIGRATIONS) {
       expect(out).toContain(`-- BEGIN canonical migration ${version}: ${filename}`);
     }
+  });
+
+  it('binds a dashboard driver to aggregate-only identity and artifact digests', () => {
+    const out = buildDashboardDigestBound(entries, {
+      identityCount: 2,
+      identityDigest: 'a'.repeat(64),
+      artifactDigest: 'b'.repeat(64),
+      artifactCounts: {
+        brain_review: 9,
+        edited_playbook_version: 0,
+        orphan_call_score: 0,
+        playbook_proposal: 14,
+        unsafe_personal_touch: 0,
+        weekly_digest: 5,
+      },
+    });
+    expect(out).not.toContain('from stdin');
+    expect(out).not.toContain('\\\\.');
+    expect(out).toContain('Dashboard identity mapping digest mismatch');
+    expect(out).toContain('Dashboard artifact manifest digest or count mismatch');
+    expect(out).toContain("<> 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'");
+    expect(out).toContain("<> 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'");
+    expect(() => buildDashboardDigestBound(entries, {
+      identityCount: -1,
+      identityDigest: 'a'.repeat(64),
+      artifactDigest: 'b'.repeat(64),
+      artifactCounts: {},
+    })).toThrow(/identity count/);
   });
 
   it('keeps every canonical migration body byte-for-byte inside its section', () => {
