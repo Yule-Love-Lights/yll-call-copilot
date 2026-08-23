@@ -29,7 +29,7 @@ const MIGRATIONS_DIR = fileURLToPath(new URL('../supabase/migrations/', import.m
 const CONFIG_PATH = fileURLToPath(new URL('../supabase/config.toml', import.meta.url));
 const CONFIG_SHA256 = '995eb07105469acf5fca9b757fdbde6468f0f113866ed8964417cc04d563345d';
 const SUPABASE_CLI_VERSION = '2.112.0';
-const SAFE_EXEC_PATH = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin';
+const SAFE_EXEC_PATH = '/opt/homebrew/opt/libpq@17/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin';
 const PUBLIC_SCHEMA_DUMP_LIMIT = 16 * 1024 * 1024;
 const PUBLIC_SCHEMA_RESTRICT_KEY = 'YLL00200024PUBLICSCHEMA';
 const PUBLIC_SCHEMA_DUMP_ARGS = Object.freeze([
@@ -477,7 +477,7 @@ function makeRunner(config, spawn = spawnSync) {
     ? {
         LANG: 'C',
         LC_ALL: 'C',
-        PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+        PATH: '/opt/homebrew/opt/libpq@17/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
         SUPABASE_HOME: supabaseHome,
         SUPABASE_PROFILE: 'supabase',
       }
