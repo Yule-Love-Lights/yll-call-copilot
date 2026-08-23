@@ -9,6 +9,7 @@ import {
   buildPasswordlessPostgresUrl,
   buildSanitizedSupabaseCliEnv,
   buildSanitizedPostgresEnv,
+  resolveSafeExecPath,
   resolveSupabaseDatabaseTarget,
 } from './supabase-db-target.mjs';
 
@@ -46,6 +47,16 @@ function productionEnv(overrides = {}) {
 }
 
 describe('Supabase migration target guard', () => {
+  it('selects only reviewed macOS or WSL PostgreSQL 17 client paths', () => {
+    expect(resolveSafeExecPath('darwin')).toBe(
+      '/opt/homebrew/opt/libpq@17/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+    );
+    expect(resolveSafeExecPath('linux')).toBe(
+      '/usr/lib/postgresql/17/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+    );
+    expect(() => resolveSafeExecPath('win32')).toThrow(/WSL/);
+  });
+
   it('accepts only the frozen production direct target', () => {
     const target = resolveSupabaseDatabaseTarget(productionEnv());
     expect(target).toMatchObject({
@@ -144,7 +155,7 @@ describe('Supabase migration target guard', () => {
     const childEnv = buildSanitizedPostgresEnv(env, target);
 
     expect(childEnv).toMatchObject({
-      PATH: '/opt/homebrew/opt/libpq@17/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+      PATH: resolveSafeExecPath(),
       PGDATABASE: 'postgres',
       PGHOST: `db.${productionRef}.supabase.co`,
       PGPASSWORD: secret,
@@ -198,7 +209,7 @@ describe('Supabase migration target guard', () => {
     expect(buildSanitizedSupabaseCliEnv(postgresEnv, '/private/tmp/yll-cli-home')).toEqual({
       LANG: 'C',
       LC_ALL: 'C',
-      PATH: '/opt/homebrew/opt/libpq@17/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+      PATH: resolveSafeExecPath(),
       PGDATABASE: 'postgres',
       PGHOST: `db.${productionRef}.supabase.co`,
       PGPASSWORD: secret,

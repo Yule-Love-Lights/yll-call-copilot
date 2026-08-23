@@ -8,7 +8,18 @@ const SUPABASE_PROJECT_REFS = Object.freeze({
 });
 
 const SESSION_POOLER_HOST = /^aws-\d+-[a-z0-9]+(?:-[a-z0-9]+)*\.pooler\.supabase\.com$/;
-const SAFE_EXEC_PATH = '/opt/homebrew/opt/libpq@17/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin';
+const SAFE_EXEC_PATHS = Object.freeze({
+  darwin: '/opt/homebrew/opt/libpq@17/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+  linux: '/usr/lib/postgresql/17/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+});
+
+function resolveSafeExecPath(platform = process.platform) {
+  const path = SAFE_EXEC_PATHS[platform];
+  if (!path) {
+    throw new Error('The production migration runner requires macOS or Linux/WSL; native Windows is unsupported');
+  }
+  return path;
+}
 
 function requiredEnvironmentValue(env, name) {
   const value = env[name];
@@ -175,7 +186,7 @@ function buildSanitizedPostgresEnv(env, connection) {
   return {
     LANG: 'C',
     LC_ALL: 'C',
-    PATH: SAFE_EXEC_PATH,
+    PATH: resolveSafeExecPath(),
     PGDATABASE: connection.database,
     PGHOST: connection.hostname,
     PGPASSWORD: connection.password,
@@ -211,7 +222,7 @@ function buildSanitizedSupabaseCliEnv(postgresEnv, supabaseHome) {
   return {
     LANG: 'C',
     LC_ALL: 'C',
-    PATH: SAFE_EXEC_PATH,
+    PATH: resolveSafeExecPath(),
     PGDATABASE: postgresEnv.PGDATABASE,
     PGHOST: postgresEnv.PGHOST,
     PGPASSWORD: postgresEnv.PGPASSWORD,
@@ -231,6 +242,7 @@ export {
   buildPasswordlessPostgresUrl,
   buildSanitizedSupabaseCliEnv,
   buildSanitizedPostgresEnv,
+  resolveSafeExecPath,
   resolveSupabaseDatabaseTarget,
   resolveSslRootCertificate,
 };
