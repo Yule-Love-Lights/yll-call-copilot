@@ -293,6 +293,57 @@ commit;
 `;
 }
 
+function sqlLiteral(value) {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function buildDashboard(entries, manifestText, identityManifestText, preamble) {
+  const psqlDriver = build(entries, manifestText, identityManifestText, preamble);
+  const identityRows = parseIdentityManifest(identityManifestText);
+  const artifactRows = parseManifest(manifestText);
+
+  const identityCopy =
+    `copy reviewed_identity_backfill (\n` +
+    `  employee_id,\n` +
+    `  normalized_email_hex,\n` +
+    `  legacy_role,\n` +
+    `  backfilled_role,\n` +
+    `  legacy_created_at_epoch,\n` +
+    `  auth_user_id\n` +
+    `)\nfrom stdin with (format csv, header true);\n` +
+    identityManifestText +
+    `\\.\n`;
+  const identityInsert = identityRows.length === 0
+    ? 'insert into reviewed_identity_backfill (employee_id, normalized_email_hex, legacy_role, backfilled_role, legacy_created_at_epoch, auth_user_id) select null, null, null, null, null, null where false;\n'
+    : `insert into reviewed_identity_backfill (employee_id, normalized_email_hex, legacy_role, backfilled_role, legacy_created_at_epoch, auth_user_id) values\n` +
+      identityManifestText.slice(IDENTITY_MANIFEST_HEADER.length + 1, -1)
+        .split('\n')
+        .map(row => row.split(',').map(sqlLiteral).join(', '))
+        .map(row => `  (${row})`)
+        .join(',\n') +
+      ';\n';
+
+  const artifactCopy =
+    `copy reviewed_metric_artifacts (artifact_class, id)\n` +
+    `from stdin with (format csv, header true);\n` +
+    manifestText +
+    `\\.\n`;
+  const artifactInsert = artifactRows.length === 0
+    ? 'insert into reviewed_metric_artifacts (artifact_class, id) select null, null where false;\n'
+    : `insert into reviewed_metric_artifacts (artifact_class, id) values\n` +
+      artifactRows.map(row => `  (${sqlLiteral(row.artifactClass)}, ${sqlLiteral(row.id)})`).join(',\n') +
+      ';\n';
+
+  const dashboardDriver = psqlDriver
+    .replace(/^\\\\set ON_ERROR_STOP on\n/, '')
+    .replace(identityCopy, identityInsert)
+    .replace(artifactCopy, artifactInsert);
+  if (dashboardDriver === psqlDriver || dashboardDriver.includes('from stdin')) {
+    throw new Error('failed to render dashboard-compatible reviewed manifests');
+  }
+  return dashboardDriver;
+}
+
 function extractEmbeddedManifest(driverText, tableName, header) {
   const copyMarker = `copy ${tableName} (`;
   const copyAt = driverText.indexOf(copyMarker);
@@ -336,7 +387,7 @@ function assertGeneratedHostedDriver(sql) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const args = process.argv.slice(2);
   if (
-    args.length !== 6 ||
+    (args.length !== 6 && args.length !== 8) ||
     args[0] !== '--manifest' ||
     !args[1] ||
     args[2] !== '--identity-manifest' ||
@@ -345,13 +396,22 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     !args[5]
   ) {
     throw new Error(
-      'Usage: prepare-0020-hosted-apply.mjs --manifest FILE --identity-manifest FILE --output FILE',
+      'Usage: prepare-0020-hosted-apply.mjs --manifest FILE --identity-manifest FILE --output FILE [--format psql|dashboard]',
     );
   }
   const manifest = readFileSync(args[1], 'utf8');
   const identityManifest = readFileSync(args[3], 'utf8');
   const entries = loadMigrations();
-  const out = build(entries, manifest, identityManifest);
+  const format = args.length === 8 ? args[7] : 'psql';
+  if (args.length === 8 && args[6] !== '--format') {
+    throw new Error('optional format must use --format psql|dashboard');
+  }
+  if (!['psql', 'dashboard'].includes(format)) {
+    throw new Error('format must be psql or dashboard');
+  }
+  const out = format === 'dashboard'
+    ? buildDashboard(entries, manifest, identityManifest)
+    : build(entries, manifest, identityManifest);
   writeFileSync(args[5], out, { flag: 'wx', mode: 0o600 });
   const manifestDigest = createHash('sha256').update(manifest).digest('hex');
   const identityManifestDigest = createHash('sha256').update(identityManifest).digest('hex');
@@ -372,6 +432,7 @@ export {
   MIGRATIONS_DIR,
   assertGeneratedHostedDriver,
   build,
+  buildDashboard,
   loadMigrations,
   parseManifest,
   parseIdentityManifest,
