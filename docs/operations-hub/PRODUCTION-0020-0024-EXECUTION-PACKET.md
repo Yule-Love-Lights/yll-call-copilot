@@ -1,10 +1,15 @@
 # Production 0020-0024 execution packet
 
-Status: **prepared for review; neither preparation nor execution is authorized**
+Status: **superseded for operations; retained for recovery-procedure audit only**
 Date: 2026-08-22
 Repository target: `Yule-Love-Lights/yll-call-copilot`
 Database target: `yll-call-copilot` (`mjmociuxxxwxvasnpxav`, PostgreSQL 17)
 Application host: Vercel only; Railway is retired and must remain disconnected
+
+The owner selected the no-recovery rollout direction in
+[`PRODUCTION-0020-0024-NO-BACKUP-PLAN.md`](PRODUCTION-0020-0024-NO-BACKUP-PLAN.md).
+Do not use this B1/B2 dump, restore, or export-review procedure unless that
+decision is explicitly withdrawn and a new review authorizes it.
 
 This packet bounds the remaining production database work. A branch, pull
 request, or unmerged SHA is never an execution target. The two later production

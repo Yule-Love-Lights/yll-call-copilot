@@ -1,6 +1,6 @@
 # Operations Hub final-review pack
 
-Status: **owner-approved planning baseline; staging rehearsal and shared password login verified; new production execution packet prepared for review but not authorized; field provisioning blocked**
+Status: **owner-approved planning baseline; staging rehearsal and shared password login verified; no-backup production migration plan prepared but not authorized; field provisioning blocked**
 Updated: 2026-08-22
 Merged Hub source audited through Flow Q mirror PR #70:
 `master@29809274b12c159c272f3cd2f3ee5143f6d90bc6`. In addition to the Phase 0
@@ -46,12 +46,14 @@ Its independent schema version is `1.1.0-draft`.
 14. `HOSTED-MIGRATION-0017-0024-RUNBOOK.md`: the measured hosted drift,
     production-shaped rehearsal, exact reconciliation, migration-history
     repair, and deferred recording boundary.
-15. `PRODUCTION-0020-0024-EXECUTION-PACKET.md`: the exact later production
-    authority boundary, entry gates, writer freeze, artifacts, stops, and exit
-    proof. It is not production-write authorization.
-16. `LIVE-CALLING-ACTIVATION-BLOCKERS.md`: the positive customer-call kill
+15. `PRODUCTION-0020-0024-NO-BACKUP-PLAN.md`: the owner-selected replacement
+    for the unexecuted recovery procedure. It is not production-write
+    authorization.
+16. `PRODUCTION-0020-0024-EXECUTION-PACKET.md`: historical recovery procedure
+    retained for audit only and superseded for operations.
+17. `LIVE-CALLING-ACTIVATION-BLOCKERS.md`: the positive customer-call kill
     switch and the evidence required before live calling may be enabled.
-17. `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md`: approved Quote Tool
+18. `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md`: approved Quote Tool
     prerequisites for real Office timing, workload, and quote-origin task
     data; it is not a canonical-contract amendment.
 
@@ -124,20 +126,20 @@ Completed:
   routines, and 15 triggers.
 - Staging public signup is off, its session timebox is 30 days, and its access
   token lifetime is 15 minutes. Production application remains separately
-  blocked on PostgreSQL 17 client and Docker availability, a protected reviewed
-  Supabase CA and exact-current CA-backed helper rehearsal, B1
-  dump/export/restore proof, independent
-  export-set/identity-manifest/artifact-manifest/driver review, separate B2
-  authorization, and post-apply proof.
+  blocked on a current private database credential, PostgreSQL 17 client and
+  Docker availability, a protected reviewed Supabase CA, the no-backup
+  read-only compatibility check, a temporary identity mapping, exact
+  driver/authorization review, and post-apply proof. The historical B1/B2
+  recovery procedure is superseded for operations.
 
 Phase 0 must now deliver:
 
 - Authenticated Quote Tool runtime version health and live deploy-skew proof.
 - RLS/authorization checklists and impersonated-role tests are defined for
   every field-facing Hub table and endpoint.
-- The reviewed production `0020` through `0024` rollout, hosted persona proof,
-  idempotency, DLQ, kill-switch, and fail-closed activation gates. Production
-  application of `0025_quote_tool_identity_bridge.sql` and
+- The no-backup production `0020` through `0024` rollout, hosted persona
+  proof, idempotency, DLQ, kill-switch, and fail-closed activation gates.
+  Production application of `0025_quote_tool_identity_bridge.sql` and
   `20260821141530_office_tasks.sql` is excluded from that packet and remains
   separate deferred work. Identity replacement, phone provider configuration,
   recovery, reassignment, and password/session revocation also remain deferred
