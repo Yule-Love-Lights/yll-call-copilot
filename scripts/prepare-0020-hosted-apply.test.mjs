@@ -6,6 +6,7 @@ import {
   IDENTITY_MANIFEST_HEADER,
   MIGRATIONS,
   build,
+  buildDashboard,
   loadMigrations,
   parseIdentityManifest,
   parseManifest,
@@ -35,6 +36,20 @@ describe('prepare-0020-hosted-apply', () => {
       const at = out.indexOf(marker);
       expect(at).toBeGreaterThan(previous);
       previous = at;
+    }
+  });
+
+  it('renders a dashboard-compatible atomic driver without psql meta-commands or COPY stdin', () => {
+    const out = buildDashboard(entries, emptyManifest, validIdentityManifest);
+    expect(out.match(/^begin;$/gm)).toHaveLength(1);
+    expect(out.match(/^commit;$/gm)).toHaveLength(1);
+    expect(out).not.toContain('\\\\set ON_ERROR_STOP');
+    expect(out).not.toContain('from stdin');
+    expect(out).not.toContain('\\\\.');
+    expect(out).toContain('insert into reviewed_identity_backfill');
+    expect(out).toContain('insert into reviewed_metric_artifacts');
+    for (const [version, filename] of MIGRATIONS) {
+      expect(out).toContain(`-- BEGIN canonical migration ${version}: ${filename}`);
     }
   });
 
