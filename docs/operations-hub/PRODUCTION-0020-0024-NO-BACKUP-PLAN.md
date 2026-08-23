@@ -43,7 +43,7 @@ The previously saved direct database credential was rejected before this dashboa
 
 ## Required future authorization
 
-After this plan is merged and the private credential passes the read-only check, the owner must name the exact merged `master` SHA, project ref, driver SHA-256, current migration/history result, aggregate reconciliation counts, and private identity-mapping digest.
+After this plan is merged and an authenticated Supabase dashboard session confirms the current read-only state, the owner must name the exact merged `master` SHA, project ref, driver SHA-256, current migration/history result, aggregate reconciliation counts, and private identity-mapping digest.
 
 That message must explicitly permit permanent deletion of the driver's in-scope legacy Copilot records without a recovery backup and permit pause/resume of only the Hub Vercel production project.
 
