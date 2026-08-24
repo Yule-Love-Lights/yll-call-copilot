@@ -44,7 +44,8 @@ describe('prepare-0020-hosted-apply', () => {
     const out = buildDashboard(entries, emptyManifest, validIdentityManifest);
     expect(out.match(/^begin;$/gm)).toHaveLength(1);
     expect(out.match(/^commit;$/gm)).toHaveLength(1);
-    expect(out).not.toContain('\\\\set ON_ERROR_STOP');
+    expect(out.startsWith('\\set ON_ERROR_STOP')).toBe(false);
+    expect(out).not.toMatch(/^\\(?:set|\.)/m);
     expect(out).not.toContain('from stdin');
     expect(out).not.toContain('\\\\.');
     expect(out).toContain('insert into reviewed_identity_backfill');
@@ -68,6 +69,8 @@ describe('prepare-0020-hosted-apply', () => {
         weekly_digest: 5,
       },
     });
+    expect(out.startsWith('\\set ON_ERROR_STOP')).toBe(false);
+    expect(out).not.toMatch(/^\\(?:set|\.)/m);
     expect(out).not.toContain('from stdin');
     expect(out).not.toContain('\\\\.');
     expect(out).toContain('Dashboard identity mapping digest mismatch');
