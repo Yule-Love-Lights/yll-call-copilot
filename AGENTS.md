@@ -70,6 +70,11 @@ These rules apply to the entire repository.
   behavior requires focused tests and a human review.
 - Do not provision Advertising or Installer accounts until
   `docs/operations-hub/PHASE-0-CHECKLIST.md` authorization and RLS gates pass.
+- `docs/operations-hub/IMPLEMENTATION-LEDGER.md` is the current Hub delivery
+  inventory. Every session wrap must update its as-of revision and add a dated
+  session-update entry, even when the entry says that no ledger status changed.
+  Record actual evidence, open/closed PR disposition, and unfinished work; do
+  not put secrets, customer data, or production credentials in the ledger.
 
 ## Required checks
 
