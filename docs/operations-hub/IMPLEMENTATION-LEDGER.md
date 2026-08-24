@@ -1,6 +1,6 @@
 # Operations Hub implementation ledger
 
-As of `master@cf2595b75b08df937cc2e3ee2ed749bf8c589bdb` on 2026-08-24.
+As of `master@41c3dcfdc283dafa3f477ad09d5d2458677731dc` on 2026-08-24.
 
 This is the working inventory of approved Operations Hub ideas and their
 current implementation evidence. It is a planning and release-audit aid, not
@@ -23,6 +23,7 @@ or the reconciled planning pack, those sources control.
 | Date | Update | Evidence / next state |
 | --- | --- | --- |
 | 2026-08-24 | Created this ledger from the archived Office-task and Operations Hub closeout. | Audited `master@cf2595b75b08df937cc2e3ee2ed749bf8c589bdb`, current source-of-truth documents, code, migrations, tests, merged PRs, and open PRs. PR #81 merged during the audit and is reflected below. Future wraps must append a dated row, including an explicit no-status-change row when applicable. |
+| 2026-08-24 | Re-verified the archived-session inventory against current `master@41c3dcfdc283dafa3f477ad09d5d2458677731dc`; added the missing custom-domain evidence and clarified the Office rebrand/navigation row. | `https://ops.yulelovelights.com/` returned `307 /login` and `/login` returned `200` from Vercel. No product, database, contract, authorization, or production-data status changed. |
 
 ## Current release snapshot
 
@@ -35,6 +36,7 @@ or the reconciled planning pack, those sources control.
 | Trusted cross-repository byte CI | **Shipped** | `.github/workflows/`; `README.md` Phase 0 state | Runtime version-health and live deploy-skew proof remain **Blocked**. |
 | Default-deny database posture | **Shipped foundation** | `PHASE-0-RLS-RUNBOOK.md`; `supabase/tests/database/default_deny_rls.test.sql`; Hub CI database-security job | Hosted real-token and semantic-persona proof remain **Blocked**. |
 | Production deployment safety | **Partial** | `.env.example`; `scripts/verify-auth-runtime-config.mjs`; `vercel.json`; PRs #74–#80 | Production migration and post-apply proof are not authorized. |
+| `ops.yulelovelights.com` routing | **Shipped** | `MASTER-PLAN.md` §1; `OPERATIONS-HUB-SPEC.md` §1; production HTTPS verification on 2026-08-24 (`/` → `307 /login`, `/login` → `200`) | Keep the deployed login flow healthy. Domain routing does not authorize database writes, field-user provisioning, or any deferred activation. |
 
 ## Management and Office
 
@@ -42,7 +44,7 @@ or the reconciled planning pack, those sources control.
 | --- | --- | --- | --- |
 | Owner/admin Management mode | **Partial** | `src/app/management/ManagementShell.tsx`; `src/app/page.tsx`; PR #62 | The shell and owner routing exist. The full owner view in `MASTER-PLAN.md` §9 needs later department facts, review queues, inventory, and canonical projections. |
 | Owner shortcut to Office dashboard | **Shipped** | `src/app/office/page.tsx`; `src/app/management/ManagementShell.tsx`; PR #81 | Owners can open the protected Office dashboard without changing their Management landing mode. |
-| Office shell, call coaching, calls, transcripts, scorecards, and trends | **Shipped / existing product** | `src/app/page.tsx`; `src/app/coach/`; `src/app/scoreboard/`; `MASTER-PLAN.md` §8 | Keep existing surfaces behind the current authorization and metric-provenance rules. |
+| Office shell, Operations Hub rebrand/navigation, call coaching, calls, transcripts, scorecards, and trends | **Shipped** | `src/app/layout.tsx`; `src/app/login/page.tsx`; `src/app/office/page.tsx`; `src/app/coach/`; `src/app/scoreboard/`; PR #65 merge `40cb4e99f452bee1a32b237de64e2fa36da4faed`; `MASTER-PLAN.md` §8 | Keep existing surfaces behind the current authorization and metric-provenance rules. The legacy codebase name may remain in historical technical references; do not reintroduce legacy product wording into employee navigation. |
 | Office workday / canonical time display | **Blocked intentionally** | `src/app/OfficeWorkdayCard.tsx`; `MASTER-PLAN.md` §§4, 8; `PHASE-0-AUTHORIZATION-INVENTORY.md` §5 | Quote Tool must ship the authorized current-context/time runtime. Hub must not build a second time, break, travel, or pay ledger. |
 | Real quote timing, workload, promises, and quote-origin task view | **Blocked intentionally** | `src/app/OfficeQuoteAndTasksCard.tsx`; `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md` | Show an explicit unavailable state until the corrected canonical schema and Quote Tool producer/runtime exist. |
 | Manual Hub task creation and task list | **Shipped** | `src/app/OfficeTasksCard.tsx`; `src/app/api/tasks/route.ts`; PR #68 | Hub-owned manual tasks only. No automatic Quote Tool or call projections yet. |
