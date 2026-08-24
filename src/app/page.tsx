@@ -46,9 +46,9 @@ function firstNameFromEmail(email: string | null): string | null {
   return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
 }
 
-export default async function Home() {
-  const actorResolution = await resolveCurrentHubActor();
-  if (actorResolution.status === 'resolved' && actorResolution.actor.role === 'owner_admin') {
+export async function OfficeDashboard({ redirectOwner = false }: { redirectOwner?: boolean }) {
+  const actorResolution = redirectOwner ? await resolveCurrentHubActor() : null;
+  if (actorResolution?.status === 'resolved' && actorResolution.actor.role === 'owner_admin') {
     redirect('/management');
   }
 
@@ -210,4 +210,8 @@ export default async function Home() {
       </div>
     </main>
   );
+}
+
+export default function Home() {
+  return <OfficeDashboard redirectOwner />;
 }
