@@ -111,11 +111,15 @@ describe('route authorization policy', () => {
   it('allows Office employees only their explicit capabilities', () => {
     const officeActor = actor('office');
     const home = resolveRoutePolicy('/', 'GET')?.requirement;
+    const officeDashboard = resolveRoutePolicy('/office', 'GET')?.requirement;
     const settings = resolveRoutePolicy('/api/rubric', 'POST')?.requirement;
     const tasks = resolveRoutePolicy('/api/tasks', 'POST')?.requirement;
-    if (!home || !settings || !tasks) throw new Error('expected declared routes');
+    if (!home || !officeDashboard || !settings || !tasks) throw new Error('expected declared routes');
 
     expect(actorMeetsRouteRequirement(officeActor, home)).toBe(true);
+    expect(actorMeetsRouteRequirement(officeActor, officeDashboard)).toBe(true);
+    expect(actorMeetsRouteRequirement(actor('owner'), officeDashboard)).toBe(true);
+    expect(actorMeetsRouteRequirement(actor('advertising'), officeDashboard)).toBe(false);
     expect(actorMeetsRouteRequirement(officeActor, settings)).toBe(false);
     expect(actorMeetsRouteRequirement(officeActor, tasks)).toBe(true);
     expect(actorMeetsRouteRequirement(actor('advertising'), tasks)).toBe(false);

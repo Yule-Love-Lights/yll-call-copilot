@@ -205,6 +205,7 @@ export const APP_ROUTE_POLICIES: readonly AppRoutePolicy[] = [
   api('/api/cron/weekly-digest', { GET: machineRoute('cron_weekly_digest') }),
 
   getPage('/', OFFICE_TOOLS),
+  getPage('/office', OFFICE_TOOLS),
   getPage('/management', MANAGEMENT),
   getPage('/analytics', ANALYTICS),
   getPage('/brain', KNOWLEDGE_READ),
