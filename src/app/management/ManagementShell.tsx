@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 
 export default function ManagementShell({ children }: { children: ReactNode }) {
   return (
@@ -12,9 +13,17 @@ export default function ManagementShell({ children }: { children: ReactNode }) {
             <span className="hidden h-4 w-px bg-[var(--op-border-mid)] sm:block" />
             <span className="hidden text-sm text-[var(--op-dim)] sm:inline">Operations Hub</span>
           </div>
-          <span className="rounded-full bg-[var(--brand-evergreen)] px-2.5 py-1 text-xs font-semibold text-[var(--brand-cream)]">
-            Management
-          </span>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/office"
+              className="rounded-full border border-[var(--op-border-mid)] px-2.5 py-1 text-xs font-semibold text-[var(--op-text-2)] hover:bg-[var(--op-bg)]"
+            >
+              View Office dashboard
+            </Link>
+            <span className="rounded-full bg-[var(--brand-evergreen)] px-2.5 py-1 text-xs font-semibold text-[var(--brand-cream)]">
+              Management
+            </span>
+          </div>
         </div>
       </header>
       {children}
