@@ -335,10 +335,14 @@ function buildDashboard(entries, manifestText, identityManifestText, preamble) {
       ';\n';
 
   const dashboardDriver = psqlDriver
-    .replace(/^\\\\set ON_ERROR_STOP on\n/, '')
+    .replace(/^\\set ON_ERROR_STOP on\n/, '')
     .replace(identityCopy, identityInsert)
     .replace(artifactCopy, artifactInsert);
-  if (dashboardDriver === psqlDriver || dashboardDriver.includes('from stdin')) {
+  if (
+    dashboardDriver === psqlDriver ||
+    dashboardDriver.includes('from stdin') ||
+    /^\\(?:set|\.)/m.test(dashboardDriver)
+  ) {
     throw new Error('failed to render dashboard-compatible reviewed manifests');
   }
   return dashboardDriver;
@@ -383,12 +387,15 @@ function buildDashboardDigestBound(entries, {
   const identityMarker = '\n\ndo $reviewed_identity_guard$';
   const artifactMarker = '\n\ndo $reviewed_manifest_guard$';
   const dashboardDriver = psqlDriver
-    .replace(/^\\\\set ON_ERROR_STOP on\n/, '')
+    .replace(/^\\set ON_ERROR_STOP on\n/, '')
     .replace(emptyIdentityCopy, '')
     .replace(emptyArtifactCopy, '')
     .replace(identityMarker, `\n\n${identityBinding}do $reviewed_identity_guard$`)
     .replace(artifactMarker, `\n\n${artifactBinding}do $reviewed_manifest_guard$`);
-  if (dashboardDriver.includes('from stdin') || dashboardDriver.includes('\\\\.\n')) {
+  if (
+    dashboardDriver.includes('from stdin') ||
+    /^\\(?:set|\.)/m.test(dashboardDriver)
+  ) {
     throw new Error('failed to render dashboard digest-bound driver');
   }
   return dashboardDriver;
