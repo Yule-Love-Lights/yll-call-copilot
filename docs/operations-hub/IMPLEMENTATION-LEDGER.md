@@ -17,6 +17,7 @@ or the reconciled planning pack, those sources control.
 - **Not started**: no product implementation is present in this repository.
 - **Open PR**: proposed work, not part of the shipped product.
 - **Later**: approved future candidate, not current V1 work.
+- **Superseded**: closed or replaced by newer verified work; not a delivery claim.
 
 ## Session updates
 
@@ -24,6 +25,7 @@ or the reconciled planning pack, those sources control.
 | --- | --- | --- |
 | 2026-08-24 | Created this ledger from the archived Office-task and Operations Hub closeout. | Audited `master@cf2595b75b08df937cc2e3ee2ed749bf8c589bdb`, current source-of-truth documents, code, migrations, tests, merged PRs, and open PRs. PR #81 merged during the audit and is reflected below. Future wraps must append a dated row, including an explicit no-status-change row when applicable. |
 | 2026-08-24 | Applied and verified the owner-authorized no-backup production 0020–0024 rollout, then repaired migration history. | Production has canonical history `0001`–`0024`, post-0024 assertions, and a matching staged structural-schema fingerprint. The 28 scoped derived artifacts were permanently removed without backup. `0025` and Office Tasks remain deferred. |
+| 2026-08-24 | No ledger status changed after current-code verification. Rechecked the session's Flow Q claims against `master@41c3dcfdc283dafa3f477ad09d5d2458677731dc`, canonical requirements, merged PRs, open PRs, migrations, tests, and CI. | Hub PR #70 and Quote Tool PR #878 are merged contract evidence only. Quote Tool PR #881 remains an unmerged draft at `9cb3ab68cb312665d03c14de04cdd36bd28d21f0`; Hub PR #73 closed unmerged at `91cb11b7b59973b7c09d34956e3382ccadc89426`. No current Hub event inbox, task projection, or Quote Tool runtime is present. Next: repair and merge the canonical Quote Tool correction before any Hub runtime resumes. |
 
 ## Current release snapshot
 
@@ -61,10 +63,10 @@ or the reconciled planning pack, those sources control.
 
 | Requirement / idea | Status | Evidence | Next action / constraint |
 | --- | --- | --- | --- |
-| Corrected canonical Quote lifecycle schema | **Blocked** | `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md` §§1–2 | Quote Tool must correct request/quote identifiers, event-specific payloads, entity versioning, and the missing `office.tasks.work` capability before activation. |
-| Durable quote requests, assignment history, first-send fact, revisions, waits, promises | **Blocked** | `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md` §§3–4 | Build in Quote Tool with governed employee identity and no guessed source links. |
-| Authenticated cursor event feed, outbox, acknowledgement, replay, kill switch, DLQ | **Blocked** | `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md` §5 | Quote Tool must implement and test retention, ordering, duplicate/out-of-order handling, acknowledgement, reconciliation, and DLQ policy. |
-| Hub durable event inbox and quote-origin task projection | **Not started** | Closed PR #73; `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md` §§5–6 | Do not resume until the corrective contract and Quote Tool producer/runtime are merged and proven. |
+| Corrected canonical Quote lifecycle schema | **Blocked** | `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md` §§1–2; Quote Tool PR #881 (draft, `9cb3ab68cb312665d03c14de04cdd36bd28d21f0`) | Owner: Quote Tool. Repair request/quote identifiers, event-specific payloads, entity versioning, and the missing `office.tasks.work` capability in the canonical source, then mirror exact bytes here. Do not activate Flow Q on an unmerged draft. |
+| Durable quote requests, assignment history, first-send fact, revisions, waits, promises | **Blocked** | `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md` §§3–4; Quote Tool PR #881 (draft) | Owner: Quote Tool. Build governed identity, immutable first-send evidence, and complete lifecycle coverage with no guessed source links or historical backfill. |
+| Authenticated cursor event feed, outbox, acknowledgement, replay, kill switch, DLQ | **Blocked** | `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md` §5; Quote Tool PR #881 (draft) | Owner: Quote Tool. Prove retention, order, duplicate/out-of-order handling, acknowledgement, reconciliation, and DLQ behavior. The boundary stays fail-closed and customer data must remain opaque. |
+| Hub durable event inbox and quote-origin task projection | **Not started** | Closed, unmerged Hub PR #73 at `91cb11b7b59973b7c09d34956e3382ccadc89426`; no `quote_tool_event_inbox` migration or worker on current `master`; `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md` §§5–6 | Owner: Hub, after Quote Tool. Resume only after a corrected canonical contract and proven Quote Tool producer/runtime merge; preserve Hub task ownership, source-event uniqueness, explicit promise-only tasks, and no guessed assignment. |
 | Active quoting time and conversion metrics | **Blocked decision** | `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md` §4 | Naldo must rule the inactivity cap, included change domains, manual sends, and conversion definitions. Never use typing, browser presence, or inferred activity. |
 | Canonical time, breaks, travel, schedules, compensation, payroll, and pay display | **Quote Tool-owned, Hub not started by design** | `MASTER-PLAN.md` §§3–5, 10; `AGENTS.md` | Hub may present authorized canonical facts later but must never calculate or duplicate them. |
 | Seven-day quality-window protection | **Shipped policy / unimplemented field presentation** | `MASTER-PLAN.md` §10; `FEATURE-BACKLOG.md` | Any future UI, digest, leaderboard, or export must say “Pending quality review” and exclude unearned amounts. |
