@@ -1,6 +1,6 @@
 # Operations Hub final-review pack
 
-Status: **owner-approved planning baseline; staging rehearsal and shared password login verified; no-backup production migration plan prepared but not authorized; field provisioning blocked**
+Status: **owner-approved planning baseline; shared password login verified; owner-authorized no-backup production 0020–0024 rollout and history repair completed; field provisioning blocked**
 Updated: 2026-08-22
 Merged Hub source audited through Flow Q mirror PR #70:
 `master@29809274b12c159c272f3cd2f3ee5143f6d90bc6`. In addition to the Phase 0
@@ -114,36 +114,36 @@ Completed:
   pure compatibility checker fails closed on missing, malformed, or
   unsupported versions; it is not live remote version-health proof.
 - Production migration `0019` was applied out of band and verified across the
-  31 existing hosted public tables. Production migrations `0020` through
-  `0024` remain unapplied. The separate `yll-ops-hub-staging` Supabase project
-  passed both the clean `0001` through `0024` target and the production-shaped
-  `0019` through `0024` reconciliation rehearsal. The `0024` target is 38
-  tables, 30 routines, and 12 triggers. Staging subsequently applied `0025`
-  and now has 39 tables, 33 routines, and 13 triggers, with forced RLS, zero
-  client policies, and no `anon` or `authenticated` application-table access.
-  It has not applied `20260821141530_office_tasks.sql`. The current clean local
-  and CI target applies all 26 checked-in migrations and contains 41 tables, 37
-  routines, and 15 triggers.
+  31 existing hosted public tables. The owner-authorized no-backup production
+  rollout then applied `0020` through `0024`, permanently removed the 28 scoped
+  derived artifacts, and verified the post-`0024` schema and assertions. On
+  2026-08-24, the migration-history ledger was repaired to canonical
+  `0001` through `0024` entries after a staged structural-schema comparison;
+  the two generated duplicate entries were removed. The separate
+  `yll-ops-hub-staging` project remains the clean rehearsal reference and has
+  applied `0025`; it has not applied
+  `20260821141530_office_tasks.sql`. Production also intentionally leaves both
+  `0025_quote_tool_identity_bridge.sql` and
+  `20260821141530_office_tasks.sql` deferred. A general `supabase db push`
+  would propose both and must not be used without a new, specific rollout.
 - Staging public signup is off, its session timebox is 30 days, and its access
-  token lifetime is 15 minutes. Production application remains separately
-  blocked on a current private database credential, PostgreSQL 17 client and
-  Docker availability, a protected reviewed Supabase CA, the no-backup
-  read-only compatibility check, a temporary identity mapping, exact
-  driver/authorization review, and post-apply proof. The historical B1/B2
-  recovery procedure is superseded for operations.
+  token lifetime is 15 minutes. Production now has the reviewed password-login
+  configuration and post-apply proof. The historical B1/B2 recovery procedure
+  is superseded for operations. Field provisioning, phone-provider activation,
+  recovery, reassignment, and password/session revocation remain deferred.
 
 Phase 0 must now deliver:
 
 - Authenticated Quote Tool runtime version health and live deploy-skew proof.
 - RLS/authorization checklists and impersonated-role tests are defined for
   every field-facing Hub table and endpoint.
-- The no-backup production `0020` through `0024` rollout, hosted persona
-  proof, idempotency, DLQ, kill-switch, and fail-closed activation gates.
-  Production application of `0025_quote_tool_identity_bridge.sql` and
-  `20260821141530_office_tasks.sql` is excluded from that packet and remains
-  separate deferred work. Identity replacement, phone provider configuration,
-  recovery, reassignment, and password/session revocation also remain deferred
-  under Decision 25 and the staging-only identity boundary.
+- Hosted persona proof, idempotency, DLQ, kill-switch, and fail-closed
+  activation gates. Production application of
+  `0025_quote_tool_identity_bridge.sql` and
+  `20260821141530_office_tasks.sql` remains separate deferred work. Identity
+  replacement, phone provider configuration, recovery, reassignment, and
+  password/session revocation also remain deferred under Decision 25 and the
+  staging-only identity boundary.
 
 Merged PR #50 adds Hub-owned immutable employee, auth-link, active-state,
 membership-version, and local identity-audit scaffolding. PR #52 adds a

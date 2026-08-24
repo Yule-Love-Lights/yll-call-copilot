@@ -1,6 +1,6 @@
 # Operations Hub implementation ledger
 
-As of `master@cf2595b75b08df937cc2e3ee2ed749bf8c589bdb` on 2026-08-24.
+As of `master@41c3dcfdc283dafa3f477ad09d5d2458677731dc` on 2026-08-24.
 
 This is the working inventory of approved Operations Hub ideas and their
 current implementation evidence. It is a planning and release-audit aid, not
@@ -23,6 +23,7 @@ or the reconciled planning pack, those sources control.
 | Date | Update | Evidence / next state |
 | --- | --- | --- |
 | 2026-08-24 | Created this ledger from the archived Office-task and Operations Hub closeout. | Audited `master@cf2595b75b08df937cc2e3ee2ed749bf8c589bdb`, current source-of-truth documents, code, migrations, tests, merged PRs, and open PRs. PR #81 merged during the audit and is reflected below. Future wraps must append a dated row, including an explicit no-status-change row when applicable. |
+| 2026-08-24 | Applied and verified the owner-authorized no-backup production 0020–0024 rollout, then repaired migration history. | Production has canonical history `0001`–`0024`, post-0024 assertions, and a matching staged structural-schema fingerprint. The 28 scoped derived artifacts were permanently removed without backup. `0025` and Office Tasks remain deferred. |
 
 ## Current release snapshot
 
@@ -34,7 +35,7 @@ or the reconciled planning pack, those sources control.
 | Contract/schema mirror and pin | **Shipped** | `INTEGRATION-CONTRACT.md`; `contract-pin.json`; `ops-contract-schema/`; `scripts/verify-operations-contract.mjs`; PR #70 | Keep the mirror byte-identical and require authenticated cross-repository CI. |
 | Trusted cross-repository byte CI | **Shipped** | `.github/workflows/`; `README.md` Phase 0 state | Runtime version-health and live deploy-skew proof remain **Blocked**. |
 | Default-deny database posture | **Shipped foundation** | `PHASE-0-RLS-RUNBOOK.md`; `supabase/tests/database/default_deny_rls.test.sql`; Hub CI database-security job | Hosted real-token and semantic-persona proof remain **Blocked**. |
-| Production deployment safety | **Partial** | `.env.example`; `scripts/verify-auth-runtime-config.mjs`; `vercel.json`; PRs #74–#80 | Production migration and post-apply proof are not authorized. |
+| Production deployment safety | **Partial** | `.env.example`; `scripts/verify-auth-runtime-config.mjs`; `vercel.json`; PRs #74–#81; production post-apply proof | The owner-authorized 0020–0024 rollout and migration-history repair are complete. Keep 0025, Office Tasks, live calling, sends, and cron activation separately authorized. |
 
 ## Management and Office
 
@@ -45,15 +46,15 @@ or the reconciled planning pack, those sources control.
 | Office shell, call coaching, calls, transcripts, scorecards, and trends | **Shipped / existing product** | `src/app/page.tsx`; `src/app/coach/`; `src/app/scoreboard/`; `MASTER-PLAN.md` §8 | Keep existing surfaces behind the current authorization and metric-provenance rules. |
 | Office workday / canonical time display | **Blocked intentionally** | `src/app/OfficeWorkdayCard.tsx`; `MASTER-PLAN.md` §§4, 8; `PHASE-0-AUTHORIZATION-INVENTORY.md` §5 | Quote Tool must ship the authorized current-context/time runtime. Hub must not build a second time, break, travel, or pay ledger. |
 | Real quote timing, workload, promises, and quote-origin task view | **Blocked intentionally** | `src/app/OfficeQuoteAndTasksCard.tsx`; `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md` | Show an explicit unavailable state until the corrected canonical schema and Quote Tool producer/runtime exist. |
-| Manual Hub task creation and task list | **Shipped** | `src/app/OfficeTasksCard.tsx`; `src/app/api/tasks/route.ts`; PR #68 | Hub-owned manual tasks only. No automatic Quote Tool or call projections yet. |
-| Default task due time within 24 hours | **Shipped** | `supabase/migrations/20260821141530_office_tasks.sql`; `supabase/tests/database/office_tasks.test.sql` | Preserve the database default and test. |
-| Open and blocked task view | **Shipped** | `OfficeTasksCard.tsx` (`VisibleTaskStatus`); `api/tasks/route.ts`; UI tests | Completed and dismissed tasks remain terminal and do not appear in the active list. |
-| Complete, block, and dismiss controls | **Shipped** | `OfficeTasksCard.tsx`; `api/tasks/[id]/route.ts`; route/UI tests | Block and dismiss require a reason. |
-| Accessible mobile/desktop task UI and honest failures | **Shipped foundation** | `OfficeTasksCard.tsx`; `OfficeTasksCard.test.tsx` | Maintain visible loading, retry, unavailable/error, aria-live/alert, and disabled-pending behavior in future changes. |
-| Duplicate-click and retry protection | **Shipped** | `OfficeTasksCard.tsx`; `taskRequest.ts`; task RPCs and pgTAP tests | Every new mutation must carry an idempotency key. |
-| Task creator-or-assignee ownership | **Shipped** | `ops_update_own_task` in `20260821141530_office_tasks.sql`; `office_tasks.test.sql` | Ownership/provenance are immutable. Do not add guessed assignment. |
-| Immutable task audit events | **Shipped** | `ops_task_events`; `reject_ops_task_event_mutation`; pgTAP tests | Preserve append-only audit behavior. |
-| Task RLS/default deny and source-event uniqueness | **Shipped** | Office task migration and pgTAP tests | `(source_system, source_event_id)` is reserved for a future trusted projection. It is not permission to create one now. |
+| Manual Hub task creation and task list | **Partial** | `src/app/OfficeTasksCard.tsx`; `src/app/api/tasks/route.ts`; PR #68 | UI, routes, and tests are merged, but production lacks `20260821141530_office_tasks.sql`; the card must remain unavailable until a separate rollout. |
+| Default task due time within 24 hours | **Partial** | `supabase/migrations/20260821141530_office_tasks.sql`; `supabase/tests/database/office_tasks.test.sql` | The migration is deferred in production. Preserve the default and test for its later specific rollout. |
+| Open and blocked task view | **Partial** | `OfficeTasksCard.tsx` (`VisibleTaskStatus`); `api/tasks/route.ts`; UI tests | The active-list behavior is implemented but unavailable in production until the Office Tasks migration is applied. |
+| Complete, block, and dismiss controls | **Partial** | `OfficeTasksCard.tsx`; `api/tasks/[id]/route.ts`; route/UI tests | The controls are implemented and block/dismiss require a reason, but production schema work remains deferred. |
+| Accessible mobile/desktop task UI and honest failures | **Partial** | `OfficeTasksCard.tsx`; `OfficeTasksCard.test.tsx` | The unavailable state is currently correct in production; retain loading, retry, error, aria-live/alert, and disabled-pending behavior for activation. |
+| Duplicate-click and retry protection | **Partial** | `OfficeTasksCard.tsx`; `taskRequest.ts`; task RPCs and pgTAP tests | The implementation carries idempotency keys; it awaits the deferred production migration. |
+| Task creator-or-assignee ownership | **Partial** | `ops_update_own_task` in `20260821141530_office_tasks.sql`; `office_tasks.test.sql` | Ownership/provenance rules are implemented but not yet present in production. |
+| Immutable task audit events | **Partial** | `ops_task_events`; `reject_ops_task_event_mutation`; pgTAP tests | Append-only behavior is implemented but awaits the deferred migration. |
+| Task RLS/default deny and source-event uniqueness | **Partial** | Office task migration and pgTAP tests | The production schema does not yet contain these guards. `(source_system, source_event_id)` remains reserved for a future trusted projection. |
 | Customer sending from task work | **Not started by design** | `AGENTS.md`; `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md` | Keep customer sending outside Hub tasks unless separately approved through Quote Tool. |
 
 ## Quote Tool lifecycle, events, time, and pay
@@ -109,10 +110,11 @@ or the reconciled planning pack, those sources control.
 | --- | --- | --- | --- |
 | Production migration 0019 | **Shipped out of band** | `README.md` Phase 0 state; hosted migration runbook | It was verified against the existing production public-table state. |
 | Production-shaped staging rehearsal for 0020–0024 | **Shipped staging proof** | `HOSTED-MIGRATION-0017-0024-RUNBOOK.md`; `README.md` Phase 0 state; PR #60 | Staging proof does not authorize a production write. |
-| Production migrations 0020–0024 | **Blocked, no production write authorized** | `PRODUCTION-0020-0024-NO-BACKUP-PLAN.md`; PRs #74–#80 | Use only the owner-selected no-backup dashboard driver after its exact read-only preflight and a new exact-parameter authorization. |
+| Production migrations 0020–0024 | **Shipped out of band** | Owner authorization; reviewed dashboard driver; production post-apply checks; PRs #74–#80 | The 28 scoped derived artifacts were permanently removed without backup and 0020–0024 are present. Keep 0025 and Office Tasks out of any general migration command. |
 | Production 0025 identity bridge and Office-task migration | **Deferred separately** | `README.md` Phase 0 state; `PRODUCTION-0020-0024-NO-BACKUP-PLAN.md` | The current production packet explicitly excludes both migrations. |
-| Historical artifacts and migration reconciliation | **Partial / blocked production action** | `HOSTED-MIGRATION-0017-0024-RUNBOOK.md`; dashboard driver PRs #78–#80 | Keep the approved aggregate reconciliation and private mapping inputs out of source control and chat. Do not fabricate backfill. |
-| Local database proof | **Environment-dependent** | Hub CI database-security job; `supabase/tests/database/` | Run locally only with Docker Desktop available. CI proof is not permission to write staging or production. |
+| Historical artifacts and migration reconciliation | **Shipped out of band** | Owner authorization; reviewed dashboard driver; production aggregate postconditions | Keep private mapping inputs out of source control and chat. Do not fabricate or replay backfill. |
+| Production migration-history ledger | **Shipped out of band** | Official Supabase migration repair; production history query; staged structural-schema comparison | Canonical `0001`–`0024` history is recorded. A general `supabase db push` would propose only 0025 and Office Tasks, which remain deferred. |
+| Local database proof | **Partial** | Hub CI database-security job; `supabase/tests/database/`; 2026-08-24 local investigation | Docker Desktop was restored, but the macOS ARM Realtime image exits 139 in the private shadow helper. CI proof passed; the history repair used a staged structural-schema comparison instead. |
 
 ## Open pull requests at this snapshot
 
@@ -125,8 +127,8 @@ or the reconciled planning pack, those sources control.
 
 1. **Repair the Quote Tool Flow Q contract/schema contradictions**, then implement its governed lifecycle producer, capability snapshot, current-context read, and event feed in Quote Tool. Mirror the corrected bytes in Hub only after the canonical merge.
 2. **Complete hosted persona and real-token authorization proof** without provisioning field users or enabling phone auth.
-3. **Complete the no-backup production 0020–0024 preflight** and stop for the separately required exact-parameter production authorization. Keep 0025 and Office tasks out of that operation.
-4. **Run local Supabase proof when Docker Desktop is available** and refresh the local Quote Tool checkout before local cross-repository verification.
+3. **Plan a separately authorized rollout for 0025 or Office Tasks only when needed.** Do not use a general `supabase db push`, which would propose both deferred migrations.
+4. **Fix the local macOS ARM Realtime shadow-helper crash** and refresh the local Quote Tool checkout before local cross-repository verification.
 5. **Start Advertising only after the preceding gates permit it**, beginning with campaigns/Placement Runs and the offline-camera evidence design. Installer work follows Advertising.
 
 ## Guardrails that apply to every future item
