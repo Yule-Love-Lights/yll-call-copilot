@@ -1,6 +1,6 @@
 # Operations Hub implementation ledger
 
-As of `master@86418fcc6398b107541541bc94d0fad75e6e01de` on 2026-08-25.
+As of `master@c5c5857f034567a7e55b833589400ea5a1d493f6` on 2026-08-25.
 
 This is the working inventory of approved Operations Hub ideas and their
 current implementation evidence. It is a planning and release-audit aid, not
@@ -28,8 +28,8 @@ or the reconciled planning pack, those sources control.
 | 2026-08-24 | Applied and verified the owner-authorized no-backup production 0020–0024 rollout, then repaired migration history. | owner decision | Production has canonical history `0001`–`0024`, post-0024 assertions, and a matching staged structural-schema fingerprint. The 28 scoped derived artifacts were permanently removed without backup. `0025` and Office Tasks remain deferred. |
 | 2026-08-24 | Re-audited the archived-session inventory against current `master`; added missing evidence-backed items and recorded unmerged PRs without treating them as shipped. | Hub | `master@82df971d93a3c7665641a4d35ef8bebbc83e5dd0`; retain production proof from PR #83 and keep 0025, Office Tasks, provider activation, customer sends, and cron separately authorized. |
 | 2026-08-25 | Reconciled the Flow Q and documentation-PR snapshot without changing any runtime or release state. | both | Current Hub `master@3eafc0d4a796367c9a5df4d3fa4496aeaa8e9c89` and Quote Tool `master@5ca62eb8f4fda1c83b4c73884d21c9e6b11d3ae1` still pin Flow Q `v1.5.0-draft` / `1.1.0-draft`. Quote Tool PR #881 remains a draft at `8fc5ec089d11d00c93ac6d10dfa27b92e98a6e41`; Hub PRs #84 and #85 were closed as obsolete documentation work. |
-| 2026-08-25 | Prepared a production-only Office Tasks migration runner and runbook; no hosted preflight or write ran. | Hub | Draft PR #89 verifies the exact Office Tasks migration, refuses staging and 0025, supports only the reviewed history/schema recovery states, and requires a separate protected operator environment before it can run. |
-| 2026-08-25 | Rebasing the Office Tasks release preparation on the current `master`; no hosted preflight or write ran. | Hub | Hub PR #88 merged as `master@5d9654383b5ff85da65b4496e9b998e6b1516bcd`, followed by Hub PR #87 as `master@86418fcc6398b107541541bc94d0fad75e6e01de`. Draft PR #89 is rebased on that current source and awaits its fresh CI. The runner remains paused pending merge and a new exact production-write authorization. |
+| 2026-08-25 | Merged a production-only Office Tasks migration runner and runbook; no hosted preflight or write ran in that PR. | Hub | PR #89 merged as `master@c5c5857f034567a7e55b833589400ea5a1d493f6`; it verifies the exact Office Tasks migration, refuses staging, and requires a separate protected operator environment and exact production-write authorization. |
+| 2026-08-25 | Performed a read-only production Office Tasks audit and corrected the runner's production-history prerequisite. | Hub | Production history has canonical `0001`–`0024` plus `20260825130719_quote_tool_identity_bridge` and `20260825130728_production_quote_tool_identity_activation`; `ops_tasks`, `ops_task_events`, and both task RPCs are absent. The original PR #89 runner rejected that valid history before any write. This audit changes only the runner/runbook/tests to require the exact observed identity records; Office Tasks remains unavailable and separately authorized. |
 
 ## Current release snapshot
 
@@ -41,7 +41,7 @@ or the reconciled planning pack, those sources control.
 | Contract/schema mirror and pin | **Shipped** | both | `INTEGRATION-CONTRACT.md`; `contract-pin.json`; `ops-contract-schema/`; `scripts/verify-operations-contract.mjs`; PR #70 | Keep the mirror byte-identical and require authenticated cross-repository CI. |
 | Trusted cross-repository byte CI | **Shipped** | both | `.github/workflows/`; `README.md` Phase 0 state | Runtime version-health and live deploy-skew proof remain blocked. |
 | Default-deny database posture | **Shipped** | Hub | `PHASE-0-RLS-RUNBOOK.md`; `supabase/tests/database/default_deny_rls.test.sql`; Hub CI database-security job | Hosted real-token and semantic-persona proof remain blocked. |
-| Production deployment safety | **Partial** | owner decision | `.env.example`; `scripts/verify-auth-runtime-config.mjs`; `vercel.json`; PRs #74–#83; production post-apply proof | The owner-authorized 0020–0024 rollout and migration-history repair are complete. Keep 0025, Office Tasks, live calling, sends, and cron activation separately authorized. |
+| Production deployment safety | **Partial** | owner decision | `.env.example`; `scripts/verify-auth-runtime-config.mjs`; `vercel.json`; PRs #74–#83 and #88; production post-apply proof | The owner-authorized 0020–0024 rollout, shared-credentials bridge, and identity activation are complete. Keep Office Tasks, live calling, sends, and cron activation separately authorized. |
 
 ## Management and Office
 
@@ -82,7 +82,7 @@ or the reconciled planning pack, those sources control.
 | Requirement / idea | Status | Owner | Evidence | Next action / constraint |
 | --- | --- | --- | --- | --- |
 | Immutable Hub employees, memberships, Auth links, and identity audit | **Shipped** | Hub | `supabase/migrations/0023_operations_hub_identity_foundation.sql`; `identity_foundation.test.sql`; PR #50 | Hosted persona and real-token proof remain blocked. |
-| Shared Quote Tool email/password identity bridge | **Partial** | both | `supabase/migrations/0025_quote_tool_identity_bridge.sql`; `SHARED-QUOTE-IDENTITY-ROLLOUT.md`; PR #64 | Staging sign-in is verified. Production activation, replacement/revocation, and source-aware mutation checks remain blocked. |
+| Shared Quote Tool email/password identity bridge | **Partial** | both | `supabase/migrations/0025_quote_tool_identity_bridge.sql`; `supabase/migrations/20260825120136_production_quote_tool_identity_activation.sql`; `SHARED-QUOTE-IDENTITY-ROLLOUT.md`; PRs #64 and #88 | Production sign-in is verified for existing approved Office/Owner/Admin identities. Replacement/revocation and source-aware mutation checks remain blocked; do not link Advertising or Installer identities. |
 | Invite-only email/password login | **Shipped** | Hub | `FEATURE-BACKLOG.md`; `MASTER-PLAN.md` §4 | Keep active while the phone path remains disabled. |
 | Phone/OTP, Cloudflare Turnstile, Twilio Verify, recovery, reassignment, and password revocation | **Partial** | owner decision | `src/lib/auth/phoneAuth.ts`; `PHASE-0-CHECKLIST.md`; `MASTER-PLAN.md` §4 | Preview-only/fail-closed code exists. Provider activation, phone identities, recovery, reassignment, and revocation need a later owner decision and dedicated proof. |
 | Manager capability | **Partial** | owner decision | `FEATURE-BACKLOG.md`; `MASTER-PLAN.md` §4 | Only Naldo and Jason are owner/admin in V1. |
@@ -120,9 +120,10 @@ or the reconciled planning pack, those sources control.
 | Production migration 0019 | **Shipped** | Hub | `README.md` Phase 0 state; hosted migration runbook | It was verified against the existing production public-table state. |
 | Production-shaped staging rehearsal for 0020–0024 | **Shipped** | Hub | `HOSTED-MIGRATION-0017-0024-RUNBOOK.md`; `README.md` Phase 0 state; PR #60 | Staging proof does not authorize a production write. |
 | Production migrations 0020–0024 | **Shipped** | owner decision | Owner authorization; reviewed dashboard driver; production post-apply checks; PRs #74–#83 | The 28 scoped derived artifacts were permanently removed without backup and 0020–0024 are present. Keep 0025 and Office Tasks out of any general migration command. |
-| Production 0025 identity bridge and Office-task migration | **Later** | owner decision | `README.md` Phase 0 state; `PRODUCTION-0020-0024-NO-BACKUP-PLAN.md` | The current production packet explicitly excludes both migrations. |
+| Production 0025 identity bridge and activation | **Shipped** | both | Production migration history; PR #88; `0025_quote_tool_identity_bridge.sql`; `20260825120136_production_quote_tool_identity_activation.sql` | Applied only through the separately approved shared-credentials rollout. Do not generalize its authorization to Office Tasks. |
+| Production Office-task migration | **Later** | owner decision | Read-only production audit; `supabase/migrations/20260821141530_office_tasks.sql`; PR #89 runner | Task tables and RPCs are absent in production. The reviewed runner must match the exact timestamped identity-history prerequisite and still requires a new exact production-write authorization. |
 | Historical artifacts and migration reconciliation | **Shipped** | Hub | Owner authorization; reviewed dashboard driver; production aggregate postconditions | Keep private mapping inputs out of source control and chat. Do not fabricate or replay backfill. |
-| Production migration-history ledger | **Shipped** | Hub | Official Supabase migration repair; production history query; staged structural-schema comparison | Canonical `0001`–`0024` history is recorded. A general `supabase db push` would propose only 0025 and Office Tasks, which remain deferred. |
+| Production migration-history ledger | **Shipped** | Hub | Official Supabase migration repair; production history query; staged structural-schema comparison | Canonical `0001`–`0024` plus the separately approved timestamped identity records are recorded. Local identity source filenames do not match those two production history versions, so a general `supabase db push` remains prohibited. |
 | Local database proof | **Partial** | Hub | Hub CI database-security job; `supabase/tests/database/`; 2026-08-24 local investigation | Docker Desktop was restored, but the macOS ARM Realtime image exits 139 in the private shadow helper. CI proof passed; the history repair used a staged structural-schema comparison instead. |
 
 ## Open pull requests at this snapshot
@@ -144,7 +145,7 @@ or the reconciled planning pack, those sources control.
 
 1. **Repair the Quote Tool Flow Q contract/schema contradictions**, then implement its governed lifecycle producer, capability snapshot, current-context read, and event feed in Quote Tool. Mirror the corrected bytes in Hub only after the canonical merge.
 2. **Complete hosted persona and real-token authorization proof** without provisioning field users or enabling phone auth.
-3. **Plan a separately authorized rollout for 0025 or Office Tasks only when needed.** Do not use a general `supabase db push`, which would propose both deferred migrations.
+3. **Plan an Office Tasks-only rollout only when needed.** Do not use a general `supabase db push`; production's approved timestamped identity history does not match the local identity source filenames.
 4. **Fix the local macOS ARM Realtime shadow-helper crash** and refresh the local Quote Tool checkout before local cross-repository verification.
 5. **Start Advertising only after the preceding gates permit it**, beginning with campaigns/Placement Runs and the offline-camera evidence design. Installer work follows Advertising.
 

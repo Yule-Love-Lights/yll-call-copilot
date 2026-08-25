@@ -18,13 +18,18 @@ The release runner refuses staging, validates the protected database target and
 Supabase CA, requires the exact checked-in migration set, and rejects any state
 other than:
 
-1. canonical history through `0024` with no Office Tasks objects;
-2. canonical history through `0024` with the complete Office Tasks objects,
-   which is the only supported recovery state after a connection loss; or
-3. canonical history plus Office Tasks with the complete Office Tasks objects.
+1. canonical history through `0024`, followed by the exact separately approved
+   timestamped production identity-history records
+   `20260825130719_quote_tool_identity_bridge` and
+   `20260825130728_production_quote_tool_identity_activation`, with no Office
+   Tasks objects;
+2. that same history with the complete Office Tasks objects, which is the only
+   supported recovery state after a connection loss; or
+3. that same history plus Office Tasks with the complete Office Tasks objects.
 
-It does not accept a partial schema, a history row for `0025`, or any other
-history shape.
+It does not accept a partial schema or any other history shape. The timestamped
+production identity history intentionally differs from the checked-in identity
+source filenames, so a general `supabase db push` remains prohibited.
 
 ## Required operator environment
 
@@ -61,7 +66,10 @@ The runner performs the following in order:
    supported recovery path when the schema committed but history marking did
    not;
 5. checks forced RLS, zero browser policies, RPC privileges, and object shape;
-6. confirms a normal dry run leaves only deferred `0025` pending.
+6. confirms a normal dry run reports only the two known identity source
+   migrations. Those files were already applied through separately approved
+   timestamped production-history records; the dry run is evidence only and
+   must never be followed by a general `supabase db push`.
 
 The command stops before a write on any unexpected target, certificate,
 history, schema, or dry-run result. It prints no connection string or secret.

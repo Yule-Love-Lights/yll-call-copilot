@@ -5,11 +5,11 @@ import { fileURLToPath } from 'node:url';
 
 import { runGuardedSupabaseDatabase } from './guarded-supabase-db.mjs';
 import {
-  CANONICAL,
   assertLocalMigrationManifest,
   makeRunner,
   parseHistory,
 } from './reconcile-0020-0024-hosted-history.mjs';
+import { OFFICE_TASKS_PREREQUISITE_HISTORY } from './office-tasks-production-history.mjs';
 import {
   OFFICE_TASKS_FILENAME,
   OFFICE_TASKS_VERSION,
@@ -31,10 +31,10 @@ function sameRows(actual, expected) {
 }
 
 function classifyOfficeTasksRelease(history, schemaState) {
-  const canonical = sameRows(history, CANONICAL);
-  const released = sameRows(history, [...CANONICAL, OFFICE_TASKS_HISTORY]);
-  if (canonical && schemaState === 'absent') return 'apply-and-record';
-  if (canonical && schemaState === 'present') return 'record-only';
+  const prerequisite = sameRows(history, OFFICE_TASKS_PREREQUISITE_HISTORY);
+  const released = sameRows(history, [...OFFICE_TASKS_PREREQUISITE_HISTORY, OFFICE_TASKS_HISTORY]);
+  if (prerequisite && schemaState === 'absent') return 'apply-and-record';
+  if (prerequisite && schemaState === 'present') return 'record-only';
   if (released && schemaState === 'present') return 'already-released';
   throw new Error('Office Tasks production state is not a reviewed start or recovery state');
 }
@@ -96,11 +96,15 @@ function assertOfficeTasksPostconditions(runner) {
   }
 }
 
-function assertOnlyDeferredIdentityMigration(output) {
+function assertExpectedSourceIdentityMigrations(output) {
   const mentioned = [...output.matchAll(/\b\d+_[A-Za-z0-9][A-Za-z0-9_-]*\.sql\b/g)]
     .map(match => match[0]).sort();
-  if (JSON.stringify(mentioned) !== JSON.stringify(['0025_quote_tool_identity_bridge.sql'])) {
-    throw new Error('Post-release dry run does not leave only deferred 0025 pending');
+  const expected = [
+    '0025_quote_tool_identity_bridge.sql',
+    '20260825120136_production_quote_tool_identity_activation.sql',
+  ];
+  if (JSON.stringify(mentioned) !== JSON.stringify(expected)) {
+    throw new Error('Post-release dry run does not report only the known source identity migrations');
   }
 }
 
@@ -140,11 +144,11 @@ function main() {
         'Office Tasks migration-history repair',
       );
     }
-    if (!sameRows(readHistory(runner), [...CANONICAL, OFFICE_TASKS_HISTORY])) {
+    if (!sameRows(readHistory(runner), [...OFFICE_TASKS_PREREQUISITE_HISTORY, OFFICE_TASKS_HISTORY])) {
       throw new Error('Office Tasks migration history verification failed');
     }
     assertOfficeTasksPostconditions(runner);
-    assertOnlyDeferredIdentityMigration(runner.supabase(['db', 'push', '--dry-run'], 'Office Tasks post-release dry run'));
+    assertExpectedSourceIdentityMigrations(runner.supabase(['db', 'push', '--dry-run'], 'Office Tasks post-release dry run'));
     process.stdout.write(`OFFICE_TASKS_RELEASE_OK migration=${OFFICE_TASKS_FILENAME}\n`);
   } finally {
     if (driver) rmSync(driver.directory, { recursive: true, force: true });
@@ -156,4 +160,4 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try { main(); } catch (error) { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); process.exitCode = 1; }
 }
 
-export { OFFICE_TASKS_HISTORY, assertOnlyDeferredIdentityMigration, classifyOfficeTasksRelease, sameRows };
+export { OFFICE_TASKS_HISTORY, assertExpectedSourceIdentityMigrations, classifyOfficeTasksRelease, sameRows };

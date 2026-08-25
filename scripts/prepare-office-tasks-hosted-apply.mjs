@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { OFFICE_TASKS_PREREQUISITE_HISTORY } from './office-tasks-production-history.mjs';
 import { constants, closeSync, fstatSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -6,6 +7,14 @@ const OFFICE_TASKS_VERSION = '20260821141530';
 const OFFICE_TASKS_FILENAME = '20260821141530_office_tasks.sql';
 const OFFICE_TASKS_SHA256 = 'dc53110c349f4864725531adb9295707a6d5140c037885f1863d58a8be1347a2';
 const MIGRATION_PATH = fileURLToPath(new URL(`../supabase/migrations/${OFFICE_TASKS_FILENAME}`, import.meta.url));
+
+function sqlTextLiteral(value) {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+const PREREQUISITE_HISTORY_VALUES = OFFICE_TASKS_PREREQUISITE_HISTORY
+  .map(row => `(${sqlTextLiteral(row.version)}, ${sqlTextLiteral(row.name)})`)
+  .join(',\n      ');
 
 function readExactOfficeTasksMigration(path = MIGRATION_PATH) {
   let descriptor;
@@ -36,10 +45,16 @@ begin;
 
 do $office_tasks_preflight$
 begin
-  if exists (
-    select 1 from supabase_migrations.schema_migrations
-    where version in ('0025', '${OFFICE_TASKS_VERSION}')
-  ) then
+  if (
+    select count(*) from supabase_migrations.schema_migrations
+  ) <> ${OFFICE_TASKS_PREREQUISITE_HISTORY.length}
+    or exists (
+      select 1
+      from supabase_migrations.schema_migrations as actual
+      where (actual.version, actual.name) not in (values
+      ${PREREQUISITE_HISTORY_VALUES}
+      )
+    ) then
     raise exception 'Office Tasks migration history is not in the reviewed pre-apply state';
   end if;
   if to_regclass('public.ops_tasks') is not null
@@ -102,4 +117,4 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try { main(); } catch (error) { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); process.exitCode = 1; }
 }
 
-export { OFFICE_TASKS_FILENAME, OFFICE_TASKS_SHA256, OFFICE_TASKS_VERSION, assertGeneratedOfficeTasksDriver, buildOfficeTasksDriver, readExactOfficeTasksMigration };
+export { OFFICE_TASKS_FILENAME, OFFICE_TASKS_SHA256, OFFICE_TASKS_VERSION, PREREQUISITE_HISTORY_VALUES, assertGeneratedOfficeTasksDriver, buildOfficeTasksDriver, readExactOfficeTasksMigration };
