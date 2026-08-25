@@ -49,11 +49,14 @@ Its independent schema version is `1.1.0-draft`.
 15. `PRODUCTION-0020-0024-NO-BACKUP-PLAN.md`: the owner-selected replacement
     for the unexecuted recovery procedure. It is not production-write
     authorization.
-16. `PRODUCTION-0020-0024-EXECUTION-PACKET.md`: historical recovery procedure
+16. `OFFICE-TASKS-PRODUCTION-RELEASE-RUNBOOK.md`: the production-only,
+    Office-Tasks-only preflight, recovery, and verification procedure. It
+    requires its own exact production-write authorization.
+17. `PRODUCTION-0020-0024-EXECUTION-PACKET.md`: historical recovery procedure
     retained for audit only and superseded for operations.
-17. `LIVE-CALLING-ACTIVATION-BLOCKERS.md`: the positive customer-call kill
+18. `LIVE-CALLING-ACTIVATION-BLOCKERS.md`: the positive customer-call kill
     switch and the evidence required before live calling may be enabled.
-18. `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md`: approved Quote Tool
+19. `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md`: approved Quote Tool
     prerequisites for real Office timing, workload, and quote-origin task
     data; it is not a canonical-contract amendment.
 

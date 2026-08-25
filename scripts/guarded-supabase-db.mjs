@@ -8,6 +8,7 @@ import {
   resolveSupabaseDatabaseTarget,
 } from './supabase-db-target.mjs';
 import { assertGeneratedHostedDriver } from './prepare-0020-hosted-apply.mjs';
+import { assertGeneratedOfficeTasksDriver } from './prepare-office-tasks-hosted-apply.mjs';
 
 function parseGuardedDatabaseArgs(args) {
   if (
@@ -28,8 +29,18 @@ function parseGuardedDatabaseArgs(args) {
   ) {
     return { expectedSha256: args[4], operation: 'apply', path: args[2] };
   }
+  if (
+    args.length === 5
+    && args[0] === 'apply-office-tasks'
+    && args[1] === '--file'
+    && args[2]
+    && args[3] === '--sha256'
+    && /^[0-9a-f]{64}$/.test(args[4])
+  ) {
+    return { expectedSha256: args[4], operation: 'apply-office-tasks', path: args[2] };
+  }
   throw new Error(
-    'Usage: guarded-supabase-db.mjs dump --output FILE | apply --file FILE --sha256 HEX',
+    'Usage: guarded-supabase-db.mjs dump --output FILE | apply --file FILE --sha256 HEX | apply-office-tasks --file FILE --sha256 HEX',
   );
 }
 
@@ -91,7 +102,7 @@ function openRegularInputFile(path) {
   return input;
 }
 
-function runApply(path, expectedSha256, childEnv, spawn) {
+function runApply(path, expectedSha256, childEnv, spawn, assertDriver) {
   const input = openRegularInputFile(path);
   let sql;
   try {
@@ -103,7 +114,7 @@ function runApply(path, expectedSha256, childEnv, spawn) {
   if (actualSha256 !== expectedSha256) {
     throw new Error('apply input SHA-256 does not match the reviewed driver');
   }
-  assertGeneratedHostedDriver(sql);
+  assertDriver(sql);
   runChild(
     spawn,
     'psql',
@@ -124,12 +135,21 @@ function runGuardedSupabaseDatabase(args, options = {}) {
   const env = options.env ?? process.env;
   const spawn = options.spawn ?? spawnSync;
   const target = resolveSupabaseDatabaseTarget(env);
+  if (parsedArgs.operation === 'apply-office-tasks' && target.environment !== 'production') {
+    throw new Error('Office Tasks apply may target production only');
+  }
   const childEnv = buildSanitizedPostgresEnv(env, target);
 
   if (parsedArgs.operation === 'dump') {
     runDump(parsedArgs.path, childEnv, spawn);
   } else {
-    runApply(parsedArgs.path, parsedArgs.expectedSha256, childEnv, spawn);
+    runApply(
+      parsedArgs.path,
+      parsedArgs.expectedSha256,
+      childEnv,
+      spawn,
+      parsedArgs.operation === 'apply' ? assertGeneratedHostedDriver : assertGeneratedOfficeTasksDriver,
+    );
   }
 
   return Object.freeze({

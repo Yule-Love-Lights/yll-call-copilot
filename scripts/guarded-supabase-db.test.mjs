@@ -22,6 +22,7 @@ import {
   build,
   loadMigrations,
 } from './prepare-0020-hosted-apply.mjs';
+import { buildOfficeTasksDriver } from './prepare-office-tasks-hosted-apply.mjs';
 
 const projectRef = 'mjmociuxxxwxvasnpxav';
 const secret = 'never-print-this-password';
@@ -74,6 +75,13 @@ describe('guarded Supabase database wrapper', () => {
       expectedSha256: digest,
       operation: 'apply',
       path: '/tmp/reviewed.sql',
+    });
+    expect(parseGuardedDatabaseArgs([
+      'apply-office-tasks', '--file', '/tmp/office-tasks.sql', '--sha256', digest,
+    ])).toEqual({
+      expectedSha256: digest,
+      operation: 'apply-office-tasks',
+      path: '/tmp/office-tasks.sql',
     });
     for (const args of [
       [],
@@ -263,6 +271,54 @@ describe('guarded Supabase database wrapper', () => {
         ),
       ).toThrow(/generated 0020-0024|COPY block/);
     }
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('accepts only the generated Office Tasks driver on production', () => {
+    const input = join(temporaryDirectory(), 'office-tasks.sql');
+    const sql = buildOfficeTasksDriver();
+    const digest = createHash('sha256').update(sql).digest('hex');
+    writeFileSync(input, sql, { mode: 0o600 });
+    const spawn = vi.fn(() => ({ status: 0, stdout: '', stderr: '' }));
+
+    expect(runGuardedSupabaseDatabase([
+      'apply-office-tasks', '--file', input, '--sha256', digest,
+    ], { env: targetEnv(), spawn })).toMatchObject({
+      environment: 'production', operation: 'apply-office-tasks',
+    });
+    expect(spawn).toHaveBeenCalledOnce();
+  });
+
+  it('rejects the raw Office Tasks migration even when its digest matches', () => {
+    const input = join(temporaryDirectory(), 'raw-office-tasks.sql');
+    const sql = readFileSync(
+      new URL('../supabase/migrations/20260821141530_office_tasks.sql', import.meta.url),
+    );
+    writeFileSync(input, sql, { mode: 0o600 });
+    const spawn = vi.fn();
+    expect(() => runGuardedSupabaseDatabase([
+      'apply-office-tasks', '--file', input,
+      '--sha256', createHash('sha256').update(sql).digest('hex'),
+    ], { env: targetEnv(), spawn })).toThrow(/exact generated Office Tasks driver/);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('rejects an Office Tasks apply outside production', () => {
+    const input = join(temporaryDirectory(), 'office-tasks.sql');
+    const sql = buildOfficeTasksDriver();
+    writeFileSync(input, sql, { mode: 0o600 });
+    const spawn = vi.fn();
+    expect(() => runGuardedSupabaseDatabase([
+      'apply-office-tasks', '--file', input,
+      '--sha256', createHash('sha256').update(sql).digest('hex'),
+    ], {
+      env: targetEnv({
+        YLL_MIGRATION_ENVIRONMENT: 'staging',
+        YLL_EXPECTED_SUPABASE_PROJECT_REF: 'ewbtkrytrnerypdkuimd',
+        SUPABASE_DB_URL: 'postgresql://postgres.ewbtkrytrnerypdkuimd:never-print-this-password@aws-0-us-east-2.pooler.supabase.com:5432/postgres?sslmode=require',
+      }),
+      spawn,
+    })).toThrow(/production only/);
     expect(spawn).not.toHaveBeenCalled();
   });
 });
