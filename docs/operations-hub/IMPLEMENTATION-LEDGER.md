@@ -1,6 +1,6 @@
 # Operations Hub implementation ledger
 
-As of `master@82df971d93a3c7665641a4d35ef8bebbc83e5dd0` on 2026-08-24.
+As of `master@3eafc0d4a796367c9a5df4d3fa4496aeaa8e9c89` on 2026-08-25.
 
 This is the working inventory of approved Operations Hub ideas and their
 current implementation evidence. It is a planning and release-audit aid, not
@@ -27,6 +27,7 @@ or the reconciled planning pack, those sources control.
 | 2026-08-24 | Created this ledger from the archived Office-task and Operations Hub closeout. | Hub | Audited `master@cf2595b75b08df937cc2e3ee2ed749bf8c589bdb`, current source-of-truth documents, code, migrations, tests, merged PRs, and open PRs. PR #81 merged during the audit and is reflected below. Future wraps must append a dated row, including an explicit no-status-change row when applicable. |
 | 2026-08-24 | Applied and verified the owner-authorized no-backup production 0020–0024 rollout, then repaired migration history. | owner decision | Production has canonical history `0001`–`0024`, post-0024 assertions, and a matching staged structural-schema fingerprint. The 28 scoped derived artifacts were permanently removed without backup. `0025` and Office Tasks remain deferred. |
 | 2026-08-24 | Re-audited the archived-session inventory against current `master`; added missing evidence-backed items and recorded unmerged PRs without treating them as shipped. | Hub | `master@82df971d93a3c7665641a4d35ef8bebbc83e5dd0`; retain production proof from PR #83 and keep 0025, Office Tasks, provider activation, customer sends, and cron separately authorized. |
+| 2026-08-25 | Reconciled the Flow Q and documentation-PR snapshot without changing any runtime or release state. | both | Current Hub `master@3eafc0d4a796367c9a5df4d3fa4496aeaa8e9c89` and Quote Tool `master@5ca62eb8f4fda1c83b4c73884d21c9e6b11d3ae1` still pin Flow Q `v1.5.0-draft` / `1.1.0-draft`. Quote Tool PR #881 remains a draft at `8fc5ec089d11d00c93ac6d10dfa27b92e98a6e41`; Hub PRs #84 and #85 were closed as obsolete documentation work. |
 
 ## Current release snapshot
 
@@ -68,7 +69,7 @@ or the reconciled planning pack, those sources control.
 | --- | --- | --- | --- | --- |
 | Corrected canonical Quote lifecycle schema | **Blocked** | both | `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md` §§1–2 | Quote Tool must correct request/quote identifiers, event-specific payloads, entity versioning, and the missing `office.tasks.work` capability before activation. |
 | Durable quote requests, assignment history, first-send fact, revisions, waits, promises | **Blocked** | Quote Tool | `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md` §§3–4 | Build in Quote Tool with governed employee identity and no guessed source links. |
-| Authenticated cursor event feed, outbox, acknowledgement, replay, kill switch, DLQ | **Open PR** | Quote Tool | Quote Tool PR #881 (draft, head `9cb3ab68cb312665d03c14de04cdd36bd28d21f0`); current Quote Tool `master@7b36e6bdc9321a56324747fb6a53348fe59bf402` has no `quote-events`, `paid-contexts/current`, or authorization-snapshot route. | Repair the canonical schema first, then complete and prove PR #881's retention, ordering, duplicate/out-of-order, acknowledgement, reconciliation, kill-switch, and DLQ behavior before a Hub consumer is resumed. |
+| Authenticated cursor event feed, outbox, acknowledgement, replay, kill switch, DLQ | **Open PR** | Quote Tool | Quote Tool PR #881 remains a draft at `8fc5ec089d11d00c93ac6d10dfa27b92e98a6e41`; current Quote Tool `master@5ca62eb8f4fda1c83b4c73884d21c9e6b11d3ae1` has no `quote-events`, `paid-contexts/current`, or authorization-snapshot route. | Repair the canonical schema first, then complete and prove PR #881's retention, ordering, duplicate/out-of-order, acknowledgement, reconciliation, kill-switch, and DLQ behavior before a Hub consumer is resumed. |
 | Hub durable event inbox and quote-origin task projection | **Not started** | Hub | Closed PR #73; `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md` §§5–6 | Do not resume until the corrective contract and Quote Tool producer/runtime are merged and proven. |
 | Active quoting time and conversion metrics | **Blocked** | owner decision | `QUOTE-LIFECYCLE-TASK-INTEGRATION-REQUIREMENTS.md` §4 | Naldo must rule the inactivity cap, included change domains, manual sends, and conversion definitions. Never use typing, browser presence, or inferred activity. |
 | Canonical time, breaks, travel, schedules, compensation, payroll, and pay display | **Not started** | Quote Tool | `MASTER-PLAN.md` §§3–5, 10; `AGENTS.md` | Hub may present authorized canonical facts later but must never calculate or duplicate them. |
@@ -135,6 +136,7 @@ or the reconciled planning pack, those sources control.
 | --- | --- | --- | --- | --- |
 | Historical Hub planning PRs #35 and #36 | **Superseded** | Hub | `AGENTS.md` release-safety rules; `README.md` final-review-pack state | Use the reconciled pack that began with PR #37 as the only current Hub planning source. Do not reopen the superseded plans. |
 | Historical B1/B2 production recovery procedure | **Superseded** | owner decision | `README.md` Phase 0 state; `PRODUCTION-0020-0024-NO-BACKUP-PLAN.md` | The no-backup dashboard driver is the current proposed procedure. It is not production-write authority. |
+| Documentation PRs #84 and #85 | **Superseded** | Hub | Both were closed on 2026-08-25 after PR #86 merged the current ledger reconciliation. #84 was dirty and duplicate; #85 had no remaining net diff and retained obsolete pre-rollout wording. | Do not reopen. Record future evidence directly against current `master`. |
 
 ## Priority queue for the next session
 
