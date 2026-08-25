@@ -188,6 +188,21 @@ describe('resolveIdentityAuthConfiguration', () => {
     });
   });
 
+  it('allows Quote Tool identity in production only with the explicit server-side release gate', () => {
+    expect(resolveIdentityAuthConfiguration({
+      ...completeEnvironment,
+      NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: 'quote_tool',
+      NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: quoteProjectUrl,
+      NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY: browserKey,
+      HUB_QUOTE_TOOL_IDENTITY_PRODUCTION_ENABLED: 'true',
+    })).toEqual({
+      ok: true,
+      source: 'quote_tool',
+      url: `${quoteProjectUrl}/`,
+      anonKey: browserKey,
+    });
+  });
+
   it.each([
     { NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: undefined },
     { NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: stagingHubProjectUrl },
@@ -209,7 +224,7 @@ describe('resolveIdentityAuthConfiguration', () => {
   });
 
   it.each([undefined, 'production', 'Preview', ' preview '])(
-    'fails closed when Quote Tool Auth is selected outside the exact Vercel preview environment: %s',
+    'fails closed when Quote Tool Auth is selected without the exact preview environment or production release gate: %s',
     vercelEnvironment => {
     expect(resolveIdentityAuthConfiguration({
       ...previewEnvironment,

@@ -1,6 +1,6 @@
 # Shared Quote Tool Credentials, Hub-Owned Access
 
-Status: **staging source selected; password sign-in verified; mappings are static; production activation blocked**
+Status: **staging source selected; password sign-in verified; production mapping and release controls are pending deployment**
 
 This bridge lets an approved staff member sign into the Operations Hub with the
 same existing Quote Tool email and password. The applications, databases,
@@ -28,6 +28,22 @@ from a Quote Tool Auth UUID to one Hub employee. It is:
 The normal Hub Auth link remains the default and is unchanged. Selecting Quote
 Tool authentication does not provision Advertising, Installer, or Manager
 access, and it does not change Hub role or membership rules.
+
+## Production mapping control
+
+`20260825120136_production_quote_tool_identity_activation.sql` adds a
+server-only, owner-attributed linking routine. The protected Management route
+must first resolve the current Hub session as an active Owner/Admin, then it
+confirms one existing, confirmed, unbanned Quote Tool account and one existing
+active Hub employee by exact email. It preserves the existing Office or
+Owner/Admin membership check, records the acting owner and reason in immutable
+identity audit events, and requires an idempotency key. An exact retry is a
+no-op, while reusing a key with different details is rejected.
+
+This routine never creates accounts, changes roles or departments, or links an
+Advertising, Installer, or Manager identity. It is unavailable to browser
+database roles; the Hub server's service role is the sole database caller after
+the protected route has authorized the owner.
 
 ## Staging rollout
 
@@ -59,7 +75,11 @@ access, and it does not change Hub role or membership rules.
    another Quote Tool or Supabase project URL. Deployment preflight accepts
    only exact `VERCEL_ENV=preview` or `VERCEL_ENV=production`; a missing, blank,
    or unknown value fails closed. Quote Tool identity selection and its two
-   public configuration variables are accepted only in Preview.
+   public configuration variables are accepted in Preview. Production also
+   requires the non-public `HUB_QUOTE_TOOL_IDENTITY_PRODUCTION_ENABLED=true`
+   release gate. It must remain `false` until exact existing Office identities
+   are mapped, the migration/security suites and hosted checks pass, and an
+   owner separately authorizes the production configuration change.
    Keep the normal Hub Supabase URL, browser key, and service-role key because
    Hub data and authorization still use the Hub project.
    When the selected source is `quote_tool`, the two UUIDs in
@@ -101,8 +121,8 @@ schema.
 
 This is shared credentials, not cross-site single sign-on. It intentionally
 does not add phone codes, Twilio, Turnstile, Cloudflare, password recovery,
-identity replacement, or production activation. Before replacement or
-production activation, all employee mutation routines must atomically verify
+identity replacement, or automatic production activation. Before replacement
+or a source-changing employee mutation, all employee mutation routines must atomically verify
 the selected identity source, exact Auth UUID, active employee, and current
 membership. Replacement must be one owner-authenticated transaction that
 records the acting owner and reason.

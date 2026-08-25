@@ -253,6 +253,7 @@ export const APP_ROUTE_POLICIES: readonly AppRoutePolicy[] = [
   api('/api/ingest/continue', { POST: PIPELINE_RUN }),
   api('/api/ingest/jobs/:id', { GET: PIPELINE_RUN }),
   api('/api/ingest/transcripts', { POST: PIPELINE_RUN }),
+  api('/api/management/quote-tool-identities', { POST: MANAGEMENT }),
   api('/api/leads/:id', { GET: CALLS }),
   api('/api/leads/:id/decide', { POST: CALLS }),
   api('/api/live/end', { POST: CALLS }),

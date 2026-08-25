@@ -208,7 +208,7 @@ describe('hosted migration history reconciliation', () => {
 
   it('permits only the reviewed post-0024 migration files while reconciling older history', () => {
     expect(() => assertDryRunAgainstFutureMigrations(
-      'Would push these migrations:\n0025_quote_tool_identity_bridge.sql\n20260821141530_office_tasks.sql',
+      'Would push these migrations:\n0025_quote_tool_identity_bridge.sql\n20260821141530_office_tasks.sql\n20260825120136_production_quote_tool_identity_activation.sql',
       REVIEWED_FUTURE_MIGRATIONS,
     )).not.toThrow();
     expect(() => assertDryRunAgainstFutureMigrations(

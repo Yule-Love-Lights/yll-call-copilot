@@ -74,24 +74,38 @@ if (hubPublicKey?.trim() && !isBrowserSafeSupabaseKey(hubPublicKey)) {
 }
 
 const identitySource = process.env.NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE;
+const productionQuoteToolIdentityEnabled =
+  process.env.HUB_QUOTE_TOOL_IDENTITY_PRODUCTION_ENABLED === 'true';
+if (
+  process.env.HUB_QUOTE_TOOL_IDENTITY_PRODUCTION_ENABLED
+  && !['true', 'false'].includes(process.env.HUB_QUOTE_TOOL_IDENTITY_PRODUCTION_ENABLED)
+) {
+  errors.push('HUB_QUOTE_TOOL_IDENTITY_PRODUCTION_ENABLED must be exactly true or false');
+}
 if (!unconfiguredPreview) {
   if (!['hub', 'quote_tool'].includes(identitySource)) {
     errors.push('NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE must be exactly hub or quote_tool');
   } else if (identitySource === 'quote_tool') {
-    if (process.env.VERCEL_ENV !== 'preview') {
-      errors.push('NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE may be quote_tool only when VERCEL_ENV is preview');
+    if (process.env.VERCEL_ENV === 'production' && !productionQuoteToolIdentityEnabled) {
+      errors.push('production Quote Tool identity requires HUB_QUOTE_TOOL_IDENTITY_PRODUCTION_ENABLED=true');
+    } else if (!['preview', 'production'].includes(process.env.VERCEL_ENV)) {
+      errors.push('NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE may be quote_tool only in preview or explicitly enabled production');
     }
   }
-  if (process.env.VERCEL_ENV === 'production' && identitySource !== 'hub') {
-    errors.push('NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE must be hub in Vercel production');
+  if (process.env.VERCEL_ENV === 'production' && identitySource !== 'hub' && !productionQuoteToolIdentityEnabled) {
+    errors.push('NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE must be hub unless production Quote Tool identity is explicitly enabled');
   }
 }
 
 const quoteUrlRaw = process.env.NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL;
 const quotePublicKey = process.env.NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY;
 const quoteConfigurationPresent = Boolean(quoteUrlRaw?.trim() || quotePublicKey?.trim());
-if (quoteConfigurationPresent && process.env.VERCEL_ENV !== 'preview') {
-  errors.push('NEXT_PUBLIC_QUOTE_TOOL_AUTH_* variables may be set only when VERCEL_ENV is preview');
+if (
+  quoteConfigurationPresent
+  && process.env.VERCEL_ENV !== 'preview'
+  && !(process.env.VERCEL_ENV === 'production' && productionQuoteToolIdentityEnabled)
+) {
+  errors.push('NEXT_PUBLIC_QUOTE_TOOL_AUTH_* variables may be set only in preview or explicitly enabled production');
 }
 if (identitySource === 'quote_tool' || quoteConfigurationPresent) {
   required('NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL');
