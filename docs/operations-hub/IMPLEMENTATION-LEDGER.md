@@ -1,6 +1,6 @@
 # Operations Hub implementation ledger
 
-As of `master@c5c5857f034567a7e55b833589400ea5a1d493f6` on 2026-08-25.
+As of `master@268bd29667e8311e12d72c78e05170d307782243` on 2026-08-25.
 
 This is the working inventory of approved Operations Hub ideas and their
 current implementation evidence. It is a planning and release-audit aid, not
@@ -28,6 +28,7 @@ or the reconciled planning pack, those sources control.
 | 2026-08-24 | Applied and verified the owner-authorized no-backup production 0020–0024 rollout, then repaired migration history. | owner decision | Production has canonical history `0001`–`0024`, post-0024 assertions, and a matching staged structural-schema fingerprint. The 28 scoped derived artifacts were permanently removed without backup. `0025` and Office Tasks remain deferred. |
 | 2026-08-24 | Re-audited the archived-session inventory against current `master`; added missing evidence-backed items and recorded unmerged PRs without treating them as shipped. | Hub | `master@82df971d93a3c7665641a4d35ef8bebbc83e5dd0`; retain production proof from PR #83 and keep 0025, Office Tasks, provider activation, customer sends, and cron separately authorized. |
 | 2026-08-25 | Reconciled the Flow Q and documentation-PR snapshot without changing any runtime or release state. | both | Current Hub `master@3eafc0d4a796367c9a5df4d3fa4496aeaa8e9c89` and Quote Tool `master@5ca62eb8f4fda1c83b4c73884d21c9e6b11d3ae1` still pin Flow Q `v1.5.0-draft` / `1.1.0-draft`. Quote Tool PR #881 remains a draft at `8fc5ec089d11d00c93ac6d10dfa27b92e98a6e41`; Hub PRs #84 and #85 were closed as obsolete documentation work. |
+| 2026-08-25 | Quote Tool PR #962 merged canonical Flow Q `v1.6.0-draft` / `1.2.0-draft`; this Hub change mirrors those bytes and pin. | both | Quote Tool `master@3c803363366cbb24eb4a15704015ea858197f61a`; v1.6 removes pre-quote feed events, requires a permanent quote aggregate and linked-request source IDs, and replaces raw customer references with opaque hashes. No runtime, Office Tasks, or user-authentication behavior changes. PR #881 remains a separate draft and must adopt v1.6 before any feed is enabled. |
 | 2026-08-25 | Merged a production-only Office Tasks migration runner and runbook; no hosted preflight or write ran in that PR. | Hub | PR #89 merged as `master@c5c5857f034567a7e55b833589400ea5a1d493f6`; it verifies the exact Office Tasks migration, refuses staging, and requires a separate protected operator environment and exact production-write authorization. |
 | 2026-08-25 | Performed a read-only production Office Tasks audit and corrected the runner's production-history prerequisite. | Hub | Production history has canonical `0001`–`0024` plus `20260825130719_quote_tool_identity_bridge` and `20260825130728_production_quote_tool_identity_activation`; `ops_tasks`, `ops_task_events`, and both task RPCs are absent. The original PR #89 runner rejected that valid history before any write. This audit changes only the runner/runbook/tests to require the exact observed identity records; Office Tasks remains unavailable and separately authorized. |
 
@@ -143,7 +144,7 @@ or the reconciled planning pack, those sources control.
 
 ## Priority queue for the next session
 
-1. **Repair the Quote Tool Flow Q contract/schema contradictions**, then implement its governed lifecycle producer, capability snapshot, current-context read, and event feed in Quote Tool. Mirror the corrected bytes in Hub only after the canonical merge.
+1. **Adopt Flow Q v1.6 in the Quote Tool lifecycle producer**, then implement and prove its governed event feed, current-context read, and related projection behavior. The Hub mirror is a schema/pin update only; it does not authorize a runtime.
 2. **Complete hosted persona and real-token authorization proof** without provisioning field users or enabling phone auth.
 3. **Plan an Office Tasks-only rollout only when needed.** Do not use a general `supabase db push`; production's approved timestamped identity history does not match the local identity source filenames.
 4. **Fix the local macOS ARM Realtime shadow-helper crash** and refresh the local Quote Tool checkout before local cross-repository verification.

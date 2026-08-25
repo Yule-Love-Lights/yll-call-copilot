@@ -95,10 +95,10 @@ RLS, and impersonated-role gates below pass.
 
 - [x] Quote Tool PR #701 established the `v1.3.0-draft` baseline and PR #716
       made it self-contained. The current canonical/mirror pin is
-      `v1.5.0-draft` at Quote commit
-      `ad53321eb5cf548bf9fe9adf400a5786a2d4fe44` after Quote Tool PR #878.
-- [x] The paired Hub mirror copies the current contract exactly: 63,985 bytes,
-      SHA-256 `934506c96969f881a7252a4da04852720682a0d66efc20c7ad79e950d34dcecf`.
+      `v1.6.0-draft` at Quote commit
+      `3c803363366cbb24eb4a15704015ea858197f61a` after Quote Tool PR #962.
+- [x] The paired Hub mirror copies the current contract exactly: 64,873 bytes,
+      SHA-256 `4aba9c962592deef004705a68f8d1efbf91e6d0edf4e6912eb41dce1de735a84`.
 - [x] `contract-pin.json` records one version, source commit/path, byte length,
       and raw-byte SHA-256.
 - [x] Local verification detects mirror/pin drift and clearly reports
@@ -106,14 +106,14 @@ RLS, and impersonated-role gates below pass.
 - [x] Local cross-repository verification against a separate Quote Tool clone
       reports `CROSS_REPO_BYTES_OK` and rejects same-file/hardlink shortcuts.
 - [x] Quote Tool publishes `docs/context/ops-contract-schema/` canonically at
-      schema version `1.1.0-draft`.
+      schema version `1.2.0-draft`.
 - [x] Hub vendors the manifest, OpenAPI, and JSON Schema files
       byte-identically and pins each byte length and SHA-256.
-- [ ] Before Flow Q implementation, Quote Tool must correct the merged draft's
-      request-event and event-specific schema contradictions plus the missing
-      `office.tasks.work` capability, bump the canonical versions, and Hub must
-      mirror the corrected bytes. The current byte-identical draft pin does
-      not authorize either runtime.
+- [ ] Before Flow Q runtime activation, Quote Tool must add the missing
+      `office.tasks.work` capability or make an owner-approved separate
+      capability decision. Version 1.6 corrected and Hub mirrored the
+      lifecycle-event contradictions, but the current pin does not authorize
+      either runtime.
 - [x] The trusted CI workflow code is present to use the fine-grained
       `OPS_HUB_QUOTE_TOOL_READ_TOKEN`, check out current Quote Tool `master`,
       and compare the canonical contract and schema files as data. It fails
@@ -409,8 +409,8 @@ PR #50 added Hub-owned versions of:
 - `ops_identity_audit_events`
 
 Quote Tool PR #803 first published the shared schema pack, Hub PR #53 vendored
-that version, and Quote Tool PR #878 advanced the canonical contract/schema to
-Flow Q `v1.5.0-draft` / `1.1.0-draft`; Hub PR #70 vendors those bytes.
+that version, and Quote Tool PR #962 advanced the canonical contract/schema to
+Flow Q `v1.6.0-draft` / `1.2.0-draft`; this branch vendors those bytes.
 Publication does not
 implement the runtime outbox/inbox/DLQ, supported-version envelope, capability
 grant transport, or Quote-owned current-context projection. Those remain Phase

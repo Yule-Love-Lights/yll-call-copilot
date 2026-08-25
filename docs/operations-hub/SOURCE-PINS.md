@@ -15,7 +15,8 @@ Hub implementation base audited through Flow Q mirror PR #70:
 | Quote Tool self-contained canonical contract | `naldo/ops-contract-v130-clarifications`, PR #716 | head `d2cf098658a595da1bd7b5b35ae553605fcbd1a0`; merge `5d56ebb62e23b2fe592cdc1912359b1ddf137270` | Canonical v1.3.0-draft consumed by the Operations Hub |
 | Quote Tool Flow H canonical update | Quote Tool canonical history | `0a69fc0efc4998b59136057671e5705d8e5583f6` | Historical pre-schema v1.4.0-draft, including Flow H commitment-verification events |
 | Quote Tool contract/schema publication | `codex/ops-contract-schema-v1-4`, PR #803 | head `0cf17a4ab4accd4187bd631ebae0eac3abbbd7e3`; merge `c60bce4927a7fc47a8d6ee1d14a6eb88257755aa` | Historical v1.4.0-draft contract plus schema v1.0.0-draft publication |
-| Quote Tool Flow Q contract/schema | `naldo/quote-lifecycle-contract`, PR #878 | head `1445c5201f227474321809e0b64dfdb60f81b731`; merge `ad53321eb5cf548bf9fe9adf400a5786a2d4fe44` | Current canonical v1.5.0-draft lifecycle/current-context/authorization-snapshot contract plus schema v1.1.0-draft |
+| Quote Tool Flow Q contract/schema | `naldo/quote-lifecycle-contract`, PR #878 | head `1445c5201f227474321809e0b64dfdb60f81b731`; merge `ad53321eb5cf548bf9fe9adf400a5786a2d4fe44` | Historical v1.5.0-draft lifecycle/current-context/authorization-snapshot contract plus schema v1.1.0-draft |
+| Quote Tool Flow Q v1.6 contract/schema | `naldo/flow-q-contract-v16`, PR #962 | head `8ff9cdd9447ca8fcc818e41489a0bd729fa8861f`; merge `3c803363366cbb24eb4a15704015ea858197f61a` | Current canonical v1.6.0-draft lifecycle/current-context/authorization-snapshot contract plus schema v1.2.0-draft; resolves the lifecycle-event contradictions without activating a runtime |
 | Historical Hub Flow H mirror | `naldo/217-flow-h-mirror`, PR #44 | head `277db428c880adf5350ed01b0d7918241587f576`; merge `0756b611c1e3bd7d6d3eeb4318b8677412ae0ad7` | Historical byte-identical Hub mirror and contract pin, superseded by PR #53 |
 | Hub immutable identity foundation | `codex/operations-hub-identity-foundation`, PR #50 | head `72487ae216c2d24b0870ed44852a668dc31596e6`; merge `44989e1ac1c7830ffdcd4d1e1f623db692547e9e` | Stable employee IDs, versioned Auth links, memberships, identity audit, and guarded compatibility projection |
 | Hub recording sync backlog cap | `naldo/recording-sync-backlog-cap`, PR #51 | head `0724b31242d39caac1e5d53847af14e36b4d0fed`; merge `f2c9bd0761365a275f4793cd4f70dcf9c75cee26` | Merged Hub implementation baseline before the Phase 0 completion branch |
@@ -33,7 +34,7 @@ Hub implementation base audited through Flow Q mirror PR #70:
 | Railway retirement | `naldo/retire-railway`, PR #69 | head `1132ad00c586cf0d54edb806ca50153f5e2c0df9`; merge `58ea70a716f9e1612462ee8493a8fb3aa522cdd2` | Removes Railway deployment configuration while retaining the disabled, unhosted live bridge code |
 | Hub Office task foundation | `codex/office-task-foundation`, PR #68 | head `358103f1142c31c6efdb50b85ecb02bc37cfa456`; merge `487ac1c7e3ad751fd6090ab70492cadb8524c1e0` | Office task UI and APIs, retry-safe create/update routines, task-event audit, route authorization, and default-deny coverage |
 | Hub Office task release rehearsal | `codex/office-task-release-rehearsal`, PR #71 | head `b2b94c389068de54f0d43650ff671d564611a79a`; merge `c1c9146810007d16b47d669f7506b486e0f6733f` | Pins the timestamped Office task migration in the post-`0024` rehearsal guard and history-helper tests; no production apply authority |
-| Hub Flow Q contract/schema mirror | `naldo/quote-lifecycle-contract-mirror`, PR #70 | head `5c1af99d26eece6645bfba494201ac81b0a1a6ee`; merge `29809274b12c159c272f3cd2f3ee5143f6d90bc6` | Byte-identical Flow Q v1.5.0-draft / schema 1.1.0-draft mirror; runtime remains unavailable |
+| Hub Flow Q contract/schema mirror | `naldo/quote-lifecycle-contract-mirror`, PR #70 | head `5c1af99d26eece6645bfba494201ac81b0a1a6ee`; merge `29809274b12c159c272f3cd2f3ee5143f6d90bc6` | Historical byte-identical Flow Q v1.5.0-draft / schema 1.1.0-draft mirror; runtime remains unavailable |
 
 ## Known source condition
 
@@ -65,17 +66,17 @@ Hub implementation base audited through Flow Q mirror PR #70:
 
 ## Current contract pin
 
-- Contract version: `v1.5.0-draft`
+- Contract version: `v1.6.0-draft`
 - Quote Tool canonical commit:
-  `ad53321eb5cf548bf9fe9adf400a5786a2d4fe44`
+  `3c803363366cbb24eb4a15704015ea858197f61a`
 - Canonical and Hub mirror SHA-256:
-  `934506c96969f881a7252a4da04852720682a0d66efc20c7ad79e950d34dcecf`
-- Canonical and Hub mirror byte length: `63985`
-- Schema version: `1.1.0-draft`
+  `4aba9c962592deef004705a68f8d1efbf91e6d0edf4e6912eb41dce1de735a84`
+- Canonical and Hub mirror byte length: `64873`
+- Schema version: `1.2.0-draft`
 - Canonical manifest SHA-256:
-  `7ef7c633fc9c57871e253717965b53529be47daa151714ab399fd584eab47132`
+  `86ed95933c22ad21ef0128abb001755292be64272607e8ea66d96a95549ca2d4`
 - Canonical OpenAPI SHA-256:
-  `9d2c3d541cd0536e3be8974e12e5dbfa138a71b9d722218e621cdb2fe45ddc53`
+  `20db55aa520b8b634784f31cccc81070e9d9e424d77e6d96a410ed98b9bd6734`
 - Canonical JSON Schema SHA-256:
-  `78e0a3ee44bf786170c9229f99b335797af4fa8ddbc70f9ce1226bf8135a5358`
+  `6345009ba6a937d69f4141c2331cba45253dce28fda956d37f0c30a6d9b9700c`
 - Machine-readable authority: `docs/operations-hub/contract-pin.json`

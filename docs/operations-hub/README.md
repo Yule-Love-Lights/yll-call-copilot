@@ -17,9 +17,9 @@ baseline. The new production execution packet is a proposed operational
 procedure and is not covered by that prior approval. Quote Tool PR #701
 established the original canonical baseline, PR #716 made it self-contained,
 Naldo signed the master plan, and Hub PR #37 was human-merged.
-The current byte-identical mirror is `v1.5.0-draft`, pinned to
-Quote Tool PR #878 merge `ad53321eb5cf548bf9fe9adf400a5786a2d4fe44`.
-Its independent schema version is `1.1.0-draft`.
+The current byte-identical mirror is `v1.6.0-draft`, pinned to
+Quote Tool PR #962 merge `3c803363366cbb24eb4a15704015ea858197f61a`.
+Its independent schema version is `1.2.0-draft`.
 
 ## Read in this order
 
@@ -100,9 +100,9 @@ Completed:
   remain static; revocation/replacement and production activation are blocked
   on source-aware transaction checks and owner-attributed replacement audit.
 - Quote Tool PR #803 published the first canonical contract/schema pack, Hub
-  PR #53 vendored that version byte-identically, and Quote Tool PR #878
-  published the current Flow Q `v1.5.0-draft` / `1.1.0-draft` pack mirrored by
-  Hub PR #70. Hub PR #54 established the original
+  PR #53 vendored that version byte-identically, and Quote Tool PR #962
+  published the current Flow Q `v1.6.0-draft` / `1.2.0-draft` pack mirrored by
+  this branch. Hub PR #54 established the original
   assistant-managed merge-rule baseline; this H0 update extends it with the
   authenticated-byte bootstrap and four-mode order rules.
 - Hub PR #57 reconciled the release ledger. PR #60 merged the fail-closed
@@ -153,10 +153,10 @@ membership-version, and local identity-audit scaffolding. PR #52 adds a
 disabled preview-only Phone Auth and Turnstile application path plus the
 30-day session-age check; it does not configure a provider or create field
 accounts. PRs #803 and #53 established the shared contract/schema publication,
-and Quote Tool PR #878 published Flow Q `v1.5.0-draft` / `1.1.0-draft`, now
-mirrored by Hub PR #70. Flow Q still has blocking request/event-schema
-contradictions and omits the merged `office.tasks.work` capability from its
-snapshot enum; those require a corrective canonical PR. Its runtime outbox,
+and Quote Tool PR #962 published Flow Q `v1.6.0-draft` / `1.2.0-draft`, now
+mirrored by this branch. Version 1.6 resolves the request/event-schema
+contradictions; the snapshot enum still omits the merged `office.tasks.work`
+capability. Its runtime outbox,
 inbox, DLQ, supported-version envelope, and Quote-owned current-context
 projection are not implemented. The long-term
 approved target remains Supabase Phone Auth with Turnstile, Twilio Verify
