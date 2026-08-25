@@ -8,6 +8,7 @@ import {
   OFFICE_TASKS_FILENAME,
   OFFICE_TASKS_SHA256,
   OFFICE_TASKS_VERSION,
+  PREREQUISITE_HISTORY_VALUES,
   assertGeneratedOfficeTasksDriver,
   buildOfficeTasksDriver,
   readExactOfficeTasksMigration,
@@ -21,7 +22,9 @@ describe('Office Tasks hosted apply driver', () => {
     const driver = buildOfficeTasksDriver();
     expect(driver).toContain(`BEGIN canonical migration ${OFFICE_TASKS_VERSION}: ${OFFICE_TASKS_FILENAME}`);
     expect(OFFICE_TASKS_SHA256).toMatch(/^[0-9a-f]{64}$/);
-    expect(driver).toContain("where version in ('0025', '20260821141530')");
+    expect(driver).toContain('Office Tasks migration history is not in the reviewed pre-apply state');
+    expect(PREREQUISITE_HISTORY_VALUES).toContain("('20260825130719', 'quote_tool_identity_bridge')");
+    expect(PREREQUISITE_HISTORY_VALUES).toContain("('20260825130728', 'production_quote_tool_identity_activation')");
     expect(driver).toContain('Office Tasks schema is not absent before apply');
     expect(driver).toContain('Office Tasks postcondition failed');
     expect(driver).toMatch(/^\\set ON_ERROR_STOP on[\s\S]*begin;[\s\S]*commit;\n$/);
