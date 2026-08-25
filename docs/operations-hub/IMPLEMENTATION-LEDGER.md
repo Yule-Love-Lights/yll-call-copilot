@@ -1,6 +1,6 @@
 # Operations Hub implementation ledger
 
-As of `master@86418fcc6398b107541541bc94d0fad75e6e01de` on 2026-08-25.
+As of `master@c5c5857f034567a7e55b833589400ea5a1d493f6` on 2026-08-25.
 
 This is the working inventory of approved Operations Hub ideas and their
 current implementation evidence. It is a planning and release-audit aid, not
@@ -30,6 +30,7 @@ or the reconciled planning pack, those sources control.
 | 2026-08-25 | Reconciled the Flow Q and documentation-PR snapshot without changing any runtime or release state. | both | Current Hub `master@3eafc0d4a796367c9a5df4d3fa4496aeaa8e9c89` and Quote Tool `master@5ca62eb8f4fda1c83b4c73884d21c9e6b11d3ae1` still pin Flow Q `v1.5.0-draft` / `1.1.0-draft`. Quote Tool PR #881 remains a draft at `8fc5ec089d11d00c93ac6d10dfa27b92e98a6e41`; Hub PRs #84 and #85 were closed as obsolete documentation work. |
 | 2026-08-25 | Prepared a production-only Office Tasks migration runner and runbook; no hosted preflight or write ran. | Hub | Draft PR #89 verifies the exact Office Tasks migration, refuses staging and 0025, supports only the reviewed history/schema recovery states, and requires a separate protected operator environment before it can run. |
 | 2026-08-25 | Rebasing the Office Tasks release preparation on the current `master`; no hosted preflight or write ran. | Hub | Hub PR #88 merged as `master@5d9654383b5ff85da65b4496e9b998e6b1516bcd`, followed by Hub PR #87 as `master@86418fcc6398b107541541bc94d0fad75e6e01de`. Draft PR #89 is rebased on that current source and awaits its fresh CI. The runner remains paused pending merge and a new exact production-write authorization. |
+| 2026-08-25 | Merged the Office Tasks release preparation; no hosted database preflight or migration ran. | Hub | PR #89 merged as `master@c5c5857f034567a7e55b833589400ea5a1d493f6` after the required Hub CI, Supabase RLS, and authenticated contract checks passed. The production deployment reached Ready. The runner remains paused pending a new exact production-write authorization for `20260821141530_office_tasks.sql` only; `0025` remains excluded. |
 
 ## Current release snapshot
 
