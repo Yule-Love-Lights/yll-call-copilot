@@ -88,6 +88,7 @@ const GENERATED_BY_VERSION = new Map(GENERATED.map(row => [row.version, row]));
 const REVIEWED_FUTURE_MIGRATIONS = Object.freeze([
   '0025_quote_tool_identity_bridge.sql',
   '20260821141530_office_tasks.sql',
+  '20260825120136_production_quote_tool_identity_activation.sql',
 ]);
 const REVIEWED_MIGRATION_SHA256 = Object.freeze({
   '0001_init.sql':
@@ -142,6 +143,8 @@ const REVIEWED_MIGRATION_SHA256 = Object.freeze({
     '8b7b96a1cc81ffd5e71cb051a651d6fe58d1b645673494fbed4f371ae02b6bd9',
   '20260821141530_office_tasks.sql':
     'dc53110c349f4864725531adb9295707a6d5140c037885f1863d58a8be1347a2',
+  '20260825120136_production_quote_tool_identity_activation.sql':
+    '4c6b638e83ec73b95fb978863cf9bc61ee1e71c08fb489768a687cdd764a6b4e',
 });
 
 function sameRows(actual, expected) {

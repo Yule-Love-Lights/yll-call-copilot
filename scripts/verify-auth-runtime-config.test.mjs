@@ -20,6 +20,7 @@ const baseline = {
   NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: 'hub',
   NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: '',
   NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY: '',
+  HUB_QUOTE_TOOL_IDENTITY_PRODUCTION_ENABLED: 'false',
   HUB_OWNER_ADMIN_AUTH_USER_IDS:
     '123e4567-e89b-42d3-a456-426614174000,223e4567-e89b-42d3-a456-426614174000',
   CRON_SECRET: '0123456789abcdef',
@@ -121,7 +122,7 @@ describe('authorization runtime preflight', () => {
     expect(result.stderr).toContain('CRON_SECRET must be an unpadded secret');
   });
 
-  it('requires an explicit identity source and keeps Quote Tool identity preview-only', () => {
+  it('requires an explicit identity source and permits production Quote Tool identity only with its release gate', () => {
     const missing = run({ NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: '' });
     expect(missing.status).toBe(1);
     expect(missing.stderr).toContain('must be exactly hub or quote_tool');
@@ -154,7 +155,7 @@ describe('authorization runtime preflight', () => {
       VERCEL_ENV: '',
     });
     expect(missingPreview.status).toBe(1);
-    expect(missingPreview.stderr).toContain('may be quote_tool only when VERCEL_ENV is preview');
+    expect(missingPreview.stderr).toContain('may be quote_tool only in preview or explicitly enabled production');
 
     const production = run({
       NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: 'quote_tool',
@@ -163,7 +164,16 @@ describe('authorization runtime preflight', () => {
       VERCEL_ENV: 'production',
     });
     expect(production.status).toBe(1);
-    expect(production.stderr).toContain('may be quote_tool only when VERCEL_ENV is preview');
+    expect(production.stderr).toContain('requires HUB_QUOTE_TOOL_IDENTITY_PRODUCTION_ENABLED=true');
+
+    const enabledProduction = run({
+      NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: 'quote_tool',
+      NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: quoteProjectUrl,
+      NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY: publishableKey,
+      HUB_QUOTE_TOOL_IDENTITY_PRODUCTION_ENABLED: 'true',
+      VERCEL_ENV: 'production',
+    });
+    expect(enabledProduction.status).toBe(0);
   });
 
   it('accepts a legacy anon JWT as the browser-safe compatibility key', () => {
@@ -236,7 +246,7 @@ describe('authorization runtime preflight', () => {
     expect(result.stderr).toContain('must match the frozen Quote Tool Auth project');
   });
 
-  it('rejects Quote Tool public Auth variables outside Vercel preview even when Hub Auth is selected', () => {
+  it('rejects Quote Tool public Auth variables without the production release gate when Hub Auth is selected', () => {
     const result = run({
       NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: 'hub',
       NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: quoteProjectUrl,
@@ -245,7 +255,7 @@ describe('authorization runtime preflight', () => {
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      'NEXT_PUBLIC_QUOTE_TOOL_AUTH_* variables may be set only when VERCEL_ENV is preview',
+      'NEXT_PUBLIC_QUOTE_TOOL_AUTH_* variables may be set only in preview or explicitly enabled production',
     );
   });
 

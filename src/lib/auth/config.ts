@@ -20,6 +20,7 @@ export type ServerAuthEnvironment = {
   NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE?: string;
   NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL?: string;
   NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY?: string;
+  HUB_QUOTE_TOOL_IDENTITY_PRODUCTION_ENABLED?: string;
 };
 
 export type HubAuthIdentitySource = 'hub' | 'quote_tool';
@@ -95,6 +96,7 @@ function readServerAuthEnvironment(): ServerAuthEnvironment {
     NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE: process.env.NEXT_PUBLIC_HUB_AUTH_IDENTITY_SOURCE,
     NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL: process.env.NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_URL,
     NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_QUOTE_TOOL_AUTH_SUPABASE_ANON_KEY,
+    HUB_QUOTE_TOOL_IDENTITY_PRODUCTION_ENABLED: process.env.HUB_QUOTE_TOOL_IDENTITY_PRODUCTION_ENABLED,
   };
 }
 
@@ -150,7 +152,10 @@ export function resolveIdentityAuthConfiguration(
   if (source !== 'quote_tool') {
     return { ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' };
   }
-  if (environment.VERCEL_ENV !== 'preview') {
+  const productionSourceEnabled =
+    environment.VERCEL_ENV === 'production'
+    && environment.HUB_QUOTE_TOOL_IDENTITY_PRODUCTION_ENABLED === 'true';
+  if (environment.VERCEL_ENV !== 'preview' && !productionSourceEnabled) {
     return { ok: false, code: 'AUTH_CONFIGURATION_UNAVAILABLE' };
   }
 

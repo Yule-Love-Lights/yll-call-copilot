@@ -169,6 +169,38 @@ select ok(
 );
 
 select ok(
+  (
+    select routine.prosecdef
+    from pg_proc as routine
+    where routine.oid =
+      'public.owner_link_quote_tool_employee_identity(uuid,uuid,uuid,text,uuid)'::regprocedure
+  )
+  and (
+    select coalesce(routine.proconfig, array[]::text[])
+      @> array['search_path=""']::text[]
+    from pg_proc as routine
+    where routine.oid =
+      'public.owner_link_quote_tool_employee_identity(uuid,uuid,uuid,text,uuid)'::regprocedure
+  )
+  and has_function_privilege(
+    'service_role',
+    'public.owner_link_quote_tool_employee_identity(uuid,uuid,uuid,text,uuid)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'anon',
+    'public.owner_link_quote_tool_employee_identity(uuid,uuid,uuid,text,uuid)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'authenticated',
+    'public.owner_link_quote_tool_employee_identity(uuid,uuid,uuid,text,uuid)',
+    'EXECUTE'
+  ),
+  'only service_role can invoke owner-attributed Quote Tool linking'
+);
+
+select ok(
   not has_function_privilege(
     'service_role',
     'public.sync_app_user_projection()',
