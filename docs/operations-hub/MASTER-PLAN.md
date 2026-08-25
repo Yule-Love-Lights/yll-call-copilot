@@ -340,8 +340,8 @@ to restricted owners for the required retention period.
    `CONTRACT-V1.3-PROPOSAL.md`; Naldo and Codex review; human merge to Quote
    Tool `master` first.
 2. Generate/publish one shared JSON Schema artifact; both CIs validate it.
-   Quote Tool PR #803 first published schema `1.0.0-draft`; PR #878 advances
-   the current Flow Q contract pack to schema `1.1.0-draft`.
+   Quote Tool PR #803 first published schema `1.0.0-draft`; PR #962 advances
+   the current Flow Q contract pack to schema `1.2.0-draft`.
 3. Add byte-identical canonical-contract and schema mirrors to the Hub after
    canonical merge; cross-repository byte-diff and deploy-version smoke must
    pass. The raw-byte mirror and local/cross-repository verifier are complete;
@@ -443,7 +443,12 @@ clean weeks.
       lifecycle/current-context/authorization-snapshot contract and schema
       `1.1.0-draft` at merge
       `ad53321eb5cf548bf9fe9adf400a5786a2d4fe44`; Hub PR #70 vendors those exact
-      bytes. The current branch records the remaining schema blockers without
+      bytes.
+- [x] Quote Tool PR #962 published the canonical `v1.6.0-draft` Flow Q
+      lifecycle/current-context/authorization-snapshot contract and schema
+      `1.2.0-draft` at merge
+      `3c803363366cbb24eb4a15704015ea858197f61a`; this branch vendors those exact
+      bytes. Version 1.6 resolves the lifecycle-event blockers without
       activating the runtime.
 - [x] Hub PR #50 merged the immutable Hub identity foundation at
       `master@44989e1ac1c7830ffdcd4d1e1f623db692547e9e`; all required Hub CI,

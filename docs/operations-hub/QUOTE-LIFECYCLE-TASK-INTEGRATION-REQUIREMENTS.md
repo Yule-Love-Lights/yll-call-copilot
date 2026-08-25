@@ -11,23 +11,20 @@ quotes, assignments, lifecycle facts, customer delivery, paid workday data,
 and every `/api/ops/v1` endpoint. Operations Hub remains the source of truth
 for Hub tasks and their Office presentation.
 
-Quote Tool PR #878 merged canonical Flow Q as contract `v1.5.0-draft` and
-schema `1.1.0-draft`; this branch mirrors those files byte-identically. The
+Quote Tool PR #962 merged canonical Flow Q as contract `v1.6.0-draft` and
+schema `1.2.0-draft`; this branch mirrors those files byte-identically. The
 canonical contract now controls exact cross-repository behavior. This document
 remains a Hub implementation and release checklist and does not amend the
 contract, OpenAPI, or JSON Schema.
 
-The merged draft is not implementation-ready. Its normative text allows a
-`QuoteRequestReceived` before any quote exists and requires stable request and
-source identifiers, while the shared `QuoteLifecycleEvent` schema requires a
-non-null `quote_id`, makes `request_id` optional, and omits the required source
-pair. The same flat event schema omits several event-specific fields required
-by the contract and allows envelope `entity_version = 0` even though Flow Q
-starts quote versions at one. Its closed `HubCapability` enum also omits the
-Hub's already-merged `office.tasks.work` grant, so it cannot represent a
-complete current Office authorization snapshot. A corrective Quote Tool
-contract/schema PR must resolve those contradictions and be mirrored here
-before either repository implements or activates Flow Q.
+Version 1.6 resolves the lifecycle-event contradictions: pre-quote requests
+are Quote Tool-local rather than feed events, linked requests require their
+stable source pair, each feed event has a permanent quote aggregate, and
+event-specific evidence fields are typed. Its closed `HubCapability` enum
+still omits the Hub's already-merged `office.tasks.work` grant, so it cannot
+represent a complete current Office authorization snapshot. The lifecycle
+runtime and that separate capability decision remain required before either
+repository activates Flow Q.
 
 ## Current boundary and non-claims
 
@@ -42,8 +39,8 @@ The current Quote Tool dashboard metric is not approved turnaround data:
   send, meaningful-edit history, explicit wait interval, revision history, or
   quote lifecycle event stream.
 
-Until the corrective schema and runtime requirements below are delivered and
-versioned, Hub must show an explicit unavailable state for real Quote Tool
+Until the runtime requirements below are delivered and versioned, Hub must
+show an explicit unavailable state for real Quote Tool
 timing, workload, and quote-origin task data. It must not infer those values
 from contacts, inbox rows, timestamps, browser activity, or email addresses.
 
@@ -76,7 +73,7 @@ from contacts, inbox rows, timestamps, browser activity, or email addresses.
    correlation ID, causation ID, idempotency key, and versioned payload.
 3. The canonical closed event union is:
 
-   - `QuoteRequestReceived`, `QuoteRequestLinked`, `QuoteCreated`
+   - `QuoteRequestLinked`, `QuoteCreated`
    - `QuoteAssigned`, `QuoteUnassigned`
    - `QuoteMeaningfulEditRecorded`, `QuoteRevisionSaved`
    - `QuoteWorkWaitStarted`, `QuoteWorkWaitEnded`
