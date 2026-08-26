@@ -41,17 +41,14 @@ function classifyOfficeTasksRelease(history, schemaState) {
 
 function readHistory(runner) {
   return parseHistory(runner.psql(`
-    begin transaction read only;
     select version || chr(9) || coalesce(name, '<null>')
     from supabase_migrations.schema_migrations
     order by version;
-    commit;
   `));
 }
 
 function readSchemaState(runner) {
   const output = runner.psql(`
-    begin transaction read only;
     select case
       when to_regclass('public.ops_tasks') is null
        and to_regclass('public.ops_task_events') is null
@@ -65,7 +62,6 @@ function readSchemaState(runner) {
       then 'present'
       else 'partial'
     end;
-    commit;
   `).trim();
   if (!['absent', 'present', 'partial'].includes(output)) {
     throw new Error('Office Tasks schema preflight returned an unexpected state');
@@ -75,7 +71,6 @@ function readSchemaState(runner) {
 
 function assertOfficeTasksPostconditions(runner) {
   const output = runner.psql(`
-    begin transaction read only;
     select case when
       to_regclass('public.ops_tasks') is not null
       and to_regclass('public.ops_task_events') is not null
@@ -89,7 +84,6 @@ function assertOfficeTasksPostconditions(runner) {
       and not has_function_privilege('anon', 'public.ops_create_manual_task(text,text,timestamp with time zone,uuid,uuid)', 'EXECUTE')
       and not has_function_privilege('authenticated', 'public.ops_update_own_task(uuid,text,text,uuid,uuid)', 'EXECUTE')
     then 'YLL_OFFICE_TASKS_OK' else 'YLL_OFFICE_TASKS_MISMATCH' end;
-    commit;
   `);
   if (!output.split('\n').includes('YLL_OFFICE_TASKS_OK')) {
     throw new Error('Office Tasks post-apply verification failed');
@@ -160,4 +154,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try { main(); } catch (error) { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); process.exitCode = 1; }
 }
 
-export { OFFICE_TASKS_HISTORY, assertExpectedSourceIdentityMigrations, classifyOfficeTasksRelease, sameRows };
+export {
+  OFFICE_TASKS_HISTORY,
+  assertExpectedSourceIdentityMigrations,
+  assertOfficeTasksPostconditions,
+  classifyOfficeTasksRelease,
+  readHistory,
+  readSchemaState,
+  sameRows,
+};
