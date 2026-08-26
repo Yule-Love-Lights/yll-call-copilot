@@ -78,6 +78,7 @@ export async function GET() {
     return NextResponse.json({
       configured: true,
       migrated: true,
+      automatedSyncEnabled: process.env.CRON_ENABLED === 'true',
       lastSyncedAt: (stateData as { last_synced_at: string | null } | null)?.last_synced_at ?? null,
       counts,
       recordings,
