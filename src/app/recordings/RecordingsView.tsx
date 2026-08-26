@@ -27,6 +27,7 @@ type RecordingsResponse = {
   migrated?: boolean;
   reason?: string;
   error?: string;
+  automatedSyncEnabled?: boolean;
   lastSyncedAt?: string | null;
   counts?: Counts;
   recordings?: Recording[];
@@ -126,6 +127,13 @@ export default function RecordingsView() {
           Nightly-synced GHL call recordings feeding the transcript pipeline.
         </p>
       </div>
+
+      {!data.automatedSyncEnabled && (
+        <div className={amberBannerClass} role="status">
+          Automatic HighLevel recording sync is off. Calls shown here may be out of date. “Process next batch” only
+          handles recordings that are already in the Hub.
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <button onClick={onProcessBatch} disabled={processing} className={primaryButtonClass}>
