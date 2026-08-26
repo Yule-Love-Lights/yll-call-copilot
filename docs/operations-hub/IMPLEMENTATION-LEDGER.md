@@ -1,6 +1,6 @@
 # Operations Hub implementation ledger
 
-As of `master@268bd29667e8311e12d72c78e05170d307782243` on 2026-08-25.
+As of `master@fb1bf326b4bd4a536ea969ecefd9fe25f3cae097` on 2026-08-26.
 
 This is the working inventory of approved Operations Hub ideas and their
 current implementation evidence. It is a planning and release-audit aid, not
@@ -31,6 +31,7 @@ or the reconciled planning pack, those sources control.
 | 2026-08-25 | Quote Tool PR #962 merged canonical Flow Q `v1.6.0-draft` / `1.2.0-draft`; this Hub change mirrors those bytes and pin. | both | Quote Tool `master@3c803363366cbb24eb4a15704015ea858197f61a`; v1.6 removes pre-quote feed events, requires a permanent quote aggregate and linked-request source IDs, and replaces raw customer references with opaque hashes. No runtime, Office Tasks, or user-authentication behavior changes. PR #881 remains a separate draft and must adopt v1.6 before any feed is enabled. |
 | 2026-08-25 | Merged a production-only Office Tasks migration runner and runbook; no hosted preflight or write ran in that PR. | Hub | PR #89 merged as `master@c5c5857f034567a7e55b833589400ea5a1d493f6`; it verifies the exact Office Tasks migration, refuses staging, and requires a separate protected operator environment and exact production-write authorization. |
 | 2026-08-25 | Performed a read-only production Office Tasks audit and corrected the runner's production-history prerequisite. | Hub | Production history has canonical `0001`–`0024` plus `20260825130719_quote_tool_identity_bridge` and `20260825130728_production_quote_tool_identity_activation`; `ops_tasks`, `ops_task_events`, and both task RPCs are absent. The original PR #89 runner rejected that valid history before any write. This audit changes only the runner/runbook/tests to require the exact observed identity records; Office Tasks remains unavailable and separately authorized. |
+| 2026-08-26 | Ran the corrected Office Tasks production preflight, which stopped before any write because psql emitted `BEGIN` and `COMMIT` status lines that the runner parsed as migration-history data. | Hub | The follow-up runner fix removes transaction wrappers from its single-statement read-only checks, so their output contains only query results. Focused regression coverage proves the history, schema, and postcondition checks reject those markers. No migration, history repair, or schema change ran. |
 
 ## Current release snapshot
 
